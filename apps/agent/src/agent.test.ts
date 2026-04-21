@@ -1,18 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import { AGENT_MODEL, AGENT_NAME, createRootAgent } from './agent.js';
+import type { InstructionContext } from './prompt/buildInstruction.js';
+
+const CTX: InstructionContext = {
+  now: new Date('2026-04-21T09:00:00Z'),
+  timezone: 'Australia/Melbourne',
+  userState: 'anonymous',
+  location: null,
+  weather: null,
+};
 
 describe('createRootAgent', () => {
   it('returns an agent with the Lifecoach name and configured model', () => {
-    const agent = createRootAgent();
+    const agent = createRootAgent(CTX);
     expect(agent.name).toBe(AGENT_NAME);
     expect(agent.model).toBe(AGENT_MODEL);
   });
 
-  it('has a non-empty instruction string for the coach persona', () => {
-    const agent = createRootAgent();
-    const instruction = typeof agent.instruction === 'string' ? agent.instruction : '';
-    expect(instruction.length).toBeGreaterThan(50);
-    expect(instruction.toLowerCase()).toContain('coach');
+  it('bakes the dynamic instruction into the agent', () => {
+    const agent = createRootAgent(CTX);
+    const s = typeof agent.instruction === 'string' ? agent.instruction : '';
+    expect(s).toMatch(/Lifecoach/);
+    expect(s).toMatch(/2026-04-21/); // today
+    expect(s).toMatch(/anonymous/); // state
   });
 
   it('uses gemini-2.5-pro (the spec said 3.1 Pro which does not exist)', () => {

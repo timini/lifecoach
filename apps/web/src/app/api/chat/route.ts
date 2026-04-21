@@ -5,11 +5,13 @@ interface ChatBody {
   userId?: string;
   sessionId?: string;
   message?: string;
+  location?: { lat: number; lng: number; accuracy: number };
+  timezone?: string;
 }
 
 export async function POST(request: Request): Promise<Response> {
   const body = (await request.json().catch(() => ({}))) as ChatBody;
-  const { userId, sessionId, message } = body;
+  const { userId, sessionId, message, location, timezone } = body;
   if (!userId || !sessionId || !message) {
     return Response.json({ error: 'userId, sessionId, and message are required' }, { status: 400 });
   }
@@ -26,7 +28,13 @@ export async function POST(request: Request): Promise<Response> {
       'content-type': 'application/json',
       ...(authHeader ? { authorization: authHeader } : {}),
     },
-    body: JSON.stringify({ userId, sessionId, message }),
+    body: JSON.stringify({
+      userId,
+      sessionId,
+      message,
+      ...(location ? { location } : {}),
+      ...(timezone ? { timezone } : {}),
+    }),
   });
 
   if (upstream.status >= 400) {

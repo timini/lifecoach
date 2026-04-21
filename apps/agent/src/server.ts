@@ -8,6 +8,8 @@ import {
   claimsToFirebaseUserLike,
   verifyRequest,
 } from './auth.js';
+import type { Coord, WeatherClient } from './context/weather.js';
+import type { InstructionContext, LocationCtx } from './prompt/buildInstruction.js';
 
 /**
  * Minimal surface of the ADK Runner that we depend on. Lets tests pass a fake
@@ -35,35 +37,39 @@ export interface RunnerLike {
 }
 
 export interface CreateAppDeps {
-  runner: RunnerLike;
   /**
-   * Verifies Firebase ID tokens. If omitted, requests are accepted without
-   * auth (dev/test convenience only — production must pass a real verifier).
+   * Factory invoked per request with the turn's InstructionContext. The
+   * server builds the context, the factory builds a Runner (typically with
+   * a fresh LlmAgent wired to a shared session service).
    */
+  runnerFor: (ctx: InstructionContext) => RunnerLike;
   verifyToken?: TokenVerifier;
-  /**
-   * If true, /chat rejects requests with no valid token. Defaults to false
-   * so tests don't have to supply a verifier.
-   */
   requireAuth?: boolean;
+  /** Weather provider — optional so tests can skip it. */
+  weather?: WeatherClient;
+  /** Overridable clock for deterministic tests. */
+  now?: () => Date;
 }
 
 interface ChatBody {
   userId?: string;
   sessionId?: string;
   message?: string;
+  location?: { lat: number; lng: number; accuracy?: number };
+  timezone?: string;
 }
 
 export function createApp(deps: CreateAppDeps): Express {
   const app = express();
   app.use(express.json({ limit: '256kb' }));
+  const now = deps.now ?? (() => new Date());
 
   app.get('/health', (_req: Request, res: Response) => {
     res.status(200).json({ status: 'ok' });
   });
 
   app.post('/chat', async (req: Request<unknown, unknown, ChatBody>, res: Response) => {
-    const { userId, sessionId, message } = req.body ?? {};
+    const { userId, sessionId, message, location, timezone } = req.body ?? {};
     if (!userId || !sessionId || !message) {
       res.status(400).json({ error: 'userId, sessionId, and message are required' });
       return;
@@ -80,16 +86,26 @@ export function createApp(deps: CreateAppDeps): Express {
       res.status(401).json({ error: 'unauthenticated' });
       return;
     }
-    // Agent trusts the UID from the verified token — if present — over the
-    // one in the body. This prevents a client from claiming to be a different
-    // user than its auth context.
     const effectiveUserId = claims?.uid ?? userId;
 
-    // Surface the current user state so logs make it easy to see what tools
-    // and directives would apply. Actual tool-gating lands in later phases.
     const machine = claims
       ? UserStateMachine.fromFirebaseUser(claimsToFirebaseUserLike(claims, false))
       : new UserStateMachine('anonymous');
+
+    // Fetch weather if location provided — cached for 30 min per region so
+    // it's cheap across many turns.
+    const coord: Coord | null = location ? { lat: location.lat, lng: location.lng } : null;
+    const weather = coord && deps.weather ? await deps.weather.get(coord) : null;
+    const locationCtx: LocationCtx | null = coord ? { coord } : null;
+
+    const instructionCtx: InstructionContext = {
+      now: now(),
+      timezone: timezone ?? null,
+      userState: machine.current(),
+      location: locationCtx,
+      weather,
+    };
+
     // eslint-disable-next-line no-console
     console.log(
       JSON.stringify({
@@ -98,6 +114,8 @@ export function createApp(deps: CreateAppDeps): Express {
         sessionId,
         state: machine.current(),
         authenticated: claims !== null,
+        hasLocation: coord !== null,
+        hasWeather: weather !== null,
       }),
     );
 
@@ -106,7 +124,8 @@ export function createApp(deps: CreateAppDeps): Express {
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders?.();
 
-    const { runner } = deps;
+    const runner = deps.runnerFor(instructionCtx);
+
     try {
       const existing = await runner.sessionService.getSession({
         appName: runner.appName,
@@ -141,12 +160,18 @@ export function createApp(deps: CreateAppDeps): Express {
   return app;
 }
 
-/**
- * Wires the real ADK Runner with the Lifecoach agent and starts listening.
- */
 async function main(): Promise<void> {
-  const [{ InMemorySessionService, Runner: RealRunner }, { createRootAgent }, admin] =
-    await Promise.all([import('@google/adk'), import('./agent.js'), import('firebase-admin/app')]);
+  const [
+    { InMemorySessionService, Runner: RealRunner },
+    { createRootAgent },
+    { createWeatherClient },
+    admin,
+  ] = await Promise.all([
+    import('@google/adk'),
+    import('./agent.js'),
+    import('./context/weather.js'),
+    import('firebase-admin/app'),
+  ]);
 
   admin.initializeApp();
   const { getAuth: getAdminAuth } = await import('firebase-admin/auth');
@@ -163,14 +188,24 @@ async function main(): Promise<void> {
     };
   };
 
+  // Session storage is shared across turns; the LlmAgent is rebuilt each
+  // turn with the turn's dynamic instruction.
   const sessionService = new InMemorySessionService();
-  const runner = new RealRunner({
-    appName: 'lifecoach',
-    agent: createRootAgent(),
-    sessionService,
-  }) as unknown as RunnerLike;
+  const weather = createWeatherClient();
+  const runnerFor = (ctx: InstructionContext): RunnerLike =>
+    new RealRunner({
+      appName: 'lifecoach',
+      agent: createRootAgent(ctx),
+      sessionService,
+    }) as unknown as RunnerLike;
 
-  const app = createApp({ runner, verifyToken, requireAuth: process.env.REQUIRE_AUTH === 'true' });
+  const app = createApp({
+    runnerFor,
+    verifyToken,
+    requireAuth: process.env.REQUIRE_AUTH === 'true',
+    weather,
+  });
+
   const port = Number(process.env.PORT ?? 8080);
   app.listen(port, () => {
     // eslint-disable-next-line no-console
@@ -178,7 +213,6 @@ async function main(): Promise<void> {
   });
 }
 
-// Only run main() when executed directly (not when imported by tests).
 if (import.meta.url === `file://${process.argv[1]}`) {
   main().catch((err) => {
     // eslint-disable-next-line no-console

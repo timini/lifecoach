@@ -3,6 +3,7 @@
 import type { User } from 'firebase/auth';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ensureSignedIn } from '../lib/firebase';
+import { type BrowserLocation, requestBrowserLocation } from '../lib/geolocation';
 import { parseSseAssistantText } from '../lib/sse';
 
 type Role = 'user' | 'assistant';
@@ -33,6 +34,8 @@ export function ChatWindow() {
   const [busy, setBusy] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [location, setLocation] = useState<BrowserLocation | null>(null);
+  const [locationRequested, setLocationRequested] = useState(false);
   const endRef = useRef<HTMLDivElement | null>(null);
 
   const sessionId = useMemo(() => ensureSessionId(), []);
@@ -42,6 +45,12 @@ export function ChatWindow() {
       .then(setUser)
       .catch((err: unknown) => setAuthError(err instanceof Error ? err.message : String(err)));
   }, []);
+
+  async function shareLocation() {
+    setLocationRequested(true);
+    const loc = await requestBrowserLocation();
+    setLocation(loc);
+  }
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: rescroll on any render tick
   useEffect(() => {
@@ -63,7 +72,15 @@ export function ChatWindow() {
           'content-type': 'application/json',
           authorization: `Bearer ${idToken}`,
         },
-        body: JSON.stringify({ userId: user.uid, sessionId, message: text }),
+        body: JSON.stringify({
+          userId: user.uid,
+          sessionId,
+          message: text,
+          // Browser-only location. Omitted if permission denied — server
+          // never infers from IP.
+          ...(location ? { location } : {}),
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        }),
       });
       const raw = await res.text();
       const reply = parseSseAssistantText(raw);
@@ -111,9 +128,36 @@ export function ChatWindow() {
         style={{
           fontSize: 12,
           color: '#666',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
         }}
       >
-        Signed in{user.isAnonymous ? ' anonymously' : ''} as {user.uid.slice(0, 12)}…
+        <span>
+          Signed in{user.isAnonymous ? ' anonymously' : ''} as {user.uid.slice(0, 12)}…
+        </span>
+        {location ? (
+          <span style={{ color: '#4ade80' }}>📍 location shared</span>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              void shareLocation();
+            }}
+            disabled={locationRequested}
+            style={{
+              fontSize: 11,
+              padding: '4px 8px',
+              borderRadius: 6,
+              border: '1px solid #334',
+              background: 'transparent',
+              color: '#888',
+              cursor: 'pointer',
+            }}
+          >
+            {locationRequested ? 'no location' : 'Share location'}
+          </button>
+        )}
       </div>
       <div
         style={{
