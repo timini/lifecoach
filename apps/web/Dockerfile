@@ -11,6 +11,7 @@ COPY packages/shared-types/package.json ./packages/shared-types/
 COPY packages/user-state/package.json ./packages/user-state/
 COPY packages/config/package.json ./packages/config/
 COPY packages/testing/package.json ./packages/testing/
+COPY packages/ui/package.json ./packages/ui/
 RUN pnpm install --frozen-lockfile
 
 # ----- build -----
@@ -22,6 +23,7 @@ COPY packages/shared-types ./packages/shared-types
 COPY packages/user-state ./packages/user-state
 COPY packages/config ./packages/config
 COPY packages/testing ./packages/testing
+COPY packages/ui ./packages/ui
 COPY apps/web ./apps/web
 
 # NEXT_PUBLIC_* vars are inlined at build time. Passed as --build-arg from

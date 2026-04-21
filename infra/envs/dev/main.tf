@@ -89,9 +89,12 @@ module "agent" {
   env = {
     GOOGLE_GENAI_USE_VERTEXAI = "true"
     GOOGLE_CLOUD_PROJECT      = var.project_id
-    GOOGLE_CLOUD_LOCATION     = var.region
-    NODE_ENV                  = "production"
-    FIREBASE_PROJECT_ID       = var.project_id
+    # Gemini 3.* models are only reachable via the Vertex `global`
+    # publisher endpoint today — every regional endpoint returns 404.
+    # See apps/agent/src/agent.ts for the pinned model id.
+    GOOGLE_CLOUD_LOCATION = "global"
+    NODE_ENV              = "production"
+    FIREBASE_PROJECT_ID   = var.project_id
     # Name follows the gcs-user-bucket module's convention so we don't have
     # to pass the output (avoids a cycle between agent and user_bucket).
     USER_BUCKET = "lifecoach-users-${var.environment}-${var.project_id}"

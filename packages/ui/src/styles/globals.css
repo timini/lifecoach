@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+/*
+ * Lifecoach design tokens. Tailwind v4 is CSS-first — no tailwind.config.js.
+ * `@theme` declarations generate utility classes (bg-background, text-foreground, …)
+ * and stay in lockstep with runtime values via the CSS vars below.
+ */
+@theme {
+  --color-background: #0f1419;
+  --color-foreground: #e8e8e8;
+  --color-muted: #1e293b;
+  --color-muted-foreground: #94a3b8;
+  --color-border: #334155;
+  --color-accent: #2563eb;
+  --color-accent-foreground: #ffffff;
+  --color-success: #4ade80;
+  --color-destructive: #f87171;
+
+  --radius-bubble: 12px;
+  --radius-control: 8px;
+
+  --font-family-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, ui-sans-serif,
+    system-ui, sans-serif;
+}
+
+/*
+ * Hide the browser's default focus ring on buttons that use Radix; Radix
+ * handles focus-visible correctly. Keep the ring for keyboard users only.
+ */
+@layer base {
+  html,
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-family-sans);
+  }
+
+  *:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}

@@ -25,9 +25,10 @@ describe('createRootAgent', () => {
     expect(s).toMatch(/anonymous/); // state
   });
 
-  it('pins gemini-2.5-flash (upgrade to gemini-3-flash when on Vertex)', () => {
-    // Explicit pin so any model change is deliberate and reviewed. Not using
-    // a -latest alias — surprise upgrades shouldn't happen silently.
-    expect(AGENT_MODEL).toBe('gemini-2.5-flash');
+  it('pins gemini-3-flash-preview (needs GOOGLE_CLOUD_LOCATION=global)', () => {
+    // Explicit pin so any model change is deliberate and reviewed.
+    // Gemini 3.* is only reachable via the Vertex `global` publisher
+    // endpoint — all regional endpoints return 404.
+    expect(AGENT_MODEL).toBe('gemini-3-flash-preview');
   });
 });
