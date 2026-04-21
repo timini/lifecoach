@@ -8,6 +8,7 @@ import {
   claimsToFirebaseUserLike,
   verifyRequest,
 } from './auth.js';
+import type { PlacesClient } from './context/places.js';
 import type { Coord, WeatherClient } from './context/weather.js';
 import type { InstructionContext, LocationCtx } from './prompt/buildInstruction.js';
 import type { GoalUpdatesStore } from './storage/goalUpdates.js';
@@ -54,6 +55,7 @@ export interface CreateAppDeps {
   verifyToken?: TokenVerifier;
   requireAuth?: boolean;
   weather?: WeatherClient;
+  places?: PlacesClient;
   profileStore?: UserProfileStore;
   goalUpdatesStore?: GoalUpdatesStore;
   now?: () => Date;
@@ -103,7 +105,10 @@ export function createApp(deps: CreateAppDeps): Express {
     // Fetch weather if location provided — cached for 30 min per region so
     // it's cheap across many turns.
     const coord: Coord | null = location ? { lat: location.lat, lng: location.lng } : null;
-    const weather = coord && deps.weather ? await deps.weather.get(coord) : null;
+    const [weather, nearbyPlaces] = await Promise.all([
+      coord && deps.weather ? deps.weather.get(coord) : Promise.resolve(null),
+      coord && deps.places ? deps.places.get(coord) : Promise.resolve(undefined),
+    ]);
     const locationCtx: LocationCtx | null = coord ? { coord } : null;
 
     // Read the user's profile so the agent sees the full user.yaml (including
@@ -125,6 +130,7 @@ export function createApp(deps: CreateAppDeps): Express {
       weather,
       userProfile,
       recentGoalUpdates,
+      nearbyPlaces,
     };
 
     res.setHeader('Content-Type', 'text/event-stream');
@@ -196,6 +202,7 @@ export function createApp(deps: CreateAppDeps): Express {
           hasLocation: coord !== null,
           hasWeather: weather !== null,
           hasProfile: userProfile !== undefined,
+          nearbyPlacesCount: nearbyPlaces?.length ?? 0,
           recentGoalCount: recentGoalUpdates?.length ?? 0,
           toolCount: toolInvocations.length,
           tools: toolInvocations,
@@ -213,6 +220,7 @@ async function main(): Promise<void> {
     { InMemorySessionService, Runner: RealRunner },
     { createRootAgent },
     { createWeatherClient },
+    { createPlacesClient },
     { createUserProfileStore },
     { createGoalUpdatesStore },
     { createUpdateUserProfileTool },
@@ -224,6 +232,7 @@ async function main(): Promise<void> {
     import('@google/adk'),
     import('./agent.js'),
     import('./context/weather.js'),
+    import('./context/places.js'),
     import('./storage/userProfile.js'),
     import('./storage/goalUpdates.js'),
     import('./tools/updateUserProfile.js'),
@@ -257,6 +266,22 @@ async function main(): Promise<void> {
 
   const sessionService = new InMemorySessionService();
   const weather = createWeatherClient();
+
+  // Places uses an ADC-sourced OAuth2 token — no API key management.
+  const { GoogleAuth } = await import('google-auth-library');
+  const googleAuth = new GoogleAuth({
+    scopes: ['https://www.googleapis.com/auth/cloud-platform'],
+  });
+  const places = createPlacesClient({
+    tokenProvider: async () => {
+      const client = await googleAuth.getClient();
+      const headers = await client.getRequestHeaders();
+      const auth = headers.Authorization ?? headers.authorization ?? '';
+      const m = /^Bearer\s+(.+)$/i.exec(auth);
+      if (!m?.[1]) throw new Error('could not extract Bearer token from ADC');
+      return m[1];
+    },
+  });
   const runnerFor = ({ ctx, uid }: RunnerForParams): RunnerLike =>
     new RealRunner({
       appName: 'lifecoach',
@@ -274,6 +299,7 @@ async function main(): Promise<void> {
     verifyToken,
     requireAuth: process.env.REQUIRE_AUTH === 'true',
     weather,
+    places,
     profileStore,
     goalUpdatesStore,
   });

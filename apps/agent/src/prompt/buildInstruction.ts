@@ -1,6 +1,7 @@
 import type { GoalUpdate, UserProfile } from '@lifecoach/shared-types';
 import { type UserState, policyFor } from '@lifecoach/user-state';
 import yaml from 'js-yaml';
+import type { NearbyPlace } from '../context/places.js';
 import type { Coord, Weather } from '../context/weather.js';
 
 export interface LocationCtx {
@@ -19,6 +20,8 @@ export interface InstructionContext {
   userProfile?: UserProfile;
   /** Last N goal updates (oldest → newest). */
   recentGoalUpdates?: GoalUpdate[];
+  /** Top N interesting places near the user's location. */
+  nearbyPlaces?: NearbyPlace[];
 }
 
 const PERSONA_HEADER =
@@ -95,6 +98,13 @@ function formatProfile(ctx: InstructionContext): string {
 ${dumped.trim()}`;
 }
 
+function formatNearbyPlaces(ctx: InstructionContext): string {
+  if (!ctx.location) return '';
+  if (!ctx.nearbyPlaces || ctx.nearbyPlaces.length === 0) return '';
+  const lines = ctx.nearbyPlaces.map((p) => `  - ${p.name} (${p.type}) — ${p.address}`).join('\n');
+  return `NEARBY_PLACES (within ~2km):\n${lines}`;
+}
+
 function formatRecentGoals(ctx: InstructionContext): string {
   if (!ctx.recentGoalUpdates || ctx.recentGoalUpdates.length === 0) return '';
   const lines = ctx.recentGoalUpdates
@@ -118,6 +128,7 @@ export function buildInstruction(ctx: InstructionContext): string {
     formatTime(ctx),
     formatLocation(ctx),
     formatWeather(ctx),
+    formatNearbyPlaces(ctx),
     formatProfile(ctx),
     formatRecentGoals(ctx),
   ]
