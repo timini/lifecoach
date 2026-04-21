@@ -1,5 +1,11 @@
 export { PACKAGE_NAME } from './meta.js';
 export {
+  CHOICE_TOOL_NAMES,
+  ChoiceQuestionSchema,
+  type ChoiceQuestion,
+  type ChoiceToolName,
+} from './choiceQuestion.js';
+export {
   GOAL_STATUSES,
   GoalUpdateSchema,
   type GoalStatus,

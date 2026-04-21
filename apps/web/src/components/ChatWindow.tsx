@@ -4,14 +4,21 @@ import type { User } from 'firebase/auth';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ensureSignedIn } from '../lib/firebase';
 import { type BrowserLocation, requestBrowserLocation } from '../lib/geolocation';
-import { parseSseAssistantText } from '../lib/sse';
+import { type AssistantElement, parseSseAssistant } from '../lib/sse';
+import { ChoicePrompt } from './ChoicePrompt';
 
-type Role = 'user' | 'assistant';
-interface Message {
+interface UserMessage {
   id: string;
-  role: Role;
+  role: 'user';
   text: string;
 }
+interface AssistantMessage {
+  id: string;
+  role: 'assistant';
+  elements: AssistantElement[];
+  answered?: boolean;
+}
+type Message = UserMessage | AssistantMessage;
 
 function messageId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -46,20 +53,19 @@ export function ChatWindow() {
       .catch((err: unknown) => setAuthError(err instanceof Error ? err.message : String(err)));
   }, []);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: rescroll on any render tick
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, busy]);
+
   async function shareLocation() {
     setLocationRequested(true);
     const loc = await requestBrowserLocation();
     setLocation(loc);
   }
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: rescroll on any render tick
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, busy]);
-
-  async function send() {
-    const text = input.trim();
-    if (!text || busy || !user) return;
+  async function sendText(text: string) {
+    if (!text.trim() || busy || !user) return;
     setInput('');
     setBusy(true);
     setMessages((prev) => [...prev, { id: messageId(), role: 'user', text }]);
@@ -76,31 +82,49 @@ export function ChatWindow() {
           userId: user.uid,
           sessionId,
           message: text,
-          // Browser-only location. Omitted if permission denied — server
-          // never infers from IP.
           ...(location ? { location } : {}),
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         }),
       });
       const raw = await res.text();
-      const reply = parseSseAssistantText(raw);
-      if (reply) {
-        setMessages((prev) => [...prev, { id: messageId(), role: 'assistant', text: reply }]);
-      } else {
+      const elements = parseSseAssistant(raw);
+      if (elements.length === 0) {
         setMessages((prev) => [
           ...prev,
-          { id: messageId(), role: 'assistant', text: '(no response — check agent logs)' },
+          {
+            id: messageId(),
+            role: 'assistant',
+            elements: [{ kind: 'text', text: '(no response — check agent logs)' }],
+          },
         ]);
+      } else {
+        setMessages((prev) => [...prev, { id: messageId(), role: 'assistant', elements }]);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setMessages((prev) => [
         ...prev,
-        { id: messageId(), role: 'assistant', text: `error: ${msg}` },
+        {
+          id: messageId(),
+          role: 'assistant',
+          elements: [{ kind: 'text', text: `error: ${msg}` }],
+        },
       ]);
     } finally {
       setBusy(false);
     }
+  }
+
+  function submitChoice(messageId: string, answer: string) {
+    // Mark the assistant message containing the choice as answered so the
+    // widget disables itself after selection. Then send the selection as a
+    // normal chat message.
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === messageId && m.role === 'assistant' ? { ...m, answered: true } : m,
+      ),
+    );
+    void sendText(answer);
   }
 
   if (authError) {
@@ -116,14 +140,7 @@ export function ChatWindow() {
   }
 
   return (
-    <section
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        flex: 1,
-        gap: '1rem',
-      }}
-    >
+    <section style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: '1rem' }}>
       <div
         style={{
           fontSize: 12,
@@ -174,30 +191,25 @@ export function ChatWindow() {
             Say hi to get started. The coach is warming up.
           </div>
         )}
-        {messages.map((m) => (
-          <div
-            key={m.id}
-            style={{
-              alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
-              background: m.role === 'user' ? '#2563eb' : '#1e293b',
-              color: m.role === 'user' ? 'white' : '#e8e8e8',
-              padding: '8px 12px',
-              borderRadius: 12,
-              maxWidth: '80%',
-              whiteSpace: 'pre-wrap',
-              lineHeight: 1.4,
-            }}
-          >
-            {m.text}
-          </div>
-        ))}
+        {messages.map((m) => {
+          if (m.role === 'user') return <UserBubble key={m.id} text={m.text} />;
+          return (
+            <AssistantBubbleGroup
+              key={m.id}
+              msgId={m.id}
+              elements={m.elements}
+              answered={Boolean(m.answered)}
+              onChoice={submitChoice}
+            />
+          );
+        })}
         {busy && <div style={{ color: '#888', fontSize: 14, fontStyle: 'italic' }}>thinking…</div>}
         <div ref={endRef} />
       </div>
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          void send();
+          void sendText(input);
         }}
         style={{ display: 'flex', gap: 8 }}
       >
@@ -234,5 +246,73 @@ export function ChatWindow() {
         </button>
       </form>
     </section>
+  );
+}
+
+function UserBubble({ text }: { text: string }) {
+  return (
+    <div
+      style={{
+        alignSelf: 'flex-end',
+        background: '#2563eb',
+        color: 'white',
+        padding: '8px 12px',
+        borderRadius: 12,
+        maxWidth: '80%',
+        whiteSpace: 'pre-wrap',
+        lineHeight: 1.4,
+      }}
+    >
+      {text}
+    </div>
+  );
+}
+
+function AssistantBubbleGroup({
+  msgId,
+  elements,
+  answered,
+  onChoice,
+}: {
+  msgId: string;
+  elements: AssistantElement[];
+  answered: boolean;
+  onChoice: (msgId: string, answer: string) => void;
+}) {
+  return (
+    <>
+      {elements.map((el, i) => {
+        const elKey = `${msgId}-${i}-${el.kind}`;
+        if (el.kind === 'text') {
+          return (
+            <div
+              key={elKey}
+              style={{
+                alignSelf: 'flex-start',
+                background: '#1e293b',
+                color: '#e8e8e8',
+                padding: '8px 12px',
+                borderRadius: 12,
+                maxWidth: '80%',
+                whiteSpace: 'pre-wrap',
+                lineHeight: 1.4,
+              }}
+            >
+              {el.text}
+            </div>
+          );
+        }
+        return (
+          <ChoicePrompt
+            key={elKey}
+            question={el.question}
+            options={el.options}
+            single={el.single}
+            disabled={answered}
+            onSubmit={(answer) => onChoice(msgId, answer)}
+          />
+        );
+      })}
+    </>
   );
 }
