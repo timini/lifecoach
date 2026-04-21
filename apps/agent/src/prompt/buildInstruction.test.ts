@@ -70,10 +70,50 @@ describe('buildInstruction', () => {
   });
 
   it('static-persona snapshot — keeps the BAD/GOOD examples stable', () => {
-    // The examples that curb Gemini's verbosity are the most important
-    // stable part of the prompt. Snapshot ensures any change is deliberate.
     const s = buildInstruction(BASE);
     expect(s).toMatch(/BAD/);
     expect(s).toMatch(/GOOD/);
+  });
+
+  it('omits the USER_PROFILE block when no profile is provided', () => {
+    const s = buildInstruction(BASE);
+    expect(s).not.toMatch(/USER_PROFILE/);
+  });
+
+  it('injects the full user.yaml with nulls preserved when profile is provided', () => {
+    const s = buildInstruction({
+      ...BASE,
+      userProfile: {
+        name: 'Tim',
+        age: null,
+        location: { address: null },
+        family: {
+          relationship_status: null,
+          partner_name: null,
+          children: 'Two kids, ages 8 and 4. Named Wren and Silvie.',
+          living_situation: null,
+        },
+        occupation: { title: null, industry: null, work_style: null, satisfaction: null },
+        health: { exercise_habits: null, sleep_quality: null },
+        personality: { strengths: null, challenges: null, values: null },
+        goals: {
+          short_term: ['Running', 'Garden Renovation'],
+          medium_term: [],
+          long_term: [],
+          currently_working_on: null,
+        },
+        preferences: {
+          communication_style: null,
+          coaching_focus: null,
+          session_preference: null,
+        },
+      },
+    });
+    expect(s).toMatch(/USER_PROFILE/);
+    expect(s).toMatch(/name: Tim/);
+    expect(s).toMatch(/Wren and Silvie/);
+    expect(s).toMatch(/partner_name: null/);
+    // The "what you don't know" guidance must be present
+    expect(s).toMatch(/null means you don't know yet/);
   });
 });

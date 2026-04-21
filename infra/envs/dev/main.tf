@@ -28,6 +28,21 @@ module "firebase_auth" {
   depends_on = [module.apis]
 }
 
+# --- GCS bucket for per-user data (user.yaml, goal_updates.json) ---------
+
+module "user_bucket" {
+  source      = "../../modules/gcs-user-bucket"
+  project_id  = var.project_id
+  region      = var.region
+  environment = var.environment
+
+  writer_members = [
+    "serviceAccount:${module.agent.service_account_email}",
+  ]
+
+  depends_on = [module.agent]
+}
+
 # --- Cloud Run: agent ------------------------------------------------------
 # Public for Phase 1. IAM-scoped web->agent invocation is a Phase 11 hardening.
 
@@ -43,9 +58,10 @@ module "agent" {
     GOOGLE_CLOUD_PROJECT      = var.project_id
     GOOGLE_CLOUD_LOCATION     = var.region
     NODE_ENV                  = "production"
-    # Firebase Admin reads GOOGLE_CLOUD_PROJECT for the default project ID
-    # when initializeApp() is called without arguments (ADC-based).
-    FIREBASE_PROJECT_ID = var.project_id
+    FIREBASE_PROJECT_ID       = var.project_id
+    # Name follows the gcs-user-bucket module's convention so we don't have
+    # to pass the output (avoids a cycle between agent and user_bucket).
+    USER_BUCKET = "lifecoach-users-${var.environment}-${var.project_id}"
   }
 
   project_roles = [
@@ -104,6 +120,10 @@ output "agent_url" {
 
 output "web_url" {
   value = module.web.url
+}
+
+output "user_bucket" {
+  value = module.user_bucket.bucket_name
 }
 
 output "firebase_api_key" {
