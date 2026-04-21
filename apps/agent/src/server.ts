@@ -169,7 +169,8 @@ export function createApp(deps: CreateAppDeps): Express {
         for (const resp of getFunctionResponses(event)) {
           const pending = resp.id ? pendingById.get(resp.id) : undefined;
           const respObj = resp.response as { status?: string } | undefined;
-          const ok = respObj?.status === undefined ? null : respObj.status === 'ok';
+          // Any non-"error" status counts as ok (tools use 'ok', 'shown', etc.).
+          const ok = respObj?.status === undefined ? null : respObj.status !== 'error';
           toolInvocations.push({
             name: pending?.name ?? resp.name ?? '?',
             args: pending?.args ?? null,
@@ -216,6 +217,7 @@ async function main(): Promise<void> {
     { createGoalUpdatesStore },
     { createUpdateUserProfileTool },
     { createLogGoalUpdateTool },
+    { createAskSingleChoiceTool, createAskMultipleChoiceTool },
     { Storage },
     admin,
   ] = await Promise.all([
@@ -226,6 +228,7 @@ async function main(): Promise<void> {
     import('./storage/goalUpdates.js'),
     import('./tools/updateUserProfile.js'),
     import('./tools/logGoalUpdate.js'),
+    import('./tools/askChoice.js'),
     import('@google-cloud/storage'),
     import('firebase-admin/app'),
   ]);
@@ -260,6 +263,8 @@ async function main(): Promise<void> {
       agent: createRootAgent(ctx, [
         createUpdateUserProfileTool({ store: profileStore, uid }),
         createLogGoalUpdateTool({ store: goalUpdatesStore, uid }),
+        createAskSingleChoiceTool(),
+        createAskMultipleChoiceTool(),
       ]),
       sessionService,
     }) as unknown as RunnerLike;
