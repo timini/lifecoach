@@ -45,6 +45,17 @@ Do not branch on `user.isAnonymous` or `user.providerData` ad-hoc in components 
 
 `packages/shared-types` is the source of truth for all data shapes crossing the web↔agent boundary. Both sides import the same Zod schemas. Do not re-declare a type locally that already lives there.
 
+### 5. All infra is Terraform — no manual GCP changes
+
+Every infrastructure change (new API enabled, new IAM binding, new Cloud Run service, new bucket, new Firebase config) goes in `infra/` as Terraform. The only exception is `infra/bootstrap/bootstrap.sh`, which runs once per environment to create the project and state bucket Terraform itself needs.
+
+Forbidden:
+- `gcloud services enable ...` to turn something on
+- Clicking in the GCP / Firebase console to change configuration
+- `terraform import` to retrofit manually-created resources (do it right: recreate via Terraform)
+
+If you need something that isn't in `infra/` yet, add it as a module. See `infra/README.md` for the full flow.
+
 ## Workflow: Red-Green-Refactor TDD
 
 Every change follows this loop:
