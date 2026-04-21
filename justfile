@@ -73,14 +73,29 @@ e2e:
     pnpm --filter @lifecoach/web exec playwright test
 
 # --- Infra -----------------------------------------------------------------
-# (Wired in a follow-up commit alongside infra/envs/ and infra/modules/.)
-#
-# tf-init env="dev":
-#     cd infra/envs/{{env}} && terraform init
-# tf-plan env="dev":
-#     cd infra/envs/{{env}} && terraform plan
-# tf-apply env="dev":
-#     cd infra/envs/{{env}} && terraform apply
+
+# One-time-per-env: create the GCP project, billing link, state bucket, and
+# write backend.hcl + terraform.tfvars. Reads LIFECOACH_* env vars (see
+# infra/bootstrap/README.md).
+bootstrap env="dev":
+    LIFECOACH_ENV={{env}} infra/bootstrap/bootstrap.sh
+
+tf-init env="dev":
+    cd infra/envs/{{env}} && terraform init -backend-config=backend.hcl -reconfigure
+
+tf-plan env="dev":
+    cd infra/envs/{{env}} && terraform plan -var-file=terraform.tfvars
+
+tf-apply env="dev":
+    cd infra/envs/{{env}} && terraform apply -var-file=terraform.tfvars
+
+tf-destroy env="dev":
+    cd infra/envs/{{env}} && terraform destroy -var-file=terraform.tfvars
+
+# DANGEROUS: tears down the whole environment including the GCP project.
+# Dev/testing only. Requires ASSUME_YES=1 or interactive confirmation.
+teardown env="dev":
+    LIFECOACH_ENV={{env}} infra/bootstrap/teardown.sh
 
 # --- Deploy ----------------------------------------------------------------
 
