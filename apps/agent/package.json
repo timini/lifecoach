@@ -14,6 +14,7 @@
     "clean": "rm -rf dist .turbo *.tsbuildinfo coverage"
   },
   "dependencies": {
+    "@google-cloud/storage": "7.17.1",
     "@google/adk": "0.6.1",
     "@google/genai": "1.14.0",
     "@lifecoach/config": "workspace:*",
@@ -21,11 +22,13 @@
     "@lifecoach/user-state": "workspace:*",
     "express": "4.21.1",
     "firebase-admin": "13.0.1",
+    "js-yaml": "4.1.0",
     "zod": "3.25.76"
   },
   "devDependencies": {
     "@lifecoach/testing": "workspace:*",
     "@types/express": "5.0.0",
+    "@types/js-yaml": "4.0.9",
     "@types/node": "22.9.0",
     "@types/supertest": "6.0.2",
     "@vitest/coverage-v8": "2.1.5",

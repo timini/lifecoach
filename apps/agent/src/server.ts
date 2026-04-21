@@ -10,6 +10,7 @@ import {
 } from './auth.js';
 import type { Coord, WeatherClient } from './context/weather.js';
 import type { InstructionContext, LocationCtx } from './prompt/buildInstruction.js';
+import type { UserProfileStore } from './storage/userProfile.js';
 
 /**
  * Minimal surface of the ADK Runner that we depend on. Lets tests pass a fake
@@ -36,18 +37,23 @@ export interface RunnerLike {
   }): AsyncGenerator<Event, void, undefined>;
 }
 
+export interface RunnerForParams {
+  ctx: InstructionContext;
+  uid: string;
+}
+
 export interface CreateAppDeps {
   /**
-   * Factory invoked per request with the turn's InstructionContext. The
-   * server builds the context, the factory builds a Runner (typically with
-   * a fresh LlmAgent wired to a shared session service).
+   * Factory invoked per request with the turn's InstructionContext + uid.
+   * The server builds the context, the factory builds a Runner with a
+   * fresh LlmAgent wired to the shared session service and a uid-scoped
+   * update_user_profile tool.
    */
-  runnerFor: (ctx: InstructionContext) => RunnerLike;
+  runnerFor: (params: RunnerForParams) => RunnerLike;
   verifyToken?: TokenVerifier;
   requireAuth?: boolean;
-  /** Weather provider — optional so tests can skip it. */
   weather?: WeatherClient;
-  /** Overridable clock for deterministic tests. */
+  profileStore?: UserProfileStore;
   now?: () => Date;
 }
 
@@ -98,12 +104,20 @@ export function createApp(deps: CreateAppDeps): Express {
     const weather = coord && deps.weather ? await deps.weather.get(coord) : null;
     const locationCtx: LocationCtx | null = coord ? { coord } : null;
 
+    // Read the user's profile so the agent sees the full user.yaml (including
+    // nulls) as part of its system prompt every turn. Writes happen via the
+    // update_user_profile tool that runnerFor will register with the uid.
+    const userProfile = deps.profileStore
+      ? await deps.profileStore.read(effectiveUserId).catch(() => undefined)
+      : undefined;
+
     const instructionCtx: InstructionContext = {
       now: now(),
       timezone: timezone ?? null,
       userState: machine.current(),
       location: locationCtx,
       weather,
+      userProfile,
     };
 
     // eslint-disable-next-line no-console
@@ -116,6 +130,7 @@ export function createApp(deps: CreateAppDeps): Express {
         authenticated: claims !== null,
         hasLocation: coord !== null,
         hasWeather: weather !== null,
+        hasProfile: userProfile !== undefined,
       }),
     );
 
@@ -124,7 +139,7 @@ export function createApp(deps: CreateAppDeps): Express {
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders?.();
 
-    const runner = deps.runnerFor(instructionCtx);
+    const runner = deps.runnerFor({ ctx: instructionCtx, uid: effectiveUserId });
 
     try {
       const existing = await runner.sessionService.getSession({
@@ -165,11 +180,17 @@ async function main(): Promise<void> {
     { InMemorySessionService, Runner: RealRunner },
     { createRootAgent },
     { createWeatherClient },
+    { createUserProfileStore },
+    { createUpdateUserProfileTool },
+    { Storage },
     admin,
   ] = await Promise.all([
     import('@google/adk'),
     import('./agent.js'),
     import('./context/weather.js'),
+    import('./storage/userProfile.js'),
+    import('./tools/updateUserProfile.js'),
+    import('@google-cloud/storage'),
     import('firebase-admin/app'),
   ]);
 
@@ -188,14 +209,17 @@ async function main(): Promise<void> {
     };
   };
 
-  // Session storage is shared across turns; the LlmAgent is rebuilt each
-  // turn with the turn's dynamic instruction.
+  const bucketName = process.env.USER_BUCKET;
+  if (!bucketName) throw new Error('USER_BUCKET env var is required');
+  const storage = new Storage();
+  const profileStore = createUserProfileStore({ bucket: storage.bucket(bucketName) });
+
   const sessionService = new InMemorySessionService();
   const weather = createWeatherClient();
-  const runnerFor = (ctx: InstructionContext): RunnerLike =>
+  const runnerFor = ({ ctx, uid }: RunnerForParams): RunnerLike =>
     new RealRunner({
       appName: 'lifecoach',
-      agent: createRootAgent(ctx),
+      agent: createRootAgent(ctx, [createUpdateUserProfileTool({ store: profileStore, uid })]),
       sessionService,
     }) as unknown as RunnerLike;
 
@@ -204,6 +228,7 @@ async function main(): Promise<void> {
     verifyToken,
     requireAuth: process.env.REQUIRE_AUTH === 'true',
     weather,
+    profileStore,
   });
 
   const port = Number(process.env.PORT ?? 8080);

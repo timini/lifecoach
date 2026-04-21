@@ -30,7 +30,7 @@ function fakeRunner(events: Partial<Event>[]): RunnerLike {
 }
 
 function appWith(events: Partial<Event>[] = []) {
-  return createApp({ runnerFor: () => fakeRunner(events) });
+  return createApp({ runnerFor: (_params: unknown) => fakeRunner(events) });
 }
 
 describe('GET /health — NB: /healthz is reserved by Google Frontend on Cloud Run, use /health', () => {
@@ -64,7 +64,7 @@ describe('POST /chat', () => {
 
   it('emits event: error when the runner throws', async () => {
     const app = createApp({
-      runnerFor: () => ({
+      runnerFor: (_params: unknown) => ({
         appName: 'test',
         sessionService: {
           async createSession() {
@@ -97,7 +97,7 @@ describe('POST /chat', () => {
 
   it('does not fetch weather when location is absent', async () => {
     const weather = { get: vi.fn() };
-    const app = createApp({ runnerFor: () => fakeRunner([]), weather });
+    const app = createApp({ runnerFor: (_params: unknown) => fakeRunner([]), weather });
     await request(app).post('/chat').send({ userId: 'u', sessionId: 's', message: 'hi' });
     expect(weather.get).not.toHaveBeenCalled();
   });
@@ -109,7 +109,7 @@ describe('POST /chat', () => {
         forecast: [],
       }),
     };
-    const app = createApp({ runnerFor: () => fakeRunner([]), weather });
+    const app = createApp({ runnerFor: (_params: unknown) => fakeRunner([]), weather });
     await request(app)
       .post('/chat')
       .send({

@@ -1,4 +1,6 @@
+import type { UserProfile } from '@lifecoach/shared-types';
 import { type UserState, policyFor } from '@lifecoach/user-state';
+import yaml from 'js-yaml';
 import type { Coord, Weather } from '../context/weather.js';
 
 export interface LocationCtx {
@@ -13,6 +15,8 @@ export interface InstructionContext {
   userState: UserState;
   location: LocationCtx | null;
   weather: Weather | null;
+  /** Full user.yaml — nulls preserved so the agent sees what it doesn't know. */
+  userProfile?: UserProfile;
 }
 
 const PERSONA_HEADER =
@@ -78,6 +82,13 @@ forecast:
 ${fcLines}`;
 }
 
+function formatProfile(ctx: InstructionContext): string {
+  if (!ctx.userProfile) return '';
+  const dumped = yaml.dump(ctx.userProfile, { lineWidth: 120, noRefs: true });
+  return `USER_PROFILE (full user.yaml — null means you don't know yet; ask naturally over time):
+${dumped.trim()}`;
+}
+
 export function buildInstruction(ctx: InstructionContext): string {
   const directive = policyFor(ctx.userState).directive;
   return [
@@ -89,6 +100,7 @@ export function buildInstruction(ctx: InstructionContext): string {
     formatTime(ctx),
     formatLocation(ctx),
     formatWeather(ctx),
+    formatProfile(ctx),
   ]
     .filter(Boolean)
     .join('\n\n');
