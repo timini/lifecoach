@@ -1,0 +1,25 @@
+{
+  "name": "@lifecoach/agent",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b",
+    "dev": "echo 'stub: ADK agent server wired in Phase 1'",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo *.tsbuildinfo coverage"
+  },
+  "dependencies": {
+    "@lifecoach/shared-types": "workspace:*",
+    "@lifecoach/user-state": "workspace:*",
+    "@lifecoach/config": "workspace:*"
+  },
+  "devDependencies": {
+    "@lifecoach/testing": "workspace:*",
+    "@vitest/coverage-v8": "2.1.5",
+    "typescript": "5.7.2",
+    "vitest": "2.1.5"
+  }
+}
