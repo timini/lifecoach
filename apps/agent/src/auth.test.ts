@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { type TokenVerifier, bearerTokenFrom, verifyRequest } from './auth.js';
+import {
+  type TokenVerifier,
+  bearerTokenFrom,
+  claimsToFirebaseUserLike,
+  verifyRequest,
+} from './auth.js';
 
 describe('bearerTokenFrom', () => {
   it('extracts the token from a Bearer header', () => {
@@ -37,5 +42,64 @@ describe('verifyRequest', () => {
     const verifier: TokenVerifier = vi.fn().mockRejectedValue(new Error('expired'));
     const claims = await verifyRequest({ authorization: 'Bearer tok' }, verifier);
     expect(claims).toBeNull();
+  });
+});
+
+describe('claimsToFirebaseUserLike', () => {
+  it('maps an anonymous provider to isAnonymous=true', () => {
+    const fbu = claimsToFirebaseUserLike(
+      { uid: 'u', firebase: { sign_in_provider: 'anonymous' } },
+      false,
+    );
+    expect(fbu).toEqual({
+      isAnonymous: true,
+      emailVerified: false,
+      providerData: [],
+      workspaceScopesGranted: false,
+    });
+  });
+
+  it('maps a password provider to providerData=[{password}]', () => {
+    const fbu = claimsToFirebaseUserLike(
+      { uid: 'u', email_verified: true, firebase: { sign_in_provider: 'password' } },
+      false,
+    );
+    expect(fbu.providerData).toContainEqual({ providerId: 'password' });
+    expect(fbu.emailVerified).toBe(true);
+    expect(fbu.isAnonymous).toBe(false);
+  });
+
+  it('maps a google.com provider (and workspaceScopesGranted=true)', () => {
+    const fbu = claimsToFirebaseUserLike(
+      {
+        uid: 'u',
+        email_verified: true,
+        firebase: { sign_in_provider: 'google.com' },
+      },
+      true,
+    );
+    expect(fbu.providerData).toContainEqual({ providerId: 'google.com' });
+    expect(fbu.workspaceScopesGranted).toBe(true);
+  });
+
+  it('reads identities as secondary signal for password/google', () => {
+    const fbu = claimsToFirebaseUserLike(
+      {
+        uid: 'u',
+        firebase: {
+          sign_in_provider: 'custom',
+          identities: { email: ['u@example.com'], 'google.com': ['123'] },
+        },
+      },
+      false,
+    );
+    expect(fbu.providerData).toContainEqual({ providerId: 'password' });
+    expect(fbu.providerData).toContainEqual({ providerId: 'google.com' });
+  });
+
+  it('handles missing firebase claim gracefully', () => {
+    const fbu = claimsToFirebaseUserLike({ uid: 'u' }, false);
+    expect(fbu.isAnonymous).toBe(false);
+    expect(fbu.providerData).toEqual([]);
   });
 });
