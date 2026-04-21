@@ -1,6 +1,6 @@
 import type { Event } from '@google/adk';
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { type RunnerLike, createApp } from './server.js';
 
 function fakeRunner(events: Partial<Event>[]): RunnerLike {
@@ -8,7 +8,14 @@ function fakeRunner(events: Partial<Event>[]): RunnerLike {
     appName: 'test',
     sessionService: {
       async createSession() {
-        return { id: 's', userId: 'u', appName: 'test', events: [], state: {}, lastUpdateTime: 0 };
+        return {
+          id: 's',
+          userId: 'u',
+          appName: 'test',
+          events: [],
+          state: {},
+          lastUpdateTime: 0,
+        };
       },
       async getSession() {
         return null;
@@ -22,18 +29,13 @@ function fakeRunner(events: Partial<Event>[]): RunnerLike {
   };
 }
 
-function lastAssistantText(events: Partial<Event>[]): string {
-  for (const e of [...events].reverse()) {
-    const text = e.content?.parts?.find((p) => p.text)?.text;
-    if (text) return text;
-  }
-  return '';
+function appWith(events: Partial<Event>[] = []) {
+  return createApp({ runnerFor: () => fakeRunner(events) });
 }
 
 describe('GET /health — NB: /healthz is reserved by Google Frontend on Cloud Run, use /health', () => {
   it('returns 200 with ok', async () => {
-    const app = createApp({ runner: fakeRunner([]) });
-    const res = await request(app).get('/health');
+    const res = await request(appWith()).get('/health');
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ status: 'ok' });
   });
@@ -44,8 +46,7 @@ describe('POST /chat', () => {
     const events: Partial<Event>[] = [
       { author: 'lifecoach', content: { role: 'model', parts: [{ text: 'Hey there!' }] } },
     ];
-    const app = createApp({ runner: fakeRunner(events) });
-    const res = await request(app)
+    const res = await request(appWith(events))
       .post('/chat')
       .send({ userId: 'u1', sessionId: 's1', message: 'hello' });
 
@@ -54,44 +55,69 @@ describe('POST /chat', () => {
     expect(res.text).toContain('data: ');
     expect(res.text).toContain('Hey there!');
     expect(res.text).toContain('event: done');
-    expect(lastAssistantText(events)).toBe('Hey there!');
   });
 
   it('returns 400 if required fields are missing', async () => {
-    const app = createApp({ runner: fakeRunner([]) });
-    const res = await request(app).post('/chat').send({ message: 'hi' });
+    const res = await request(appWith()).post('/chat').send({ message: 'hi' });
     expect(res.status).toBe(400);
   });
 
   it('emits event: error when the runner throws', async () => {
-    const runner: RunnerLike = {
-      appName: 'test',
-      sessionService: {
-        async createSession() {
-          return {
-            id: 's',
-            userId: 'u',
-            appName: 'test',
-            events: [],
-            state: {},
-            lastUpdateTime: 0,
-          };
+    const app = createApp({
+      runnerFor: () => ({
+        appName: 'test',
+        sessionService: {
+          async createSession() {
+            return {
+              id: 's',
+              userId: 'u',
+              appName: 'test',
+              events: [],
+              state: {},
+              lastUpdateTime: 0,
+            };
+          },
+          async getSession() {
+            return null;
+          },
         },
-        async getSession() {
-          return null;
+        async *runAsync() {
+          // biome-ignore lint/correctness/useYield: intentional — test the throw path
+          throw new Error('boom');
         },
-      },
-      async *runAsync() {
-        // biome-ignore lint/correctness/useYield: intentional — test the throw path
-        throw new Error('boom');
-      },
-    };
-    const app = createApp({ runner });
+      }),
+    });
     const res = await request(app)
       .post('/chat')
       .send({ userId: 'u1', sessionId: 's1', message: 'hi' });
     expect(res.status).toBe(200);
     expect(res.text).toContain('event: error');
     expect(res.text).toContain('boom');
+  });
+
+  it('does not fetch weather when location is absent', async () => {
+    const weather = { get: vi.fn() };
+    const app = createApp({ runnerFor: () => fakeRunner([]), weather });
+    await request(app).post('/chat').send({ userId: 'u', sessionId: 's', message: 'hi' });
+    expect(weather.get).not.toHaveBeenCalled();
+  });
+
+  it('fetches weather when location is present', async () => {
+    const weather = {
+      get: vi.fn().mockResolvedValue({
+        current: { temperatureC: 18, windKph: 10, code: 2, time: 'now' },
+        forecast: [],
+      }),
+    };
+    const app = createApp({ runnerFor: () => fakeRunner([]), weather });
+    await request(app)
+      .post('/chat')
+      .send({
+        userId: 'u',
+        sessionId: 's',
+        message: 'hi',
+        location: { lat: -37.81, lng: 144.96, accuracy: 20 },
+      });
+    expect(weather.get).toHaveBeenCalledWith({ lat: -37.81, lng: 144.96 });
   });
 });

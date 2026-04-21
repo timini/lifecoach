@@ -1,20 +1,19 @@
 import { LlmAgent } from '@google/adk';
+import { type InstructionContext, buildInstruction } from './prompt/buildInstruction.js';
 
 export const AGENT_NAME = 'lifecoach';
 export const AGENT_MODEL = 'gemini-2.5-pro';
 
-const PHASE_1_INSTRUCTION = `
-You are Lifecoach — a warm, supportive life coach. Chat like a friend texting,
-not a robot writing an email. Keep replies short (1-3 sentences unless depth is
-asked for). Ask one open question at a time. Never announce what you're doing
-internally (no "I'm thinking", no "checking memory"). Speak naturally.
-`.trim();
-
-export function createRootAgent(): LlmAgent {
+/**
+ * Create a root agent with instructions baked in for a specific turn's
+ * context. We construct a fresh LlmAgent per turn because the instruction
+ * block is dynamic (time, location, weather, user state all change).
+ */
+export function createRootAgent(ctx: InstructionContext): LlmAgent {
   return new LlmAgent({
     name: AGENT_NAME,
     model: AGENT_MODEL,
     description: 'A warm, supportive AI life coach.',
-    instruction: PHASE_1_INSTRUCTION,
+    instruction: buildInstruction(ctx),
   });
 }
