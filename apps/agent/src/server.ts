@@ -1,4 +1,4 @@
-import type { Event, Session } from '@google/adk';
+import { type Event, type Session, getFunctionCalls, getFunctionResponses } from '@google/adk';
 import type { Content } from '@google/genai';
 import { UserStateMachine } from '@lifecoach/user-state';
 import express, { type Express, type Request, type Response } from 'express';
@@ -10,6 +10,7 @@ import {
 } from './auth.js';
 import type { Coord, WeatherClient } from './context/weather.js';
 import type { InstructionContext, LocationCtx } from './prompt/buildInstruction.js';
+import type { GoalUpdatesStore } from './storage/goalUpdates.js';
 import type { UserProfileStore } from './storage/userProfile.js';
 
 /**
@@ -54,6 +55,7 @@ export interface CreateAppDeps {
   requireAuth?: boolean;
   weather?: WeatherClient;
   profileStore?: UserProfileStore;
+  goalUpdatesStore?: GoalUpdatesStore;
   now?: () => Date;
 }
 
@@ -111,6 +113,10 @@ export function createApp(deps: CreateAppDeps): Express {
       ? await deps.profileStore.read(effectiveUserId).catch(() => undefined)
       : undefined;
 
+    const recentGoalUpdates = deps.goalUpdatesStore
+      ? await deps.goalUpdatesStore.recent(effectiveUserId, 20).catch(() => undefined)
+      : undefined;
+
     const instructionCtx: InstructionContext = {
       now: now(),
       timezone: timezone ?? null,
@@ -118,21 +124,8 @@ export function createApp(deps: CreateAppDeps): Express {
       location: locationCtx,
       weather,
       userProfile,
+      recentGoalUpdates,
     };
-
-    // eslint-disable-next-line no-console
-    console.log(
-      JSON.stringify({
-        msg: 'chat.turn',
-        uid: effectiveUserId,
-        sessionId,
-        state: machine.current(),
-        authenticated: claims !== null,
-        hasLocation: coord !== null,
-        hasWeather: weather !== null,
-        hasProfile: userProfile !== undefined,
-      }),
-    );
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -140,6 +133,15 @@ export function createApp(deps: CreateAppDeps): Express {
     res.flushHeaders?.();
 
     const runner = deps.runnerFor({ ctx: instructionCtx, uid: effectiveUserId });
+
+    // Track tool invocations for the structured turn log. We care about name
+    // + args (for debugging) and whether the response had an error status.
+    const toolInvocations: Array<{
+      name: string;
+      args: unknown;
+      ok: boolean | null;
+    }> = [];
+    const pendingById = new Map<string, { name: string; args: unknown }>();
 
     try {
       const existing = await runner.sessionService.getSession({
@@ -161,6 +163,20 @@ export function createApp(deps: CreateAppDeps): Express {
         sessionId,
         newMessage,
       })) {
+        for (const call of getFunctionCalls(event)) {
+          if (call.id) pendingById.set(call.id, { name: call.name ?? '?', args: call.args });
+        }
+        for (const resp of getFunctionResponses(event)) {
+          const pending = resp.id ? pendingById.get(resp.id) : undefined;
+          const respObj = resp.response as { status?: string } | undefined;
+          const ok = respObj?.status === undefined ? null : respObj.status === 'ok';
+          toolInvocations.push({
+            name: pending?.name ?? resp.name ?? '?',
+            args: pending?.args ?? null,
+            ok,
+          });
+          if (resp.id) pendingById.delete(resp.id);
+        }
         res.write(`data: ${JSON.stringify(event)}\n\n`);
       }
       res.write('event: done\ndata: {}\n\n');
@@ -168,6 +184,22 @@ export function createApp(deps: CreateAppDeps): Express {
       const msg = err instanceof Error ? err.message : String(err);
       res.write(`event: error\ndata: ${JSON.stringify({ message: msg })}\n\n`);
     } finally {
+      // eslint-disable-next-line no-console
+      console.log(
+        JSON.stringify({
+          msg: 'chat.turn',
+          uid: effectiveUserId,
+          sessionId,
+          state: machine.current(),
+          authenticated: claims !== null,
+          hasLocation: coord !== null,
+          hasWeather: weather !== null,
+          hasProfile: userProfile !== undefined,
+          recentGoalCount: recentGoalUpdates?.length ?? 0,
+          toolCount: toolInvocations.length,
+          tools: toolInvocations,
+        }),
+      );
       res.end();
     }
   });
@@ -181,7 +213,9 @@ async function main(): Promise<void> {
     { createRootAgent },
     { createWeatherClient },
     { createUserProfileStore },
+    { createGoalUpdatesStore },
     { createUpdateUserProfileTool },
+    { createLogGoalUpdateTool },
     { Storage },
     admin,
   ] = await Promise.all([
@@ -189,7 +223,9 @@ async function main(): Promise<void> {
     import('./agent.js'),
     import('./context/weather.js'),
     import('./storage/userProfile.js'),
+    import('./storage/goalUpdates.js'),
     import('./tools/updateUserProfile.js'),
+    import('./tools/logGoalUpdate.js'),
     import('@google-cloud/storage'),
     import('firebase-admin/app'),
   ]);
@@ -212,14 +248,19 @@ async function main(): Promise<void> {
   const bucketName = process.env.USER_BUCKET;
   if (!bucketName) throw new Error('USER_BUCKET env var is required');
   const storage = new Storage();
-  const profileStore = createUserProfileStore({ bucket: storage.bucket(bucketName) });
+  const bucket = storage.bucket(bucketName);
+  const profileStore = createUserProfileStore({ bucket });
+  const goalUpdatesStore = createGoalUpdatesStore({ bucket });
 
   const sessionService = new InMemorySessionService();
   const weather = createWeatherClient();
   const runnerFor = ({ ctx, uid }: RunnerForParams): RunnerLike =>
     new RealRunner({
       appName: 'lifecoach',
-      agent: createRootAgent(ctx, [createUpdateUserProfileTool({ store: profileStore, uid })]),
+      agent: createRootAgent(ctx, [
+        createUpdateUserProfileTool({ store: profileStore, uid }),
+        createLogGoalUpdateTool({ store: goalUpdatesStore, uid }),
+      ]),
       sessionService,
     }) as unknown as RunnerLike;
 
@@ -229,6 +270,7 @@ async function main(): Promise<void> {
     requireAuth: process.env.REQUIRE_AUTH === 'true',
     weather,
     profileStore,
+    goalUpdatesStore,
   });
 
   const port = Number(process.env.PORT ?? 8080);

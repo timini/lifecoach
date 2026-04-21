@@ -80,6 +80,29 @@ describe('buildInstruction', () => {
     expect(s).not.toMatch(/USER_PROFILE/);
   });
 
+  it('injects recent goal updates when provided', () => {
+    const s = buildInstruction({
+      ...BASE,
+      recentGoalUpdates: [
+        { timestamp: '2026-04-20T09:00:00Z', goal: 'Running', status: 'started' },
+        {
+          timestamp: '2026-04-21T09:00:00Z',
+          goal: 'Running',
+          status: 'progress',
+          note: 'Did 5k this morning',
+        },
+      ],
+    });
+    expect(s).toMatch(/RECENT_GOAL_UPDATES/);
+    expect(s).toMatch(/Running: progress/);
+    expect(s).toMatch(/Did 5k this morning/);
+  });
+
+  it('omits RECENT_GOAL_UPDATES when the list is empty', () => {
+    const s = buildInstruction({ ...BASE, recentGoalUpdates: [] });
+    expect(s).not.toMatch(/RECENT_GOAL_UPDATES/);
+  });
+
   it('injects the full user.yaml with nulls preserved when profile is provided', () => {
     const s = buildInstruction({
       ...BASE,
