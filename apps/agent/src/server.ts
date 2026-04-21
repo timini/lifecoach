@@ -8,6 +8,7 @@ import {
   claimsToFirebaseUserLike,
   verifyRequest,
 } from './auth.js';
+import type { MemoryClient } from './context/memory.js';
 import type { PlacesClient } from './context/places.js';
 import type { Coord, WeatherClient } from './context/weather.js';
 import type { InstructionContext, LocationCtx } from './prompt/buildInstruction.js';
@@ -56,6 +57,7 @@ export interface CreateAppDeps {
   requireAuth?: boolean;
   weather?: WeatherClient;
   places?: PlacesClient;
+  memory?: MemoryClient;
   profileStore?: UserProfileStore;
   goalUpdatesStore?: GoalUpdatesStore;
   now?: () => Date;
@@ -122,6 +124,12 @@ export function createApp(deps: CreateAppDeps): Express {
       ? await deps.goalUpdatesStore.recent(effectiveUserId, 20).catch(() => undefined)
       : undefined;
 
+    // Silent memory retrieval — searched with the user's current message as
+    // the query. Any error yields an empty list; never fails a turn.
+    const memories = deps.memory
+      ? await deps.memory.search(effectiveUserId, message, 5).catch(() => [])
+      : [];
+
     const instructionCtx: InstructionContext = {
       now: now(),
       timezone: timezone ?? null,
@@ -131,6 +139,7 @@ export function createApp(deps: CreateAppDeps): Express {
       userProfile,
       recentGoalUpdates,
       nearbyPlaces,
+      memories,
     };
 
     res.setHeader('Content-Type', 'text/event-stream');
@@ -203,6 +212,7 @@ export function createApp(deps: CreateAppDeps): Express {
           hasWeather: weather !== null,
           hasProfile: userProfile !== undefined,
           nearbyPlacesCount: nearbyPlaces?.length ?? 0,
+          memoriesCount: memories?.length ?? 0,
           recentGoalCount: recentGoalUpdates?.length ?? 0,
           toolCount: toolInvocations.length,
           tools: toolInvocations,
@@ -221,11 +231,13 @@ async function main(): Promise<void> {
     { createRootAgent },
     { createWeatherClient },
     { createPlacesClient },
+    { createMem0MemoryClient, noopMemoryClient },
     { createUserProfileStore },
     { createGoalUpdatesStore },
     { createUpdateUserProfileTool },
     { createLogGoalUpdateTool },
     { createAskSingleChoiceTool, createAskMultipleChoiceTool },
+    { createMemorySaveTool },
     { Storage },
     admin,
   ] = await Promise.all([
@@ -233,11 +245,13 @@ async function main(): Promise<void> {
     import('./agent.js'),
     import('./context/weather.js'),
     import('./context/places.js'),
+    import('./context/memory.js'),
     import('./storage/userProfile.js'),
     import('./storage/goalUpdates.js'),
     import('./tools/updateUserProfile.js'),
     import('./tools/logGoalUpdate.js'),
     import('./tools/askChoice.js'),
+    import('./tools/memorySave.js'),
     import('@google-cloud/storage'),
     import('firebase-admin/app'),
   ]);
@@ -282,6 +296,23 @@ async function main(): Promise<void> {
       return m[1];
     },
   });
+
+  // Long-term memory via mem0. If MEM0_API_KEY isn't configured, the client
+  // is a silent no-op — the rest of the app keeps working and no memory
+  // features activate.
+  const memoryEnabled = Boolean(process.env.MEM0_API_KEY);
+  const memory = memoryEnabled
+    ? createMem0MemoryClient({ apiKey: process.env.MEM0_API_KEY as string })
+    : noopMemoryClient();
+  if (!memoryEnabled) {
+    // eslint-disable-next-line no-console
+    console.log(
+      JSON.stringify({
+        msg: 'memory.disabled',
+        reason: 'MEM0_API_KEY not set — long-term memory tools are inert this run',
+      }),
+    );
+  }
   const runnerFor = ({ ctx, uid }: RunnerForParams): RunnerLike =>
     new RealRunner({
       appName: 'lifecoach',
@@ -290,6 +321,7 @@ async function main(): Promise<void> {
         createLogGoalUpdateTool({ store: goalUpdatesStore, uid }),
         createAskSingleChoiceTool(),
         createAskMultipleChoiceTool(),
+        ...(memoryEnabled ? [createMemorySaveTool({ client: memory, uid })] : []),
       ]),
       sessionService,
     }) as unknown as RunnerLike;
@@ -300,6 +332,7 @@ async function main(): Promise<void> {
     requireAuth: process.env.REQUIRE_AUTH === 'true',
     weather,
     places,
+    memory,
     profileStore,
     goalUpdatesStore,
   });

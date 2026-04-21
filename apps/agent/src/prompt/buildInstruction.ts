@@ -1,6 +1,7 @@
 import type { GoalUpdate, UserProfile } from '@lifecoach/shared-types';
 import { type UserState, policyFor } from '@lifecoach/user-state';
 import yaml from 'js-yaml';
+import type { Memory } from '../context/memory.js';
 import type { NearbyPlace } from '../context/places.js';
 import type { Coord, Weather } from '../context/weather.js';
 
@@ -22,6 +23,8 @@ export interface InstructionContext {
   recentGoalUpdates?: GoalUpdate[];
   /** Top N interesting places near the user's location. */
   nearbyPlaces?: NearbyPlace[];
+  /** Relevant long-term memories retrieved silently at session start. */
+  memories?: Memory[];
 }
 
 const PERSONA_HEADER =
@@ -105,6 +108,13 @@ function formatNearbyPlaces(ctx: InstructionContext): string {
   return `NEARBY_PLACES (within ~2km):\n${lines}`;
 }
 
+function formatMemories(ctx: InstructionContext): string {
+  if (!ctx.memories || ctx.memories.length === 0) return '';
+  const lines = ctx.memories.map((m) => `  - ${m.text}`).join('\n');
+  return `RELEVANT_MEMORIES (retrieved silently — never say "checking my memory"):
+${lines}`;
+}
+
 function formatRecentGoals(ctx: InstructionContext): string {
   if (!ctx.recentGoalUpdates || ctx.recentGoalUpdates.length === 0) return '';
   const lines = ctx.recentGoalUpdates
@@ -131,6 +141,7 @@ export function buildInstruction(ctx: InstructionContext): string {
     formatNearbyPlaces(ctx),
     formatProfile(ctx),
     formatRecentGoals(ctx),
+    formatMemories(ctx),
   ]
     .filter(Boolean)
     .join('\n\n');
