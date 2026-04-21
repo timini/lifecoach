@@ -3,22 +3,33 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "main": "./src/server.ts",
   "scripts": {
     "build": "tsc -b",
-    "dev": "echo 'stub: ADK agent server wired in Phase 1'",
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/server.js",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist .turbo *.tsbuildinfo coverage"
   },
   "dependencies": {
+    "@google/adk": "0.6.1",
+    "@google/genai": "1.14.0",
+    "@lifecoach/config": "workspace:*",
     "@lifecoach/shared-types": "workspace:*",
     "@lifecoach/user-state": "workspace:*",
-    "@lifecoach/config": "workspace:*"
+    "express": "4.21.1",
+    "zod": "3.25.76"
   },
   "devDependencies": {
     "@lifecoach/testing": "workspace:*",
+    "@types/express": "5.0.0",
+    "@types/node": "22.9.0",
+    "@types/supertest": "6.0.2",
     "@vitest/coverage-v8": "2.1.5",
+    "supertest": "7.0.0",
+    "tsx": "4.19.2",
     "typescript": "5.7.2",
     "vitest": "2.1.5"
   }

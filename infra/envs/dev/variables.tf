@@ -28,3 +28,9 @@ variable "environment" {
     error_message = "environment must be \"dev\" or \"prod\"."
   }
 }
+
+variable "image_tag" {
+  type        = string
+  description = "Container image tag to deploy for both agent and web (e.g., 'abc1234' or 'latest'). Set via -var or in terraform.tfvars; the deploy script writes it."
+  default     = "bootstrap"
+}

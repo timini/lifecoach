@@ -99,17 +99,14 @@ teardown env="dev":
 
 # --- Deploy ----------------------------------------------------------------
 
+deploy env="dev":
+    infra/deploy.sh {{env}} both
+
 deploy-agent env="dev":
-    pnpm --filter @lifecoach/agent build
-    gcloud run deploy lifecoach-agent-{{env}} \
-        --source apps/agent \
-        --region us-central1 \
-        --project lifecoach-{{env}}
+    infra/deploy.sh {{env}} agent
 
 deploy-web env="dev":
-    pnpm --filter @lifecoach/web build
-    firebase apphosting:backends:rollout lifecoach-web-{{env}} \
-        --project lifecoach-{{env}}
+    infra/deploy.sh {{env}} web
 
 # --- Ops -------------------------------------------------------------------
 
@@ -117,6 +114,17 @@ seed-user uid:
     pnpm --filter @lifecoach/agent exec tsx scripts/seed-user.ts {{uid}}
 
 logs-agent env="dev":
-    gcloud run services logs tail lifecoach-agent-{{env}} \
-        --region us-central1 \
-        --project lifecoach-{{env}}
+    #!/usr/bin/env bash
+    set -eu
+    cd infra/envs/{{env}}
+    project=$(terraform output -raw project_id)
+    region=$(grep -E '^region[[:space:]]*=' terraform.tfvars | sed -E 's/.*"([^"]+)".*/\1/')
+    gcloud run services logs tail lifecoach-agent --region "$region" --project "$project"
+
+logs-web env="dev":
+    #!/usr/bin/env bash
+    set -eu
+    cd infra/envs/{{env}}
+    project=$(terraform output -raw project_id)
+    region=$(grep -E '^region[[:space:]]*=' terraform.tfvars | sed -E 's/.*"([^"]+)".*/\1/')
+    gcloud run services logs tail lifecoach-web --region "$region" --project "$project"
