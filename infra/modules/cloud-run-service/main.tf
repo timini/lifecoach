@@ -41,6 +41,15 @@ variable "env" {
   description = "Plain environment variables for the container."
 }
 
+variable "secret_env" {
+  type = map(object({
+    secret_id = string
+    version   = optional(string, "latest")
+  }))
+  default     = {}
+  description = "Environment variables sourced from Secret Manager secrets."
+}
+
 variable "allow_unauthenticated" {
   type        = bool
   default     = false
@@ -130,6 +139,19 @@ resource "google_cloud_run_v2_service" "svc" {
         content {
           name  = env.key
           value = env.value
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.secret_env
+        content {
+          name = env.key
+          value_source {
+            secret_key_ref {
+              secret  = env.value.secret_id
+              version = env.value.version
+            }
+          }
         }
       }
     }

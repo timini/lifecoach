@@ -28,6 +28,26 @@ module "firebase_auth" {
   depends_on = [module.apis]
 }
 
+# --- mem0 API key secret --------------------------------------------------
+# The secret resource is created empty. Add the value once with:
+#   echo -n "$MEM0_KEY" | gcloud secrets versions add MEM0_API_KEY \
+#     --data-file=- --project=<project-id>
+# Before that first version exists, the agent's Cloud Run revision will fail
+# to start — that's why the module depends on the key being added before the
+# agent is (re)deployed with secret_env. Set skip_secret_env=true in var to
+# let the agent start without it.
+
+module "mem0_secret" {
+  source     = "../../modules/mem0-secret"
+  project_id = var.project_id
+
+  accessor_members = [
+    "serviceAccount:${module.agent.service_account_email}",
+  ]
+
+  depends_on = [module.apis, module.agent]
+}
+
 # --- GCS bucket for per-user data (user.yaml, goal_updates.json) ---------
 
 module "user_bucket" {
@@ -69,6 +89,10 @@ module "agent" {
     "roles/firebaseauth.admin",
     "roles/logging.logWriter",
   ]
+
+  secret_env = var.mem0_enabled ? {
+    MEM0_API_KEY = { secret_id = "MEM0_API_KEY", version = "latest" }
+  } : {}
 
   allow_unauthenticated = true
 
