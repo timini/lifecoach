@@ -1,4 +1,4 @@
-import type { UserProfile } from '@lifecoach/shared-types';
+import type { GoalUpdate, UserProfile } from '@lifecoach/shared-types';
 import { type UserState, policyFor } from '@lifecoach/user-state';
 import yaml from 'js-yaml';
 import type { Coord, Weather } from '../context/weather.js';
@@ -17,6 +17,8 @@ export interface InstructionContext {
   weather: Weather | null;
   /** Full user.yaml — nulls preserved so the agent sees what it doesn't know. */
   userProfile?: UserProfile;
+  /** Last N goal updates (oldest → newest). */
+  recentGoalUpdates?: GoalUpdate[];
 }
 
 const PERSONA_HEADER =
@@ -89,6 +91,18 @@ function formatProfile(ctx: InstructionContext): string {
 ${dumped.trim()}`;
 }
 
+function formatRecentGoals(ctx: InstructionContext): string {
+  if (!ctx.recentGoalUpdates || ctx.recentGoalUpdates.length === 0) return '';
+  const lines = ctx.recentGoalUpdates
+    .map((g) => {
+      const note = g.note ? ` — ${g.note}` : '';
+      return `  [${g.timestamp}] ${g.goal}: ${g.status}${note}`;
+    })
+    .join('\n');
+  return `RECENT_GOAL_UPDATES (last ${ctx.recentGoalUpdates.length}, oldest → newest):
+${lines}`;
+}
+
 export function buildInstruction(ctx: InstructionContext): string {
   const directive = policyFor(ctx.userState).directive;
   return [
@@ -101,6 +115,7 @@ export function buildInstruction(ctx: InstructionContext): string {
     formatLocation(ctx),
     formatWeather(ctx),
     formatProfile(ctx),
+    formatRecentGoals(ctx),
   ]
     .filter(Boolean)
     .join('\n\n');
