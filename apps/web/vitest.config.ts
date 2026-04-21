@@ -6,6 +6,7 @@ const workspaceAliases = {
   '@lifecoach/user-state': resolve(__dirname, '../../packages/user-state/src/index.ts'),
   '@lifecoach/config': resolve(__dirname, '../../packages/config/src/index.ts'),
   '@lifecoach/testing': resolve(__dirname, '../../packages/testing/src/index.ts'),
+  '@lifecoach/ui': resolve(__dirname, '../../packages/ui/src/index.ts'),
 };
 
 export default defineConfig({

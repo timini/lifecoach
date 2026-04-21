@@ -1,12 +1,12 @@
 'use client';
 
+import { Bubble, Button, ChatShell, ChoicePrompt, Input, LocationBadge } from '@lifecoach/ui';
 import type { User } from 'firebase/auth';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { eventsToMessages } from '../lib/eventHistory';
 import { ensureSignedIn } from '../lib/firebase';
 import { type BrowserLocation, requestBrowserLocation } from '../lib/geolocation';
 import { type AssistantElement, parseSseAssistant } from '../lib/sse';
-import { ChoicePrompt } from './ChoicePrompt';
 
 interface UserMessage {
   id: string;
@@ -54,10 +54,6 @@ export function ChatWindow() {
       .catch((err: unknown) => setAuthError(err instanceof Error ? err.message : String(err)));
   }, []);
 
-  // On sign-in settle, rehydrate previous messages from the agent's
-  // Firestore-backed session store (not localStorage — the agent is the
-  // source of truth and that history survives Cloud Run restarts + device
-  // changes for a given Firebase UID).
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
@@ -78,7 +74,7 @@ export function ChatWindow() {
         );
         if (rehydrated.length > 0) setMessages(rehydrated);
       } catch {
-        // best-effort; chat still works without history
+        /* best-effort */
       }
     })();
     return () => {
@@ -148,160 +144,100 @@ export function ChatWindow() {
     }
   }
 
-  function submitChoice(messageId: string, answer: string) {
-    // Mark the assistant message containing the choice as answered so the
-    // widget disables itself after selection. Then send the selection as a
-    // normal chat message.
+  function submitChoice(mid: string, answer: string) {
     setMessages((prev) =>
-      prev.map((m) =>
-        m.id === messageId && m.role === 'assistant' ? { ...m, answered: true } : m,
-      ),
+      prev.map((m) => (m.id === mid && m.role === 'assistant' ? { ...m, answered: true } : m)),
     );
     void sendText(answer);
   }
 
   if (authError) {
     return (
-      <section style={{ color: '#f87171' }}>
+      <main className="mx-auto max-w-[720px] px-4 py-6 text-destructive">
         Sign-in failed: {authError}. Check NEXT_PUBLIC_FIREBASE_* env vars.
-      </section>
+      </main>
     );
   }
 
   if (!user) {
-    return <section style={{ color: '#888', fontSize: 14 }}>Signing you in…</section>;
+    return (
+      <main className="mx-auto max-w-[720px] px-4 py-6 text-sm text-muted-foreground">
+        Signing you in…
+      </main>
+    );
   }
 
-  return (
-    <section style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: '1rem' }}>
-      <div
-        style={{
-          fontSize: 12,
-          color: '#666',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}
-      >
+  const header = (
+    <>
+      <h1 className="text-lg font-semibold">Lifecoach</h1>
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
         <span>
           Signed in{user.isAnonymous ? ' anonymously' : ''} as {user.uid.slice(0, 12)}…
         </span>
-        {location ? (
-          <span style={{ color: '#4ade80' }}>📍 location shared</span>
-        ) : (
-          <button
-            type="button"
-            onClick={() => {
-              void shareLocation();
-            }}
-            disabled={locationRequested}
-            style={{
-              fontSize: 11,
-              padding: '4px 8px',
-              borderRadius: 6,
-              border: '1px solid #334',
-              background: 'transparent',
-              color: '#888',
-              cursor: 'pointer',
-            }}
-          >
-            {locationRequested ? 'no location' : 'Share location'}
-          </button>
-        )}
-      </div>
-      <div
-        style={{
-          flex: 1,
-          overflowY: 'auto',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 12,
-          padding: 4,
-        }}
-      >
-        {messages.length === 0 && (
-          <div style={{ color: '#666', fontSize: 14 }}>
-            Say hi to get started. The coach is warming up.
-          </div>
-        )}
-        {messages.map((m) => {
-          if (m.role === 'user') return <UserBubble key={m.id} text={m.text} />;
-          return (
-            <AssistantBubbleGroup
-              key={m.id}
-              msgId={m.id}
-              elements={m.elements}
-              answered={Boolean(m.answered)}
-              onChoice={submitChoice}
-            />
-          );
-        })}
-        {busy && <div style={{ color: '#888', fontSize: 14, fontStyle: 'italic' }}>thinking…</div>}
-        <div ref={endRef} />
-      </div>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void sendText(input);
-        }}
-        style={{ display: 'flex', gap: 8 }}
-      >
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Type a message…"
-          disabled={busy}
-          style={{
-            flex: 1,
-            padding: '10px 12px',
-            borderRadius: 8,
-            border: '1px solid #334',
-            background: '#1e293b',
-            color: '#e8e8e8',
-            fontSize: 16,
+        <LocationBadge
+          shared={location !== null}
+          requested={locationRequested}
+          onShare={() => {
+            void shareLocation();
           }}
         />
-        <button
-          type="submit"
-          disabled={busy || !input.trim()}
-          style={{
-            padding: '10px 16px',
-            borderRadius: 8,
-            border: 'none',
-            background: '#2563eb',
-            color: 'white',
-            fontWeight: 600,
-            cursor: busy ? 'default' : 'pointer',
-            opacity: busy || !input.trim() ? 0.6 : 1,
-          }}
-        >
-          Send
-        </button>
-      </form>
-    </section>
+      </div>
+    </>
   );
-}
 
-function UserBubble({ text }: { text: string }) {
-  return (
-    <div
-      style={{
-        alignSelf: 'flex-end',
-        background: '#2563eb',
-        color: 'white',
-        padding: '8px 12px',
-        borderRadius: 12,
-        maxWidth: '80%',
-        whiteSpace: 'pre-wrap',
-        lineHeight: 1.4,
+  const footer = (
+    <form
+      className="flex gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void sendText(input);
       }}
     >
-      {text}
-    </div>
+      <Input
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        placeholder="Type a message…"
+        disabled={busy}
+        className="flex-1"
+      />
+      <Button type="submit" disabled={busy || !input.trim()} size="lg">
+        Send
+      </Button>
+    </form>
+  );
+
+  return (
+    <ChatShell header={header} footer={footer}>
+      {messages.length === 0 && (
+        <div className="text-sm text-muted-foreground">
+          Say hi to get started. The coach is warming up.
+        </div>
+      )}
+      {messages.map((m) => {
+        if (m.role === 'user') {
+          return (
+            <Bubble key={m.id} from="user">
+              {m.text}
+            </Bubble>
+          );
+        }
+        return (
+          <AssistantGroup
+            key={m.id}
+            msgId={m.id}
+            elements={m.elements}
+            answered={Boolean(m.answered)}
+            onChoice={submitChoice}
+          />
+        );
+      })}
+      {busy && <div className="text-sm italic text-muted-foreground">thinking…</div>}
+      <div ref={endRef} />
+    </ChatShell>
   );
 }
 
-function AssistantBubbleGroup({
+function AssistantGroup({
   msgId,
   elements,
   answered,
@@ -318,21 +254,9 @@ function AssistantBubbleGroup({
         const elKey = `${msgId}-${i}-${el.kind}`;
         if (el.kind === 'text') {
           return (
-            <div
-              key={elKey}
-              style={{
-                alignSelf: 'flex-start',
-                background: '#1e293b',
-                color: '#e8e8e8',
-                padding: '8px 12px',
-                borderRadius: 12,
-                maxWidth: '80%',
-                whiteSpace: 'pre-wrap',
-                lineHeight: 1.4,
-              }}
-            >
+            <Bubble key={elKey} from="assistant">
               {el.text}
-            </div>
+            </Bubble>
           );
         }
         return (
