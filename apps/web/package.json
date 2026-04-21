@@ -4,8 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "echo 'stub: Next.js build wired in Phase 1'",
-    "dev": "echo 'stub: Next.js dev wired in Phase 1'",
+    "build": "next build",
+    "dev": "next dev -p 3000",
+    "start": "next start -p 3000",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
@@ -13,9 +14,15 @@
   },
   "dependencies": {
     "@lifecoach/shared-types": "workspace:*",
-    "@lifecoach/user-state": "workspace:*"
+    "@lifecoach/user-state": "workspace:*",
+    "next": "15.0.3",
+    "react": "19.0.0-rc-66855b96-20241106",
+    "react-dom": "19.0.0-rc-66855b96-20241106"
   },
   "devDependencies": {
+    "@types/node": "22.9.0",
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
     "@vitest/coverage-v8": "2.1.5",
     "typescript": "5.7.2",
     "vitest": "2.1.5"
