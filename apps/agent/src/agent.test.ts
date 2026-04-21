@@ -25,7 +25,9 @@ describe('createRootAgent', () => {
     expect(s).toMatch(/anonymous/); // state
   });
 
-  it('uses gemini-2.5-pro (the spec said 3.1 Pro which does not exist)', () => {
-    expect(AGENT_MODEL).toBe('gemini-2.5-pro');
+  it('pins gemini-2.5-flash (upgrade to gemini-3-flash when on Vertex)', () => {
+    // Explicit pin so any model change is deliberate and reviewed. Not using
+    // a -latest alias — surprise upgrades shouldn't happen silently.
+    expect(AGENT_MODEL).toBe('gemini-2.5-flash');
   });
 });

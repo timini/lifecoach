@@ -26,6 +26,7 @@ locals {
     "artifactregistry.googleapis.com",
     "cloudbuild.googleapis.com",
     "secretmanager.googleapis.com",
+    "firestore.googleapis.com",
 
     # Firebase
     "firebase.googleapis.com",
