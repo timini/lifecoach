@@ -173,6 +173,14 @@ export function createApp(deps: CreateAppDeps): Express {
       }
 
       const newMessage: Content = { role: 'user', parts: [{ text: message }] };
+      // When a choice tool fires, stop the model's stream after its response
+      // so the model can't emit text before or after the picker. The widget
+      // is the entire turn. (Belt-and-braces with the prompt rule.)
+      let choiceShown = false;
+      const choiceToolNames = new Set([
+        'ask_single_choice_question',
+        'ask_multiple_choice_question',
+      ]);
       for await (const event of runner.runAsync({
         userId: effectiveUserId,
         sessionId,
@@ -183,17 +191,17 @@ export function createApp(deps: CreateAppDeps): Express {
         }
         for (const resp of getFunctionResponses(event)) {
           const pending = resp.id ? pendingById.get(resp.id) : undefined;
+          const name = pending?.name ?? resp.name ?? '?';
           const respObj = resp.response as { status?: string } | undefined;
-          // Any non-"error" status counts as ok (tools use 'ok', 'shown', etc.).
           const ok = respObj?.status === undefined ? null : respObj.status !== 'error';
-          toolInvocations.push({
-            name: pending?.name ?? resp.name ?? '?',
-            args: pending?.args ?? null,
-            ok,
-          });
+          toolInvocations.push({ name, args: pending?.args ?? null, ok });
           if (resp.id) pendingById.delete(resp.id);
+          if (choiceToolNames.has(name) && respObj?.status === 'shown') {
+            choiceShown = true;
+          }
         }
         res.write(`data: ${JSON.stringify(event)}\n\n`);
+        if (choiceShown) break;
       }
       res.write('event: done\ndata: {}\n\n');
     } catch (err) {

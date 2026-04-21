@@ -66,6 +66,42 @@ describe('POST /api/chat', () => {
     );
   });
 
+  it('forwards auth header, location, and timezone to the agent', async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(
+      // null body → Response has no default content-type header, which
+      // exercises the `?? 'text/event-stream'` fallback branch.
+      new Response(null, { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const req = new Request('http://localhost/api/chat', {
+      method: 'POST',
+      headers: { authorization: 'Bearer tok123' },
+      body: JSON.stringify({
+        userId: 'u',
+        sessionId: 's',
+        message: 'hi',
+        location: { lat: -37.81, lng: 144.96, accuracy: 20 },
+        timezone: 'Australia/Melbourne',
+      }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+    // Content-type falls back to text/event-stream when upstream omits it.
+    expect(res.headers.get('content-type')).toBe('text/event-stream');
+
+    const call = fetchSpy.mock.calls[0];
+    if (!call) throw new Error('fetch not called');
+    const [, init] = call as [unknown, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    expect(headers.authorization).toBe('Bearer tok123');
+    const forwarded = JSON.parse(init.body as string);
+    expect(forwarded).toMatchObject({
+      location: { lat: -37.81, lng: 144.96 },
+      timezone: 'Australia/Melbourne',
+    });
+  });
+
   it('propagates non-200 agent responses as 502', async () => {
     vi.stubGlobal('fetch', mockFetchOnce('upstream error', 500));
 
