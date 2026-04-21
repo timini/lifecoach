@@ -1,6 +1,13 @@
 import type { Event, Session } from '@google/adk';
 import type { Content } from '@google/genai';
+import { UserStateMachine } from '@lifecoach/user-state';
 import express, { type Express, type Request, type Response } from 'express';
+import {
+  type TokenVerifier,
+  type VerifiedClaims,
+  claimsToFirebaseUserLike,
+  verifyRequest,
+} from './auth.js';
 
 /**
  * Minimal surface of the ADK Runner that we depend on. Lets tests pass a fake
@@ -29,6 +36,16 @@ export interface RunnerLike {
 
 export interface CreateAppDeps {
   runner: RunnerLike;
+  /**
+   * Verifies Firebase ID tokens. If omitted, requests are accepted without
+   * auth (dev/test convenience only — production must pass a real verifier).
+   */
+  verifyToken?: TokenVerifier;
+  /**
+   * If true, /chat rejects requests with no valid token. Defaults to false
+   * so tests don't have to supply a verifier.
+   */
+  requireAuth?: boolean;
 }
 
 interface ChatBody {
@@ -52,6 +69,38 @@ export function createApp(deps: CreateAppDeps): Express {
       return;
     }
 
+    let claims: VerifiedClaims | null = null;
+    if (deps.verifyToken) {
+      claims = await verifyRequest(
+        { authorization: req.header('authorization') ?? undefined },
+        deps.verifyToken,
+      );
+    }
+    if (deps.requireAuth && !claims) {
+      res.status(401).json({ error: 'unauthenticated' });
+      return;
+    }
+    // Agent trusts the UID from the verified token — if present — over the
+    // one in the body. This prevents a client from claiming to be a different
+    // user than its auth context.
+    const effectiveUserId = claims?.uid ?? userId;
+
+    // Surface the current user state so logs make it easy to see what tools
+    // and directives would apply. Actual tool-gating lands in later phases.
+    const machine = claims
+      ? UserStateMachine.fromFirebaseUser(claimsToFirebaseUserLike(claims, false))
+      : new UserStateMachine('anonymous');
+    // eslint-disable-next-line no-console
+    console.log(
+      JSON.stringify({
+        msg: 'chat.turn',
+        uid: effectiveUserId,
+        sessionId,
+        state: machine.current(),
+        authenticated: claims !== null,
+      }),
+    );
+
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
@@ -61,19 +110,23 @@ export function createApp(deps: CreateAppDeps): Express {
     try {
       const existing = await runner.sessionService.getSession({
         appName: runner.appName,
-        userId,
+        userId: effectiveUserId,
         sessionId,
       });
       if (!existing) {
         await runner.sessionService.createSession({
           appName: runner.appName,
-          userId,
+          userId: effectiveUserId,
           sessionId,
         });
       }
 
       const newMessage: Content = { role: 'user', parts: [{ text: message }] };
-      for await (const event of runner.runAsync({ userId, sessionId, newMessage })) {
+      for await (const event of runner.runAsync({
+        userId: effectiveUserId,
+        sessionId,
+        newMessage,
+      })) {
         res.write(`data: ${JSON.stringify(event)}\n\n`);
       }
       res.write('event: done\ndata: {}\n\n');
@@ -90,14 +143,25 @@ export function createApp(deps: CreateAppDeps): Express {
 
 /**
  * Wires the real ADK Runner with the Lifecoach agent and starts listening.
- * Intentionally kept in a `main()` so tests can import createApp without
- * booting the server.
  */
 async function main(): Promise<void> {
-  const [{ InMemorySessionService, Runner: RealRunner }, { createRootAgent }] = await Promise.all([
-    import('@google/adk'),
-    import('./agent.js'),
-  ]);
+  const [{ InMemorySessionService, Runner: RealRunner }, { createRootAgent }, admin] =
+    await Promise.all([import('@google/adk'), import('./agent.js'), import('firebase-admin/app')]);
+
+  admin.initializeApp();
+  const { getAuth: getAdminAuth } = await import('firebase-admin/auth');
+  const verifyToken: TokenVerifier = async (token) => {
+    const decoded = await getAdminAuth().verifyIdToken(token);
+    return {
+      uid: decoded.uid,
+      email: decoded.email,
+      email_verified: decoded.email_verified,
+      firebase: {
+        sign_in_provider: decoded.firebase?.sign_in_provider,
+        identities: decoded.firebase?.identities as Record<string, string[] | undefined>,
+      },
+    };
+  };
 
   const sessionService = new InMemorySessionService();
   const runner = new RealRunner({
@@ -106,7 +170,7 @@ async function main(): Promise<void> {
     sessionService,
   }) as unknown as RunnerLike;
 
-  const app = createApp({ runner });
+  const app = createApp({ runner, verifyToken, requireAuth: process.env.REQUIRE_AUTH === 'true' });
   const port = Number(process.env.PORT ?? 8080);
   app.listen(port, () => {
     // eslint-disable-next-line no-console

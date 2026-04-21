@@ -20,6 +20,7 @@
     "@lifecoach/shared-types": "workspace:*",
     "@lifecoach/user-state": "workspace:*",
     "express": "4.21.1",
+    "firebase-admin": "13.0.1",
     "zod": "3.25.76"
   },
   "devDependencies": {

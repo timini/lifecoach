@@ -1,6 +1,8 @@
 'use client';
 
+import type { User } from 'firebase/auth';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ensureSignedIn } from '../lib/firebase';
 import { parseSseAssistantText } from '../lib/sse';
 
 type Role = 'user' | 'assistant';
@@ -25,50 +27,43 @@ function ensureSessionId(): string {
   return id;
 }
 
-function ensureAnonUserId(): string {
-  // Phase 2 replaces this with Firebase anonymous auth. For Phase 1 we need
-  // *some* stable id so the agent sees the same session across refreshes.
-  const KEY = 'lifecoach.anonUserId';
-  if (typeof window === 'undefined') return 'ssr';
-  let id = window.localStorage.getItem(KEY);
-  if (!id) {
-    id = `anon-${crypto.randomUUID()}`;
-    window.localStorage.setItem(KEY, id);
-  }
-  return id;
-}
-
 export function ChatWindow() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
 
-  const ids = useMemo(
-    () => ({
-      userId: ensureAnonUserId(),
-      sessionId: ensureSessionId(),
-    }),
-    [],
-  );
+  const sessionId = useMemo(() => ensureSessionId(), []);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: rescroll whenever messages/busy change
+  useEffect(() => {
+    ensureSignedIn()
+      .then(setUser)
+      .catch((err: unknown) => setAuthError(err instanceof Error ? err.message : String(err)));
+  }, []);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: rescroll on any render tick
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, busy]);
 
   async function send() {
     const text = input.trim();
-    if (!text || busy) return;
+    if (!text || busy || !user) return;
     setInput('');
     setBusy(true);
     setMessages((prev) => [...prev, { id: messageId(), role: 'user', text }]);
 
     try {
+      const idToken = await user.getIdToken();
       const res = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ ...ids, message: text }),
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ userId: user.uid, sessionId, message: text }),
       });
       const raw = await res.text();
       const reply = parseSseAssistantText(raw);
@@ -91,6 +86,18 @@ export function ChatWindow() {
     }
   }
 
+  if (authError) {
+    return (
+      <section style={{ color: '#f87171' }}>
+        Sign-in failed: {authError}. Check NEXT_PUBLIC_FIREBASE_* env vars.
+      </section>
+    );
+  }
+
+  if (!user) {
+    return <section style={{ color: '#888', fontSize: 14 }}>Signing you in…</section>;
+  }
+
   return (
     <section
       style={{
@@ -100,6 +107,14 @@ export function ChatWindow() {
         gap: '1rem',
       }}
     >
+      <div
+        style={{
+          fontSize: 12,
+          color: '#666',
+        }}
+      >
+        Signed in{user.isAnonymous ? ' anonymously' : ''} as {user.uid.slice(0, 12)}…
+      </div>
       <div
         style={{
           flex: 1,

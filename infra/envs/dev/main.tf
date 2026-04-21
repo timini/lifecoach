@@ -19,6 +19,15 @@ module "artifact_registry" {
   depends_on = [module.apis]
 }
 
+# --- Firebase + Identity Platform (anonymous auth) ------------------------
+
+module "firebase_auth" {
+  source     = "../../modules/firebase-auth"
+  project_id = var.project_id
+
+  depends_on = [module.apis]
+}
+
 # --- Cloud Run: agent ------------------------------------------------------
 # Public for Phase 1. IAM-scoped web->agent invocation is a Phase 11 hardening.
 
@@ -34,16 +43,20 @@ module "agent" {
     GOOGLE_CLOUD_PROJECT      = var.project_id
     GOOGLE_CLOUD_LOCATION     = var.region
     NODE_ENV                  = "production"
+    # Firebase Admin reads GOOGLE_CLOUD_PROJECT for the default project ID
+    # when initializeApp() is called without arguments (ADC-based).
+    FIREBASE_PROJECT_ID = var.project_id
   }
 
   project_roles = [
     "roles/aiplatform.user",
+    "roles/firebaseauth.admin",
     "roles/logging.logWriter",
   ]
 
   allow_unauthenticated = true
 
-  depends_on = [module.artifact_registry]
+  depends_on = [module.artifact_registry, module.firebase_auth]
 }
 
 # --- Cloud Run: web --------------------------------------------------------
@@ -91,4 +104,17 @@ output "agent_url" {
 
 output "web_url" {
   value = module.web.url
+}
+
+output "firebase_api_key" {
+  value     = module.firebase_auth.firebase_api_key
+  sensitive = true
+}
+
+output "firebase_auth_domain" {
+  value = module.firebase_auth.firebase_auth_domain
+}
+
+output "firebase_app_id" {
+  value = module.firebase_auth.firebase_app_id
 }

@@ -23,6 +23,18 @@ COPY packages/user-state ./packages/user-state
 COPY packages/config ./packages/config
 COPY packages/testing ./packages/testing
 COPY apps/web ./apps/web
+
+# NEXT_PUBLIC_* vars are inlined at build time. Passed as --build-arg from
+# deploy.sh, which reads them from terraform output.
+ARG NEXT_PUBLIC_FIREBASE_API_KEY
+ARG NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+ARG NEXT_PUBLIC_FIREBASE_PROJECT_ID
+ARG NEXT_PUBLIC_FIREBASE_APP_ID
+ENV NEXT_PUBLIC_FIREBASE_API_KEY=${NEXT_PUBLIC_FIREBASE_API_KEY} \
+    NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN} \
+    NEXT_PUBLIC_FIREBASE_PROJECT_ID=${NEXT_PUBLIC_FIREBASE_PROJECT_ID} \
+    NEXT_PUBLIC_FIREBASE_APP_ID=${NEXT_PUBLIC_FIREBASE_APP_ID}
+
 RUN pnpm --filter @lifecoach/web build
 
 # ----- runtime -----
