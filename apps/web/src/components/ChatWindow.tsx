@@ -2,6 +2,7 @@
 
 import type { User } from 'firebase/auth';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { eventsToMessages } from '../lib/eventHistory';
 import { ensureSignedIn } from '../lib/firebase';
 import { type BrowserLocation, requestBrowserLocation } from '../lib/geolocation';
 import { type AssistantElement, parseSseAssistant } from '../lib/sse';
@@ -52,6 +53,38 @@ export function ChatWindow() {
       .then(setUser)
       .catch((err: unknown) => setAuthError(err instanceof Error ? err.message : String(err)));
   }, []);
+
+  // On sign-in settle, rehydrate previous messages from the agent's
+  // Firestore-backed session store (not localStorage — the agent is the
+  // source of truth and that history survives Cloud Run restarts + device
+  // changes for a given Firebase UID).
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const idToken = await user.getIdToken();
+        const res = await fetch(
+          `/api/chat/history?userId=${encodeURIComponent(user.uid)}&sessionId=${encodeURIComponent(sessionId)}`,
+          { headers: { authorization: `Bearer ${idToken}` } },
+        );
+        if (!res.ok) return;
+        const body = (await res.json()) as { events?: unknown[] };
+        if (cancelled) return;
+        const rehydrated: Message[] = eventsToMessages((body.events ?? []) as never).map((m) =>
+          m.role === 'user'
+            ? { id: m.id, role: 'user', text: m.text }
+            : { id: m.id, role: 'assistant', elements: m.elements, answered: true },
+        );
+        if (rehydrated.length > 0) setMessages(rehydrated);
+      } catch {
+        // best-effort; chat still works without history
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, sessionId]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: rescroll on any render tick
   useEffect(() => {

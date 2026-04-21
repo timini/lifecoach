@@ -63,6 +63,19 @@ module "user_bucket" {
   depends_on = [module.agent]
 }
 
+# --- Firestore (ADK session storage) --------------------------------------
+
+module "firestore" {
+  source     = "../../modules/firestore"
+  project_id = var.project_id
+
+  accessor_members = [
+    "serviceAccount:${module.agent.service_account_email}",
+  ]
+
+  depends_on = [module.apis, module.agent]
+}
+
 # --- Cloud Run: agent ------------------------------------------------------
 # Public for Phase 1. IAM-scoped web->agent invocation is a Phase 11 hardening.
 

@@ -45,6 +45,15 @@ export interface RunnerForParams {
   uid: string;
 }
 
+export interface SessionReader {
+  appName: string;
+  getSession(params: {
+    appName: string;
+    userId: string;
+    sessionId: string;
+  }): Promise<Session | null | undefined>;
+}
+
 export interface CreateAppDeps {
   /**
    * Factory invoked per request with the turn's InstructionContext + uid.
@@ -53,6 +62,12 @@ export interface CreateAppDeps {
    * update_user_profile tool.
    */
   runnerFor: (params: RunnerForParams) => RunnerLike;
+  /**
+   * Optional read-only handle to the session store for the /history
+   * endpoint. Defaults are derived from the runnerFor's runner at request
+   * time when omitted.
+   */
+  sessionReader?: SessionReader;
   verifyToken?: TokenVerifier;
   requireAuth?: boolean;
   weather?: WeatherClient;
@@ -78,6 +93,39 @@ export function createApp(deps: CreateAppDeps): Express {
 
   app.get('/health', (_req: Request, res: Response) => {
     res.status(200).json({ status: 'ok' });
+  });
+
+  // GET /history?userId=...&sessionId=...  →  { events: Event[] }
+  // Lets the web app rehydrate the chat UI on reload. Token-verified uid
+  // overrides the query uid to prevent cross-user reads.
+  app.get('/history', async (req: Request, res: Response) => {
+    const { userId, sessionId } = req.query as { userId?: string; sessionId?: string };
+    if (!userId || !sessionId) {
+      res.status(400).json({ error: 'userId and sessionId are required' });
+      return;
+    }
+    let claims: VerifiedClaims | null = null;
+    if (deps.verifyToken) {
+      claims = await verifyRequest(
+        { authorization: req.header('authorization') ?? undefined },
+        deps.verifyToken,
+      );
+    }
+    if (deps.requireAuth && !claims) {
+      res.status(401).json({ error: 'unauthenticated' });
+      return;
+    }
+    const effectiveUserId = claims?.uid ?? userId;
+
+    const reader = deps.sessionReader;
+    if (!reader) {
+      res.status(200).json({ events: [] });
+      return;
+    }
+    const session = await reader
+      .getSession({ appName: reader.appName, userId: effectiveUserId, sessionId })
+      .catch(() => null);
+    res.status(200).json({ events: session?.events ?? [] });
   });
 
   app.post('/chat', async (req: Request<unknown, unknown, ChatBody>, res: Response) => {
@@ -235,18 +283,20 @@ export function createApp(deps: CreateAppDeps): Express {
 
 async function main(): Promise<void> {
   const [
-    { InMemorySessionService, Runner: RealRunner },
+    { Runner: RealRunner },
     { createRootAgent },
     { createWeatherClient },
     { createPlacesClient },
     { createMem0MemoryClient, noopMemoryClient },
     { createUserProfileStore },
     { createGoalUpdatesStore },
+    { createFirestoreSessionService },
     { createUpdateUserProfileTool },
     { createLogGoalUpdateTool },
     { createAskSingleChoiceTool, createAskMultipleChoiceTool },
     { createMemorySaveTool },
     { Storage },
+    { Firestore },
     admin,
   ] = await Promise.all([
     import('@google/adk'),
@@ -256,11 +306,13 @@ async function main(): Promise<void> {
     import('./context/memory.js'),
     import('./storage/userProfile.js'),
     import('./storage/goalUpdates.js'),
+    import('./storage/firestoreSession.js'),
     import('./tools/updateUserProfile.js'),
     import('./tools/logGoalUpdate.js'),
     import('./tools/askChoice.js'),
     import('./tools/memorySave.js'),
     import('@google-cloud/storage'),
+    import('@google-cloud/firestore'),
     import('firebase-admin/app'),
   ]);
 
@@ -286,7 +338,13 @@ async function main(): Promise<void> {
   const profileStore = createUserProfileStore({ bucket });
   const goalUpdatesStore = createGoalUpdatesStore({ bucket });
 
-  const sessionService = new InMemorySessionService();
+  // Firestore-backed persistent sessions — history survives Cloud Run cold
+  // starts, scaling events, and page reloads. ADC-authenticated via the
+  // agent's service account. `ignoreUndefinedProperties` because ADK Event
+  // objects have optional fields (e.g. `branch`) that come through as
+  // undefined; without this flag Firestore rejects the whole document.
+  const firestore = new Firestore({ ignoreUndefinedProperties: true });
+  const sessionService = createFirestoreSessionService({ firestore });
   const weather = createWeatherClient();
 
   // Places uses an ADC-sourced OAuth2 token — no API key management.
@@ -336,6 +394,10 @@ async function main(): Promise<void> {
 
   const app = createApp({
     runnerFor,
+    sessionReader: {
+      appName: 'lifecoach',
+      getSession: (p) => sessionService.getSession(p),
+    },
     verifyToken,
     requireAuth: process.env.REQUIRE_AUTH === 'true',
     weather,
