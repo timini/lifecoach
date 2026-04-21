@@ -135,10 +135,8 @@ resource "google_cloud_run_v2_service" "svc" {
     }
   }
 
-  lifecycle {
-    # Image tags are mutated by the deploy pipeline, not Terraform.
-    ignore_changes = [template[0].containers[0].image]
-  }
+  # Note: all deploys go through `just deploy` which passes image_tag to
+  # Terraform, so we let Terraform own the image too. No ignore_changes.
 }
 
 # --- Optional public access ------------------------------------------------

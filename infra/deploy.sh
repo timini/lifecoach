@@ -35,24 +35,41 @@ PROJECT_ID="$(grep -E '^project_id[[:space:]]*=' "${TFVARS}" | sed -E 's/.*=[[:s
 REGION="$(grep -E '^region[[:space:]]*=' "${TFVARS}" | sed -E 's/.*=[[:space:]]*"([^"]+)".*/\1/')"
 REPO_URL="${REGION}-docker.pkg.dev/${PROJECT_ID}/lifecoach"
 
-TAG="$(git -C "${REPO_ROOT}" rev-parse --short=12 HEAD 2>/dev/null || echo "local-$(date +%s)")"
+TAG="$(git -C "${REPO_ROOT}" rev-parse --short=12 HEAD 2>/dev/null || echo "local")"
 if ! git -C "${REPO_ROOT}" diff-index --quiet HEAD 2>/dev/null; then
-  TAG="${TAG}-dirty"
+  # Dirty builds get a timestamp so Cloud Run pulls fresh bytes on each
+  # deploy. Clean builds get the plain SHA so re-deploys of the same commit
+  # are cache-friendly.
+  TAG="${TAG}-dirty-$(date +%Y%m%d%H%M%S)"
 fi
 
 log() { printf '\033[1;34m[deploy]\033[0m %s\n' "$*"; }
 
-ensure_registry() {
-  if gcloud artifacts repositories describe lifecoach \
-      --location="${REGION}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
-    return 0
-  fi
-  log "Artifact Registry not found. Applying just the registry module first."
+ensure_prereq_infra() {
+  # The web build needs Firebase config values as build args; Terraform must
+  # have already created the Firebase project and web app before we build.
+  log "Ensuring prereq infra: APIs, Artifact Registry, Firebase Auth"
   (
     cd "${ENV_DIR}"
     terraform apply -auto-approve -var-file=terraform.tfvars \
-      -target=module.apis -target=module.artifact_registry
+      -target=module.apis \
+      -target=module.artifact_registry \
+      -target=module.firebase_auth
   )
+}
+
+firebase_build_args() {
+  cd "${ENV_DIR}"
+  local api_key auth_domain fb_project_id app_id
+  api_key="$(terraform output -raw firebase_api_key 2>/dev/null || true)"
+  auth_domain="$(terraform output -raw firebase_auth_domain 2>/dev/null || true)"
+  fb_project_id="$(terraform output -raw project_id 2>/dev/null || true)"
+  app_id="$(terraform output -raw firebase_app_id 2>/dev/null || true)"
+  cd - >/dev/null
+  printf -- "--build-arg NEXT_PUBLIC_FIREBASE_API_KEY=%s " "${api_key}"
+  printf -- "--build-arg NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=%s " "${auth_domain}"
+  printf -- "--build-arg NEXT_PUBLIC_FIREBASE_PROJECT_ID=%s " "${fb_project_id}"
+  printf -- "--build-arg NEXT_PUBLIC_FIREBASE_APP_ID=%s " "${app_id}"
 }
 
 docker_auth() {
@@ -65,8 +82,16 @@ build_and_push() {
   local context_dockerfile="apps/${name}/Dockerfile"
   local image="${REPO_URL}/lifecoach-${name}:${TAG}"
   log "Building ${image}"
+  # Only the web image needs Firebase build-args (NEXT_PUBLIC_* are inlined
+  # at build time). The agent reads Firebase config at runtime via ADC.
+  local extra_args=""
+  if [[ "${name}" == "web" ]]; then
+    extra_args="$(firebase_build_args)"
+  fi
+  # shellcheck disable=SC2086
   docker build \
     --platform=linux/amd64 \
+    ${extra_args} \
     -f "${context_dockerfile}" \
     -t "${image}" \
     "${REPO_ROOT}"
@@ -86,7 +111,7 @@ apply_terraform() {
 }
 
 main() {
-  ensure_registry
+  ensure_prereq_infra
   docker_auth
   if [[ "${WHICH}" == "agent" || "${WHICH}" == "both" ]]; then
     build_and_push agent

@@ -19,9 +19,13 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'AGENT_URL is not configured' }, { status: 500 });
   }
 
+  const authHeader = request.headers.get('authorization') ?? '';
   const upstream = await fetch(`${agentUrl}/chat`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      ...(authHeader ? { authorization: authHeader } : {}),
+    },
     body: JSON.stringify({ userId, sessionId, message }),
   });
 
