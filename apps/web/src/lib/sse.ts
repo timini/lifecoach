@@ -10,7 +10,8 @@
 
 export type AssistantElement =
   | { kind: 'text'; text: string }
-  | { kind: 'choice'; single: boolean; question: string; options: string[] };
+  | { kind: 'choice'; single: boolean; question: string; options: string[] }
+  | { kind: 'auth'; mode: 'google' | 'email'; email?: string };
 
 export function parseSseAssistant(raw: string): AssistantElement[] {
   const out: AssistantElement[] = [];
@@ -38,13 +39,24 @@ export function parseSseAssistant(raw: string): AssistantElement[] {
       }
     }
 
-    // Detect choice-question tool responses anywhere in the event.
+    // Detect tool responses that surface inline UI (choice pickers, auth
+    // prompt). Each response gets its own AssistantElement; order preserved
+    // by flushing any pending text first.
     for (const part of parsed.content?.parts ?? []) {
       const fr = part.functionResponse;
       if (!fr) continue;
       const resp = fr.response as
-        | { status?: string; kind?: string; question?: string; options?: unknown }
+        | {
+            status?: string;
+            kind?: string;
+            question?: string;
+            options?: unknown;
+            mode?: string;
+            email?: string;
+          }
         | undefined;
+
+      // Choice pickers.
       if (
         resp?.status === 'shown' &&
         (fr.name === 'ask_single_choice_question' || fr.name === 'ask_multiple_choice_question') &&
@@ -52,7 +64,6 @@ export function parseSseAssistant(raw: string): AssistantElement[] {
         Array.isArray(resp.options) &&
         resp.options.every((o) => typeof o === 'string')
       ) {
-        // Flush any accumulated text before the choice so they render in order.
         if (pendingText.trim()) {
           out.push({ kind: 'text', text: pendingText });
           pendingText = '';
@@ -62,6 +73,24 @@ export function parseSseAssistant(raw: string): AssistantElement[] {
           single: fr.name === 'ask_single_choice_question',
           question: resp.question,
           options: resp.options as string[],
+        });
+        continue;
+      }
+
+      // Auth prompt.
+      if (
+        resp?.status === 'auth_prompted' &&
+        fr.name === 'auth_user' &&
+        (resp.mode === 'google' || resp.mode === 'email')
+      ) {
+        if (pendingText.trim()) {
+          out.push({ kind: 'text', text: pendingText });
+          pendingText = '';
+        }
+        out.push({
+          kind: 'auth',
+          mode: resp.mode,
+          ...(typeof resp.email === 'string' ? { email: resp.email } : {}),
         });
       }
     }

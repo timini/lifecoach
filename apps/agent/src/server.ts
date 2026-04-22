@@ -225,9 +225,13 @@ export function createApp(deps: CreateAppDeps): Express {
       // so the model can't emit text before or after the picker. The widget
       // is the entire turn. (Belt-and-braces with the prompt rule.)
       let choiceShown = false;
-      const choiceToolNames = new Set([
+      // Tools that render an interactive UI element and should end the
+      // agent's turn once fired — prevents the model from writing prose
+      // before or after the widget.
+      const turnEndingToolNames = new Set([
         'ask_single_choice_question',
         'ask_multiple_choice_question',
+        'auth_user',
       ]);
       for await (const event of runner.runAsync({
         userId: effectiveUserId,
@@ -244,7 +248,10 @@ export function createApp(deps: CreateAppDeps): Express {
           const ok = respObj?.status === undefined ? null : respObj.status !== 'error';
           toolInvocations.push({ name, args: pending?.args ?? null, ok });
           if (resp.id) pendingById.delete(resp.id);
-          if (choiceToolNames.has(name) && respObj?.status === 'shown') {
+          if (
+            turnEndingToolNames.has(name) &&
+            (respObj?.status === 'shown' || respObj?.status === 'auth_prompted')
+          ) {
             choiceShown = true;
           }
         }
@@ -294,6 +301,7 @@ async function main(): Promise<void> {
     { createUpdateUserProfileTool },
     { createLogGoalUpdateTool },
     { createAskSingleChoiceTool, createAskMultipleChoiceTool },
+    { createAuthUserTool },
     { createMemorySaveTool },
     { Storage },
     { Firestore },
@@ -310,6 +318,7 @@ async function main(): Promise<void> {
     import('./tools/updateUserProfile.js'),
     import('./tools/logGoalUpdate.js'),
     import('./tools/askChoice.js'),
+    import('./tools/authUser.js'),
     import('./tools/memorySave.js'),
     import('@google-cloud/storage'),
     import('@google-cloud/firestore'),
@@ -387,6 +396,9 @@ async function main(): Promise<void> {
         createLogGoalUpdateTool({ store: goalUpdatesStore, uid }),
         createAskSingleChoiceTool(),
         createAskMultipleChoiceTool(),
+        // auth_user only matters when the user is anonymous. Gate by state
+        // so a signed-in user's agent doesn't even see the tool.
+        ...(ctx.userState === 'anonymous' ? [createAuthUserTool()] : []),
         ...(memoryEnabled ? [createMemorySaveTool({ client: memory, uid })] : []),
       ]),
       sessionService,

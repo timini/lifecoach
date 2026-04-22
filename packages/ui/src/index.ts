@@ -1,3 +1,4 @@
+export { AuthPrompt, type AuthPromptProps } from './components/auth-prompt';
 export { Bubble, type BubbleProps } from './components/bubble';
 export { Button, type ButtonProps, buttonVariants } from './components/button';
 export { ChatShell, type ChatShellProps } from './components/chat-shell';

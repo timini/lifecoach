@@ -1,11 +1,24 @@
 'use client';
 
-import { Bubble, Button, ChatShell, ChoicePrompt, Input, LocationBadge } from '@lifecoach/ui';
+import {
+  AuthPrompt,
+  Bubble,
+  Button,
+  ChatShell,
+  ChoicePrompt,
+  Input,
+  LocationBadge,
+} from '@lifecoach/ui';
 import { Renderer, library as openUILibrary } from '@lifecoach/ui/openui';
 import type { User } from 'firebase/auth';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { eventsToMessages } from '../lib/eventHistory';
-import { ensureSignedIn } from '../lib/firebase';
+import {
+  completeEmailSignInLink,
+  ensureSignedIn,
+  linkWithGoogle,
+  sendEmailSignInLink,
+} from '../lib/firebase';
 import { type BrowserLocation, requestBrowserLocation } from '../lib/geolocation';
 import { type AssistantElement, parseSseAssistant } from '../lib/sse';
 
@@ -50,9 +63,24 @@ export function ChatWindow() {
   const sessionId = useMemo(() => ensureSessionId(), []);
 
   useEffect(() => {
-    ensureSignedIn()
-      .then(setUser)
-      .catch((err: unknown) => setAuthError(err instanceof Error ? err.message : String(err)));
+    // If the current URL is a Firebase email-link return, finish the link
+    // first so the user we set is the upgraded one. Otherwise this is a
+    // no-op and we fall through to the usual anonymous sign-in.
+    (async () => {
+      try {
+        if (typeof window !== 'undefined') {
+          const upgraded = await completeEmailSignInLink(window.location.href);
+          if (upgraded) {
+            setUser(upgraded);
+            return;
+          }
+        }
+        const u = await ensureSignedIn();
+        setUser(u);
+      } catch (err: unknown) {
+        setAuthError(err instanceof Error ? err.message : String(err));
+      }
+    })();
   }, []);
 
   useEffect(() => {
@@ -168,6 +196,56 @@ export function ChatWindow() {
     void sendText(answer);
   }
 
+  async function handleGoogleSignIn() {
+    try {
+      const upgraded = await linkWithGoogle();
+      setUser(upgraded);
+      // Let the agent know it worked; its next turn's ID token will show
+      // google.com as the sign_in_provider and flip UserStateMachine.
+      void sendText("I've just signed in with Google.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: messageId(),
+          role: 'assistant',
+          elements: [{ kind: 'text', text: `sign-in error: ${msg}` }],
+        },
+      ]);
+    }
+  }
+
+  async function handleEmailSignIn(email: string) {
+    try {
+      const returnUrl = window.location.href;
+      await sendEmailSignInLink(email, returnUrl);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: messageId(),
+          role: 'assistant',
+          elements: [
+            {
+              kind: 'text',
+              text: `Email sent to ${email} — check your inbox and click the link to finish.`,
+            },
+          ],
+        },
+      ]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: messageId(),
+          role: 'assistant',
+          elements: [{ kind: 'text', text: `email-link error: ${msg}` }],
+        },
+      ]);
+    }
+  }
+
   if (authError) {
     return (
       <main className="mx-auto max-w-[720px] px-4 py-6 text-destructive">
@@ -245,6 +323,8 @@ export function ChatWindow() {
             elements={m.elements}
             answered={Boolean(m.answered)}
             onChoice={submitChoice}
+            onGoogleSignIn={() => void handleGoogleSignIn()}
+            onEmailSignIn={handleEmailSignIn}
           />
         );
       })}
@@ -263,20 +343,21 @@ function AssistantGroup({
   elements,
   answered,
   onChoice,
+  onGoogleSignIn,
+  onEmailSignIn,
 }: {
   msgId: string;
   elements: AssistantElement[];
   answered: boolean;
   onChoice: (msgId: string, answer: string) => void;
+  onGoogleSignIn: () => void;
+  onEmailSignIn: (email: string) => void;
 }) {
   return (
     <>
       {elements.map((el, i) => {
         const elKey = `${msgId}-${i}-${el.kind}`;
         if (el.kind === 'text') {
-          // Generative-UI path: if the assistant emitted an OpenUI tag,
-          // let the Renderer draw the real components. Otherwise, plain
-          // text goes into a bubble as before.
           if (OPENUI_TAG.test(el.text)) {
             return (
               <div key={elKey} className="self-start max-w-[90%]">
@@ -290,9 +371,19 @@ function AssistantGroup({
             </Bubble>
           );
         }
-        // Legacy tool-call choice path — still supported as a fallback
-        // for when the model goes via ask_single_choice_question instead
-        // of emitting OpenUI Lang.
+        if (el.kind === 'auth') {
+          return (
+            <AuthPrompt
+              key={elKey}
+              mode={el.mode}
+              email={el.email}
+              disabled={answered}
+              onGoogle={onGoogleSignIn}
+              onEmail={onEmailSignIn}
+            />
+          );
+        }
+        // Legacy tool-call choice path (still supported as fallback).
         return (
           <ChoicePrompt
             key={elKey}

@@ -3,10 +3,17 @@
 import { type FirebaseApp, type FirebaseOptions, getApps, initializeApp } from 'firebase/app';
 import {
   type Auth,
+  EmailAuthProvider,
+  GoogleAuthProvider,
   type User,
   getAuth,
+  isSignInWithEmailLink,
+  linkWithCredential,
+  linkWithPopup,
   onAuthStateChanged,
+  sendSignInLinkToEmail,
   signInAnonymously,
+  signInWithEmailLink,
 } from 'firebase/auth';
 
 /**
@@ -73,4 +80,65 @@ export async function ensureSignedIn(): Promise<User> {
       },
     );
   });
+}
+
+const EMAIL_PENDING_KEY = 'lifecoach.pendingEmail';
+
+/**
+ * Link the current (anonymous) user to a Google account via popup. Preserves
+ * the UID so all GCS/Firestore data follows the user through the upgrade.
+ */
+export async function linkWithGoogle(): Promise<User> {
+  const user = firebaseAuth().currentUser;
+  if (!user) throw new Error('no current user — sign-in must complete first');
+  const provider = new GoogleAuthProvider();
+  const cred = await linkWithPopup(user, provider);
+  return cred.user;
+}
+
+/**
+ * Send a magic-link sign-in email. Caller stores the email so we can finish
+ * linking when the user returns from the email link.
+ */
+export async function sendEmailSignInLink(email: string, returnUrl: string): Promise<void> {
+  const auth = firebaseAuth();
+  await sendSignInLinkToEmail(auth, email, {
+    url: returnUrl,
+    handleCodeInApp: true,
+  });
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem(EMAIL_PENDING_KEY, email);
+  }
+}
+
+/**
+ * If the current URL is a Firebase email-link return, finish the link on the
+ * existing (anonymous) user — uses linkWithCredential so the UID is
+ * preserved. Returns the user if a link happened, null if the URL wasn't an
+ * email link.
+ */
+export async function completeEmailSignInLink(currentUrl: string): Promise<User | null> {
+  const auth = firebaseAuth();
+  if (!isSignInWithEmailLink(auth, currentUrl)) return null;
+
+  const email =
+    typeof window !== 'undefined' ? window.localStorage.getItem(EMAIL_PENDING_KEY) : null;
+  if (!email) {
+    // Unusual: user opened the email on a different device. Ideally we'd
+    // prompt for the email; for MVP, sign them in fresh without linking.
+    const cred = await signInWithEmailLink(auth, '', currentUrl);
+    return cred.user;
+  }
+
+  const user = auth.currentUser;
+  if (!user) {
+    const cred = await signInWithEmailLink(auth, email, currentUrl);
+    window.localStorage.removeItem(EMAIL_PENDING_KEY);
+    return cred.user;
+  }
+
+  const credential = EmailAuthProvider.credentialWithLink(email, currentUrl);
+  const linked = await linkWithCredential(user, credential);
+  window.localStorage.removeItem(EMAIL_PENDING_KEY);
+  return linked.user;
 }
