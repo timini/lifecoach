@@ -218,8 +218,7 @@ function renderAffordance(
         <AffordanceItem
           key={aff}
           label="Connect Google Workspace"
-          subLabel="Coming in Phase 10"
-          disabled
+          subLabel="Gmail, Calendar, Tasks"
           onSelect={cb.onConnectWorkspace}
         />
       );

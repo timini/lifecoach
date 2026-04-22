@@ -31,7 +31,8 @@ export type ToolName =
   | 'google_search'
   | 'memory_search'
   | 'memory_save'
-  | 'run_gws';
+  | 'connect_workspace'
+  | 'call_workspace';
 
 /**
  * Discriminated union of UI affordances the web app may render. New kinds

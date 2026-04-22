@@ -11,9 +11,11 @@ import {
 import type { MemoryClient } from './context/memory.js';
 import type { PlacesClient } from './context/places.js';
 import type { Coord, WeatherClient } from './context/weather.js';
+import type { WorkspaceOAuthClient } from './oauth/workspaceClient.js';
 import type { InstructionContext, LocationCtx } from './prompt/buildInstruction.js';
 import type { GoalUpdatesStore } from './storage/goalUpdates.js';
 import type { UserProfileStore } from './storage/userProfile.js';
+import type { WorkspaceTokensStore } from './storage/workspaceTokens.js';
 
 /**
  * Minimal surface of the ADK Runner that we depend on. Lets tests pass a fake
@@ -75,6 +77,8 @@ export interface CreateAppDeps {
   memory?: MemoryClient;
   profileStore?: UserProfileStore;
   goalUpdatesStore?: GoalUpdatesStore;
+  workspaceTokensStore?: WorkspaceTokensStore;
+  workspaceOAuthClient?: WorkspaceOAuthClient;
   now?: () => Date;
 }
 
@@ -218,6 +222,118 @@ export function createApp(deps: CreateAppDeps): Express {
     res.status(200).json({ updates });
   });
 
+  // -------------------------------------------------------------------------
+  // Workspace OAuth endpoints — owned entirely by the application.
+  // The LLM never sees codes, tokens, or secrets handled here.
+  // -------------------------------------------------------------------------
+
+  // POST /workspace/oauth-exchange   body:{code}
+  //   Requires Bearer. Exchanges the GIS-popup auth code for {access_token,
+  //   refresh_token, expiry} via OAuth2Client and stores in Firestore.
+  //   Never echoes any token back to the client.
+  app.post(
+    '/workspace/oauth-exchange',
+    async (req: Request<unknown, unknown, { code?: unknown }>, res: Response) => {
+      const code = typeof req.body?.code === 'string' ? req.body.code : '';
+      if (!code) {
+        res.status(400).json({ error: 'body.code (string) is required' });
+        return;
+      }
+      let claims: VerifiedClaims | null = null;
+      if (deps.verifyToken) {
+        claims = await verifyRequest(
+          { authorization: req.header('authorization') ?? undefined },
+          deps.verifyToken,
+        );
+      }
+      if (!claims) {
+        res.status(401).json({ error: 'unauthenticated' });
+        return;
+      }
+      if (!deps.workspaceOAuthClient || !deps.workspaceTokensStore) {
+        res.status(503).json({ error: 'workspace not configured' });
+        return;
+      }
+      try {
+        const tokens = await deps.workspaceOAuthClient.exchangeCode(code);
+        const stored = await deps.workspaceTokensStore.set(claims.uid, tokens);
+        res.status(200).json({
+          connected: true,
+          scopes: stored.scopes,
+          grantedAt: stored.grantedAt,
+        });
+      } catch (err) {
+        // Never echo the raw error body — it might contain the code.
+        const message = err instanceof Error ? err.message : 'exchange failed';
+        // eslint-disable-next-line no-console
+        console.log(
+          JSON.stringify({
+            msg: 'workspace.oauth_exchange_failed',
+            uid: claims.uid,
+            // Message sanitised — we know our own thrown errors here, but
+            // guard against a future refactor leaking raw OAuth errors.
+            reason: message.replace(/ya29\.[^\s]+/g, '[redacted]').slice(0, 200),
+          }),
+        );
+        res.status(400).json({ error: 'oauth_exchange_failed' });
+      }
+    },
+  );
+
+  // GET /workspace/status   (no body)
+  //   Returns {connected, scopes, grantedAt}. Never includes token values.
+  app.get('/workspace/status', async (req: Request, res: Response) => {
+    let claims: VerifiedClaims | null = null;
+    if (deps.verifyToken) {
+      claims = await verifyRequest(
+        { authorization: req.header('authorization') ?? undefined },
+        deps.verifyToken,
+      );
+    }
+    if (!claims) {
+      res.status(401).json({ error: 'unauthenticated' });
+      return;
+    }
+    if (!deps.workspaceTokensStore) {
+      res.status(200).json({ connected: false, scopes: [], grantedAt: null });
+      return;
+    }
+    const doc = await deps.workspaceTokensStore.get(claims.uid).catch(() => null);
+    if (!doc) {
+      res.status(200).json({ connected: false, scopes: [], grantedAt: null });
+      return;
+    }
+    res.status(200).json({ connected: true, scopes: doc.scopes, grantedAt: doc.grantedAt });
+  });
+
+  // DELETE /workspace
+  //   Best-efforts revokeToken at Google, then deletes the Firestore doc.
+  app.delete('/workspace', async (req: Request, res: Response) => {
+    let claims: VerifiedClaims | null = null;
+    if (deps.verifyToken) {
+      claims = await verifyRequest(
+        { authorization: req.header('authorization') ?? undefined },
+        deps.verifyToken,
+      );
+    }
+    if (!claims) {
+      res.status(401).json({ error: 'unauthenticated' });
+      return;
+    }
+    if (!deps.workspaceTokensStore) {
+      res.status(200).json({ connected: false, scopes: [], grantedAt: null });
+      return;
+    }
+    const existing = await deps.workspaceTokensStore.get(claims.uid).catch(() => null);
+    if (existing && deps.workspaceOAuthClient) {
+      await deps.workspaceOAuthClient
+        .revokeRefreshToken(existing.refreshToken)
+        .catch(() => undefined);
+    }
+    await deps.workspaceTokensStore.delete(claims.uid).catch(() => undefined);
+    res.status(200).json({ connected: false, scopes: [], grantedAt: null });
+  });
+
   app.post('/chat', async (req: Request<unknown, unknown, ChatBody>, res: Response) => {
     const { userId, sessionId, message, location, timezone } = req.body ?? {};
     if (!userId || !sessionId || !message) {
@@ -238,8 +354,22 @@ export function createApp(deps: CreateAppDeps): Express {
     }
     const effectiveUserId = claims?.uid ?? userId;
 
+    // Compute workspaceScopesGranted from the Firestore doc — no LLM
+    // involvement, no token in context. Presence of a non-empty refresh
+    // token is enough; the tool handler does the expiry-and-refresh check
+    // lazily when actually called.
+    let workspaceScopesGranted = false;
+    if (claims && deps.workspaceTokensStore) {
+      try {
+        const doc = await deps.workspaceTokensStore.get(effectiveUserId);
+        workspaceScopesGranted = Boolean(doc?.refreshToken);
+      } catch {
+        workspaceScopesGranted = false;
+      }
+    }
+
     const machine = claims
-      ? UserStateMachine.fromFirebaseUser(claimsToFirebaseUserLike(claims, false))
+      ? UserStateMachine.fromFirebaseUser(claimsToFirebaseUserLike(claims, workspaceScopesGranted))
       : new UserStateMachine('anonymous');
 
     // Fetch weather if location provided — cached for 30 min per region so
@@ -387,12 +517,16 @@ async function main(): Promise<void> {
     { createMem0MemoryClient, noopMemoryClient },
     { createUserProfileStore },
     { createGoalUpdatesStore },
+    { createWorkspaceTokensStore },
+    { createWorkspaceOAuthClient, createRealWorkspaceOAuthClient },
     { createFirestoreSessionService },
     { createUpdateUserProfileTool },
     { createLogGoalUpdateTool },
     { createAskSingleChoiceTool, createAskMultipleChoiceTool },
     { createAuthUserTool },
     { createMemorySaveTool },
+    { createConnectWorkspaceTool },
+    { createCallWorkspaceTool },
     { Storage },
     { Firestore },
     admin,
@@ -404,12 +538,16 @@ async function main(): Promise<void> {
     import('./context/memory.js'),
     import('./storage/userProfile.js'),
     import('./storage/goalUpdates.js'),
+    import('./storage/workspaceTokens.js'),
+    import('./oauth/workspaceClient.js'),
     import('./storage/firestoreSession.js'),
     import('./tools/updateUserProfile.js'),
     import('./tools/logGoalUpdate.js'),
     import('./tools/askChoice.js'),
     import('./tools/authUser.js'),
     import('./tools/memorySave.js'),
+    import('./tools/connectWorkspace.js'),
+    import('./tools/callWorkspace.js'),
     import('@google-cloud/storage'),
     import('@google-cloud/firestore'),
     import('firebase-admin/app'),
@@ -445,6 +583,35 @@ async function main(): Promise<void> {
   const firestore = new Firestore({ ignoreUndefinedProperties: true });
   const sessionService = createFirestoreSessionService({ firestore });
   const weather = createWeatherClient();
+
+  // Workspace OAuth + token store. Enabled only when client-id + secret are
+  // plumbed through env (set by Terraform). If missing, the state never
+  // flips to workspace_connected and the tool is never registered — the
+  // rest of the app keeps working.
+  const wsClientId = process.env.GWS_OAUTH_CLIENT_ID;
+  const wsClientSecret = process.env.GWS_OAUTH_CLIENT_SECRET;
+  const workspaceEnabled = Boolean(wsClientId && wsClientSecret);
+  const workspaceOAuthClient = workspaceEnabled
+    ? createWorkspaceOAuthClient({
+        client: createRealWorkspaceOAuthClient({
+          clientId: wsClientId as string,
+          clientSecret: wsClientSecret as string,
+        }),
+      })
+    : undefined;
+  const workspaceTokensStore = workspaceOAuthClient
+    ? createWorkspaceTokensStore({ firestore, oauthClient: workspaceOAuthClient })
+    : undefined;
+  if (!workspaceEnabled) {
+    // eslint-disable-next-line no-console
+    console.log(
+      JSON.stringify({
+        msg: 'workspace.disabled',
+        reason:
+          'GWS_OAUTH_CLIENT_ID / GWS_OAUTH_CLIENT_SECRET not set — workspace tools inert this run',
+      }),
+    );
+  }
 
   // Places uses an ADC-sourced OAuth2 token — no API key management.
   const { GoogleAuth } = await import('google-auth-library');
@@ -490,6 +657,27 @@ async function main(): Promise<void> {
         // so a signed-in user's agent doesn't even see the tool.
         ...(ctx.userState === 'anonymous' ? [createAuthUserTool()] : []),
         ...(memoryEnabled ? [createMemorySaveTool({ client: memory, uid })] : []),
+        // connect_workspace is a UI directive — available whenever the user
+        // could next grant or re-grant (i.e. google-linked or already
+        // connected, to allow reconnect).
+        ...(workspaceEnabled &&
+        (ctx.userState === 'google_linked' || ctx.userState === 'workspace_connected')
+          ? [createConnectWorkspaceTool()]
+          : []),
+        // call_workspace binds auth server-side; only registered when
+        // tokens exist (workspace_connected state).
+        ...(workspaceEnabled && workspaceTokensStore && ctx.userState === 'workspace_connected'
+          ? [
+              createCallWorkspaceTool({
+                store: workspaceTokensStore,
+                uid,
+                log: (event) => {
+                  // eslint-disable-next-line no-console
+                  console.log(JSON.stringify({ msg: 'tool.call_workspace', ...event }));
+                },
+              }),
+            ]
+          : []),
       ]),
       sessionService,
     }) as unknown as RunnerLike;
@@ -507,6 +695,8 @@ async function main(): Promise<void> {
     memory,
     profileStore,
     goalUpdatesStore,
+    workspaceTokensStore,
+    workspaceOAuthClient,
   });
 
   const port = Number(process.env.PORT ?? 8080);

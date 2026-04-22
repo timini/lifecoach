@@ -140,3 +140,23 @@ describe('buildInstruction', () => {
     expect(s).toMatch(/null means you don't know yet/);
   });
 });
+
+describe('buildInstruction — workspace cheat-sheet gating', () => {
+  it('omits the WORKSPACE cheat-sheet when state is not workspace_connected', () => {
+    const s = buildInstruction({ ...BASE, userState: 'google_linked' });
+    expect(s).not.toMatch(/WORKSPACE \(via call_workspace/);
+    expect(s).not.toMatch(/messages\.list/);
+  });
+
+  it('includes the WORKSPACE cheat-sheet when state is workspace_connected', () => {
+    const s = buildInstruction({ ...BASE, userState: 'workspace_connected' });
+    expect(s).toMatch(/WORKSPACE \(via call_workspace/);
+    expect(s).toMatch(/messages\.list/);
+    expect(s).toMatch(/events\.list/);
+    expect(s).toMatch(/tasks\.list/);
+    // Must tell the LLM explicitly it does not handle tokens.
+    expect(s.toLowerCase()).toContain('never see tokens');
+    // And tell it the recovery path on scope_required.
+    expect(s).toMatch(/connect_workspace/);
+  });
+});

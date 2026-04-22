@@ -19,8 +19,14 @@ const STATE_ADDITIONAL_TOOLS: Record<UserState, readonly ToolName[]> = {
   anonymous: [],
   email_pending: [],
   email_verified: [],
-  google_linked: [],
-  workspace_connected: ['run_gws'],
+  // google_linked users can invite themselves to upgrade — the LLM emits
+  // `connect_workspace` (UI directive, no auth handling) to trigger the
+  // browser's GIS popup.
+  google_linked: ['connect_workspace'],
+  // workspace_connected users can use `call_workspace` for Gmail/Calendar/
+  // Tasks. `connect_workspace` stays available so reconnects work if the
+  // user narrows scopes or the token gets revoked.
+  workspace_connected: ['call_workspace', 'connect_workspace'],
 };
 
 const STATE_DIRECTIVE: Record<UserState, string> = {

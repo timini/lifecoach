@@ -136,3 +136,10 @@ output "firebase_project_id" {
 output "firebase_app_id" {
   value = google_firebase_web_app.web.app_id
 }
+
+# Re-export the OAuth client id as a module output so downstream modules can
+# consume it (agent Cloud Run env, web NEXT_PUBLIC build arg) without the
+# parent having to keep another var-as-output shim.
+output "google_client_id" {
+  value = var.google_client_id
+}

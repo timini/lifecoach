@@ -24,3 +24,9 @@ export {
   emptyUserProfile,
   type UserProfile,
 } from './userProfile.js';
+export {
+  WORKSPACE_SCOPES,
+  WorkspaceStatusSchema,
+  type WorkspaceScope,
+  type WorkspaceStatus,
+} from './workspace.js';
