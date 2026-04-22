@@ -45,3 +45,21 @@ export function requestBrowserLocation(
     );
   });
 }
+
+/**
+ * Reads the current permission state without triggering a browser prompt.
+ * Returns `granted` / `prompt` / `denied` or `null` when the Permissions API
+ * is unavailable (some browsers) — callers should treat null as "unknown,
+ * wait for user action".
+ */
+export async function getLocationPermissionState(): Promise<
+  'granted' | 'prompt' | 'denied' | null
+> {
+  if (typeof navigator === 'undefined' || !navigator.permissions?.query) return null;
+  try {
+    const status = await navigator.permissions.query({ name: 'geolocation' as PermissionName });
+    return status.state as 'granted' | 'prompt' | 'denied';
+  } catch {
+    return null;
+  }
+}
