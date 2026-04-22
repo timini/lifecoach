@@ -128,6 +128,96 @@ export function createApp(deps: CreateAppDeps): Express {
     res.status(200).json({ events: session?.events ?? [] });
   });
 
+  // GET /profile?userId=...  →  { profile: Record<string, unknown> }
+  // PATCH /profile           →  body { profile } → writes the whole doc.
+  // Bearer-verified uid overrides the query uid so one user can't read or
+  // overwrite another's profile.
+  app.get('/profile', async (req: Request, res: Response) => {
+    const { userId } = req.query as { userId?: string };
+    if (!userId) {
+      res.status(400).json({ error: 'userId is required' });
+      return;
+    }
+    let claims: VerifiedClaims | null = null;
+    if (deps.verifyToken) {
+      claims = await verifyRequest(
+        { authorization: req.header('authorization') ?? undefined },
+        deps.verifyToken,
+      );
+    }
+    if (deps.requireAuth && !claims) {
+      res.status(401).json({ error: 'unauthenticated' });
+      return;
+    }
+    const effectiveUserId = claims?.uid ?? userId;
+    if (!deps.profileStore) {
+      res.status(200).json({ profile: {} });
+      return;
+    }
+    const profile = await deps.profileStore.read(effectiveUserId).catch(() => ({}));
+    res.status(200).json({ profile });
+  });
+
+  app.patch(
+    '/profile',
+    async (req: Request<unknown, unknown, { profile?: unknown }>, res: Response) => {
+      const body = req.body ?? {};
+      const profile = body.profile;
+      if (!profile || typeof profile !== 'object' || Array.isArray(profile)) {
+        res.status(400).json({ error: 'body.profile must be an object' });
+        return;
+      }
+      let claims: VerifiedClaims | null = null;
+      if (deps.verifyToken) {
+        claims = await verifyRequest(
+          { authorization: req.header('authorization') ?? undefined },
+          deps.verifyToken,
+        );
+      }
+      if (!claims) {
+        // Unlike /chat which accepts anonymous UIDs in the body, direct
+        // profile writes require a verified token so a malicious client
+        // can't overwrite an arbitrary UID's data.
+        res.status(401).json({ error: 'unauthenticated' });
+        return;
+      }
+      const effectiveUserId = claims.uid;
+      if (!deps.profileStore) {
+        res.status(503).json({ error: 'profile store not configured' });
+        return;
+      }
+      await deps.profileStore.write(effectiveUserId, profile as Record<string, unknown>);
+      res.status(200).json({ status: 'ok' });
+    },
+  );
+
+  // GET /goals?userId=...  →  { updates: GoalUpdate[] } (last 20)
+  app.get('/goals', async (req: Request, res: Response) => {
+    const { userId } = req.query as { userId?: string };
+    if (!userId) {
+      res.status(400).json({ error: 'userId is required' });
+      return;
+    }
+    let claims: VerifiedClaims | null = null;
+    if (deps.verifyToken) {
+      claims = await verifyRequest(
+        { authorization: req.header('authorization') ?? undefined },
+        deps.verifyToken,
+      );
+    }
+    if (deps.requireAuth && !claims) {
+      res.status(401).json({ error: 'unauthenticated' });
+      return;
+    }
+    const effectiveUserId = claims?.uid ?? userId;
+    if (!deps.goalUpdatesStore) {
+      res.status(200).json({ updates: [] });
+      return;
+    }
+    const updates = await deps.goalUpdatesStore.recent(effectiveUserId, 20).catch(() => []);
+    res.status(200).json({ updates });
+  });
+
   app.post('/chat', async (req: Request<unknown, unknown, ChatBody>, res: Response) => {
     const { userId, sessionId, message, location, timezone } = req.body ?? {};
     if (!userId || !sessionId || !message) {

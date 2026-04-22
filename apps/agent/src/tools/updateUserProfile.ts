@@ -1,12 +1,19 @@
 import { FunctionTool } from '@google/adk';
-import { PROFILE_WRITABLE_PATHS } from '@lifecoach/shared-types';
 import { z } from 'zod';
 import type { UserProfileStore } from '../storage/userProfile.js';
 
 /**
- * Returns an ADK tool the agent can call to persist something it learned
- * about the user. The tool is closed over the UID for this turn so the
- * LLM never has to provide it.
+ * Schema-free profile tool. The coach can invent any dotted path
+ * (`pets.name`, `morning_routine.coffee_first`, `volunteering`, ...) and
+ * persist it to the user's YAML. See memory/feedback_yaml_schema_free.md.
+ *
+ * `value` is still a nullable string for the LLM call-site. `resolveValue`
+ * does two lightweight coercions as a convenience:
+ *   - `age` → number (common enough to bother)
+ *   - `goals.{short,medium,long}_term` → JSON-parsed array of strings
+ *     (the coach wants lists for goal tiers; the user's schema-free
+ *     stance doesn't preclude convenience heuristics)
+ * Everything else passes through as a string.
  */
 export function createUpdateUserProfileTool(deps: {
   store: UserProfileStore;
@@ -14,27 +21,27 @@ export function createUpdateUserProfileTool(deps: {
 }): FunctionTool {
   const parameters = z.object({
     path: z
-      .enum(PROFILE_WRITABLE_PATHS as unknown as [string, ...string[]])
-      .describe('Dotted path into user.yaml to update. Must be one of the allowed paths.'),
+      .string()
+      .min(1)
+      .describe(
+        'Dotted path into the user profile YAML (e.g. "name", "family.children", "pets.species", "volunteering"). Invent new keys freely when a fact doesn\'t fit an existing slot — the profile has no fixed schema.',
+      ),
     value: z
       .string()
       .nullable()
       .describe(
-        'New value as a string. Numbers: stringified. Goals lists: JSON array string. Null clears the field.',
+        'New value as a string. Numbers: stringified (age is coerced back to number). Goals tiers (goals.short_term etc): JSON array string. Null clears the field.',
       ),
   });
-  // ADK's FunctionTool generic over zod produces nominal-type fights between
-  // our zod instance and the one ADK is generic over — they're the same
-  // runtime dep but TS sees them as distinct. Cast here instead of
-  // sprinkling `any` through the implementation.
-  // biome-ignore lint/suspicious/noExplicitAny: zod instance mismatch with ADK generics
+
+  // biome-ignore lint/suspicious/noExplicitAny: zod instance nominal mismatch with ADK generics
   return new FunctionTool<any>({
     name: 'update_user_profile',
     description:
       'Persist a single piece of information the user just shared about themselves. ' +
-      'Use a dotted path like "family.children" or "occupation.title". ' +
-      'Call this whenever the user tells you something useful about their life ' +
-      '(name, age, job, relationships, goals, preferences).',
+      'Use a dotted path like "family.children", "occupation.title", or invent a new key ' +
+      'when a fact doesn\'t fit (e.g. "pets.name", "volunteering"). Call this whenever ' +
+      'the user tells you something useful about their life.',
     parameters,
     execute: async (input: unknown) => {
       const { path, value } = input as { path: string; value: string | null };

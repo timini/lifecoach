@@ -1,50 +1,50 @@
 import { describe, expect, it } from 'vitest';
-import { PROFILE_WRITABLE_PATHS, UserProfileSchema, emptyUserProfile } from './userProfile.js';
+import { UserProfileSchema, emptyUserProfile } from './userProfile.js';
 
 describe('emptyUserProfile', () => {
-  it('produces a fully-null profile with all top-level sections present', () => {
+  it('returns the starter template with null leaves', () => {
     const p = emptyUserProfile();
     expect(p.name).toBeNull();
-    expect(p.age).toBeNull();
     expect(p.location).toEqual({ address: null });
-    expect(p.family).toMatchObject({
-      relationship_status: null,
-      partner_name: null,
-      children: null,
-      living_situation: null,
+    expect(p.goals).toMatchObject({
+      short_term: [],
+      medium_term: [],
+      long_term: [],
+      currently_working_on: null,
     });
-    expect(p.goals.short_term).toEqual([]);
   });
 });
 
-describe('UserProfileSchema', () => {
-  it('parses the example from the spec (two kids, running + garden goals)', () => {
+describe('UserProfileSchema (schema-free)', () => {
+  it('accepts the starter template', () => {
+    expect(() => UserProfileSchema.parse(emptyUserProfile())).not.toThrow();
+  });
+
+  it('accepts arbitrary top-level keys invented by the coach', () => {
     const parsed = UserProfileSchema.parse({
       name: 'Tim',
-      family: { children: 'Two kids, ages 8 and 4. Named Wren and Silvie.' },
-      goals: { short_term: ['Running', 'Garden Renovation'] },
+      pets: { name: 'Loki', species: 'dog' },
+      morning_routine: ['coffee', 'walk', 'journal'],
+      volunteering: 'refuge on weekends',
     });
-    expect(parsed.name).toBe('Tim');
-    expect(parsed.family.children).toBe('Two kids, ages 8 and 4. Named Wren and Silvie.');
-    expect(parsed.family.partner_name).toBeNull();
-    expect(parsed.goals.short_term).toEqual(['Running', 'Garden Renovation']);
-    expect(parsed.goals.medium_term).toEqual([]);
+    expect(parsed).toMatchObject({
+      pets: { name: 'Loki', species: 'dog' },
+      morning_routine: ['coffee', 'walk', 'journal'],
+    });
   });
 
-  it('rejects unknown top-level keys', () => {
-    expect(() => UserProfileSchema.parse({ name: 'T', unknown_field: 'nope' })).toThrow();
+  it('accepts deeply nested shapes without constraint', () => {
+    const input = {
+      relationships: {
+        partner: { name: 'Sam', years_together: 4, notes: ['thoughtful'] },
+        friends: ['A', 'B'],
+      },
+    };
+    expect(UserProfileSchema.parse(input)).toEqual(input);
   });
 
-  it('rejects negative age', () => {
-    expect(() => UserProfileSchema.parse({ age: -5 })).toThrow();
-  });
-});
-
-describe('PROFILE_WRITABLE_PATHS', () => {
-  it('includes every non-goals-array leaf of the schema', () => {
-    expect(PROFILE_WRITABLE_PATHS).toContain('name');
-    expect(PROFILE_WRITABLE_PATHS).toContain('family.children');
-    expect(PROFILE_WRITABLE_PATHS).toContain('occupation.satisfaction');
-    expect(PROFILE_WRITABLE_PATHS).toContain('goals.currently_working_on');
+  it('rejects non-object inputs', () => {
+    expect(() => UserProfileSchema.parse('nope')).toThrow();
+    expect(() => UserProfileSchema.parse([1, 2, 3])).toThrow();
   });
 });

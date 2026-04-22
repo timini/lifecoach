@@ -20,9 +20,7 @@ export {
   type GoalUpdate,
 } from './goalUpdate.js';
 export {
-  PROFILE_WRITABLE_PATHS,
   UserProfileSchema,
   emptyUserProfile,
-  type ProfileWritablePath,
   type UserProfile,
 } from './userProfile.js';

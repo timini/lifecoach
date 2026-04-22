@@ -29,8 +29,7 @@ function memoryBucket(): BucketLike & { _files: Map<string, string> } {
 
 describe('setDottedPath', () => {
   it('sets a shallow key', () => {
-    const o = { a: 1 };
-    expect(setDottedPath(o, 'a', 2)).toEqual({ a: 2 });
+    expect(setDottedPath({ a: 1 }, 'a', 2)).toEqual({ a: 2 });
   });
 
   it('sets a nested key', () => {
@@ -41,6 +40,10 @@ describe('setDottedPath', () => {
     expect(setDottedPath({}, 'a.b.c', 3)).toEqual({ a: { b: { c: 3 } } });
   });
 
+  it('replaces a primitive intermediate with an object when drilling deeper', () => {
+    expect(setDottedPath({ a: 'scalar' }, 'a.b', 2)).toEqual({ a: { b: 2 } });
+  });
+
   it('does not mutate the input', () => {
     const o = { a: { b: 1 } };
     setDottedPath(o, 'a.b', 2);
@@ -48,53 +51,59 @@ describe('setDottedPath', () => {
   });
 });
 
-describe('createUserProfileStore', () => {
-  it('returns a fully-null profile when the file does not exist', async () => {
+describe('createUserProfileStore (schema-free)', () => {
+  it('returns the starter template when the file does not exist', async () => {
     const store = createUserProfileStore({ bucket: memoryBucket() });
     const p = await store.read('uid-1');
     expect(p.name).toBeNull();
-    expect(p.goals.short_term).toEqual([]);
+    expect(p.goals).toMatchObject({ short_term: [] });
   });
 
-  it('round-trips a profile via write + read', async () => {
+  it('round-trips a whole doc via write + read', async () => {
     const bucket = memoryBucket();
     const store = createUserProfileStore({ bucket });
-
-    const initial = await store.read('uid-1');
-    await store.write('uid-1', { ...initial, name: 'Tim' });
-    const roundTripped = await store.read('uid-1');
-    expect(roundTripped.name).toBe('Tim');
-    expect(bucket._files.has('users/uid-1/user.yaml')).toBe(true);
+    await store.write('uid-1', { name: 'Tim', pets: { name: 'Loki' } });
+    const r = await store.read('uid-1');
+    expect(r).toEqual({ name: 'Tim', pets: { name: 'Loki' } });
   });
 
-  it('applies a dotted-path update', async () => {
+  it('updatePath writes any path the coach invents — no allowlist', async () => {
     const store = createUserProfileStore({ bucket: memoryBucket() });
-    const after = await store.updatePath('uid-1', 'family.children', 'Wren and Silvie');
-    expect(after.family.children).toBe('Wren and Silvie');
-
-    const reread = await store.read('uid-1');
-    expect(reread.family.children).toBe('Wren and Silvie');
+    const after = await store.updatePath('uid-1', 'volunteering', 'refuge on weekends');
+    expect(after.volunteering).toBe('refuge on weekends');
   });
 
-  it('rejects updates to paths outside the writable allowlist', async () => {
+  it('updatePath handles brand-new nested paths (pet.species)', async () => {
     const store = createUserProfileStore({ bucket: memoryBucket() });
-    // @ts-expect-error — the allowlist is enforced at runtime even if a caller bypasses types
-    await expect(store.updatePath('uid-1', 'cheese', 'gouda')).rejects.toThrow(/writable path/i);
+    const after = await store.updatePath('uid-1', 'pet.species', 'cavoodle');
+    expect((after.pet as Record<string, unknown>).species).toBe('cavoodle');
   });
 
-  it('stores YAML with null leaves preserved (not omitted)', async () => {
+  it('preserves existing keys when updating a different path', async () => {
+    const store = createUserProfileStore({ bucket: memoryBucket() });
+    await store.write('uid-1', { name: 'Tim' });
+    await store.updatePath('uid-1', 'pets.name', 'Loki');
+    const r = await store.read('uid-1');
+    expect(r.name).toBe('Tim');
+    expect((r.pets as Record<string, unknown>).name).toBe('Loki');
+  });
+
+  it('rejects an empty path', async () => {
+    const store = createUserProfileStore({ bucket: memoryBucket() });
+    await expect(store.updatePath('uid-1', '', 'x')).rejects.toThrow(/path is required/);
+  });
+
+  it('falls back to the starter template on corrupt YAML', async () => {
     const bucket = memoryBucket();
+    bucket._files.set('users/u/user.yaml', 'this : is : broken : yaml :::');
     const store = createUserProfileStore({ bucket });
-    await store.updatePath('uid-1', 'name', 'Tim');
-    const yaml = bucket._files.get('users/uid-1/user.yaml') ?? '';
-    expect(yaml).toMatch(/name: Tim/);
-    expect(yaml).toMatch(/partner_name: null/);
-    expect(yaml).toMatch(/short_term: \[\]/);
+    const r = await store.read('u');
+    // Either the parse throws (then we rethrow) or the fallback kicks in.
+    // Our implementation rethrows non-404 errors; verify by catching.
+    expect(r.name).toBeNull();
   });
-});
 
-describe('bucket write options', () => {
-  it('writes with content-type application/yaml', async () => {
+  it('writes YAML with content-type application/yaml', async () => {
     const save = vi.fn().mockResolvedValue(undefined);
     const bucket: BucketLike = {
       file: () => ({
@@ -110,9 +119,8 @@ describe('bucket write options', () => {
       }),
     };
     const store = createUserProfileStore({ bucket });
-    await store.updatePath('uid-1', 'name', 'Tim');
+    await store.updatePath('u', 'name', 'Tim');
     expect(save).toHaveBeenCalled();
-    const opts = save.mock.calls[0]?.[1];
-    expect(opts).toMatchObject({ contentType: 'application/yaml' });
+    expect(save.mock.calls[0]?.[1]).toMatchObject({ contentType: 'application/yaml' });
   });
 });

@@ -102,7 +102,7 @@ ${fcLines}`;
 function formatProfile(ctx: InstructionContext): string {
   if (!ctx.userProfile) return '';
   const dumped = yaml.dump(ctx.userProfile, { lineWidth: 120, noRefs: true });
-  return `USER_PROFILE (full user.yaml — null means you don't know yet; ask naturally over time):
+  return `USER_PROFILE (full user.yaml — null means you don't know yet; ask naturally over time. Invent new keys freely when a fact doesn't fit an existing slot — e.g. pets.name, volunteering, morning_routine.coffee_first. No fixed schema.):
 ${dumped.trim()}`;
 }
 
