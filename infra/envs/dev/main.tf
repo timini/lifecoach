@@ -25,6 +25,15 @@ module "firebase_auth" {
   source     = "../../modules/firebase-auth"
   project_id = var.project_id
 
+  google_client_id     = var.google_client_id
+  google_client_secret = var.google_client_secret
+
+  # The Cloud Run-served web URL needs to be on Firebase Auth's allowlist
+  # or the Google sign-in popup fails with "The requested action is
+  # invalid". Passed via var to break a cycle (web -> firebase_auth -> web).
+  # Hardcoded in terraform.tfvars because the Cloud Run URL is stable.
+  extra_authorized_domains = var.firebase_extra_authorized_domains
+
   depends_on = [module.apis]
 }
 
