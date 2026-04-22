@@ -26,6 +26,12 @@ variable "display_name" {
   default = "Lifecoach"
 }
 
+variable "extra_authorized_domains" {
+  type        = list(string)
+  default     = []
+  description = "Domains (no scheme) to allow for sign-in popups/redirects. The Firebase defaults (<project>.firebaseapp.com and <project>.web.app) are always included; pass the Cloud Run host etc. here."
+}
+
 # --- Firebase project ------------------------------------------------------
 
 resource "google_firebase_project" "fb" {
@@ -54,6 +60,15 @@ data "google_firebase_web_app_config" "web" {
 
 resource "google_identity_platform_config" "auth" {
   project = var.project_id
+
+  authorized_domains = concat(
+    [
+      "localhost",
+      "${var.project_id}.firebaseapp.com",
+      "${var.project_id}.web.app",
+    ],
+    var.extra_authorized_domains,
+  )
 
   sign_in {
     anonymous {
