@@ -144,18 +144,18 @@ describe('buildInstruction', () => {
 describe('buildInstruction — workspace cheat-sheet gating', () => {
   it('omits the WORKSPACE cheat-sheet when state is not workspace_connected', () => {
     const s = buildInstruction({ ...BASE, userState: 'google_linked' });
-    expect(s).not.toMatch(/WORKSPACE \(via call_workspace/);
+    expect(s).not.toMatch(/WORKSPACE — call_workspace/);
     expect(s).not.toMatch(/messages\.list/);
   });
 
   it('includes the WORKSPACE cheat-sheet when state is workspace_connected', () => {
     const s = buildInstruction({ ...BASE, userState: 'workspace_connected' });
-    expect(s).toMatch(/WORKSPACE \(via call_workspace/);
+    expect(s).toMatch(/WORKSPACE — call_workspace/);
     expect(s).toMatch(/messages\.list/);
     expect(s).toMatch(/events\.list/);
     expect(s).toMatch(/tasks\.list/);
-    // Must tell the LLM explicitly it does not handle tokens.
-    expect(s.toLowerCase()).toContain('never see tokens');
+    // params is a JSON-encoded STRING — must be explicit to the LLM.
+    expect(s).toMatch(/JSON-encoded STRING/);
     // And tell it the recovery path on scope_required.
     expect(s).toMatch(/connect_workspace/);
   });

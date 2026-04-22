@@ -30,34 +30,54 @@ export interface InstructionContext {
 const PERSONA_HEADER =
   'You are Lifecoach — a warm, supportive life coach. Chat like a friend texting, not a robot writing an email.';
 
-const WORKSPACE_CHEATSHEET = `
-WORKSPACE (via call_workspace({service, resource, method, params})):
-Services available: gmail, calendar, tasks.
-The application handles authentication — you never see tokens.
+const WORKSPACE_CHEATSHEET = String.raw`
+WORKSPACE — call_workspace(service, resource, method, params) reads mail, manages calendar, and manages tasks.
 
-Gmail:
-  messages.list    params:{q,maxResults}                           — search
-  messages.get     params:{id}                                     — full message
-  messages.send    params:{raw:<base64 RFC822>}                    — send
-  messages.modify  params:{id,addLabelIds,removeLabelIds}
-  messages.trash   params:{id}
+CRITICAL: params is a JSON-encoded STRING (not a nested object). When the user asks casual things like "check my emails" or "any meetings tomorrow", call call_workspace directly — don't ask for more details first.
 
-Calendar:
-  events.list      params:{calendarId:'primary',timeMin,timeMax,q,singleEvents:true,orderBy:'startTime',maxResults}
-  events.insert    params:{calendarId:'primary',requestBody:{summary,start:{dateTime,timeZone},end:{dateTime,timeZone},description,location,attendees}}
-  events.patch     params:{calendarId:'primary',eventId,requestBody:{...partial}}
-  events.delete    params:{calendarId:'primary',eventId}
+Example 1 — "check my emails" → call call_workspace with:
+  service="gmail"
+  resource="messages"
+  method="list"
+  params='{"q":"label:INBOX","maxResults":5}'
 
-Tasks:
-  tasklists.list   params:{}                                       — returns {items:[{id,title}]}
-  tasks.list       params:{tasklist,showCompleted:false,maxResults}
-  tasks.insert     params:{tasklist,requestBody:{title,notes,due:RFC3339}}
-  tasks.patch      params:{tasklist,task,requestBody:{status:'completed'}}
-  tasks.delete     params:{tasklist,task}
+Example 2 — "meetings tomorrow?" → call call_workspace with:
+  service="calendar"
+  resource="events"
+  method="list"
+  params='{"calendarId":"primary","timeMin":"<tomorrow 00:00 RFC3339>","timeMax":"<tomorrow 23:59 RFC3339>","singleEvents":true,"orderBy":"startTime"}'
 
-Gmail search syntax: from:, to:, subject:, newer_than:7d, label:INBOX, is:unread, has:attachment.
-Times: RFC3339 with the user's timezone (see TIME block above).
-If call_workspace returns {status:'error',code:'scope_required'}, call connect_workspace to prompt the user.
+Example 3 — "what's on my task list?" → call call_workspace with:
+  service="tasks"
+  resource="tasks"
+  method="list"
+  params='{"tasklist":"@default","showCompleted":false}'
+
+Common calls (params is always a JSON string):
+
+Gmail (service=gmail):
+  messages.list   params='{"q":"from:alex newer_than:7d","maxResults":5}'
+  messages.get    params='{"id":"<id>"}'
+  messages.send   params='{"raw":"<base64 RFC822>"}'
+  messages.modify params='{"id":"<id>","addLabelIds":[],"removeLabelIds":["INBOX"]}'
+  messages.trash  params='{"id":"<id>"}'
+
+Calendar (service=calendar):
+  events.list     params='{"calendarId":"primary","timeMin":"<RFC3339>","timeMax":"<RFC3339>","singleEvents":true,"orderBy":"startTime","maxResults":5}'
+  events.insert   params='{"calendarId":"primary","requestBody":{"summary":"...","start":{"dateTime":"<RFC3339>","timeZone":"<tz>"},"end":{"dateTime":"<RFC3339>","timeZone":"<tz>"}}}'
+  events.patch    params='{"calendarId":"primary","eventId":"<id>","requestBody":{...}}'
+  events.delete   params='{"calendarId":"primary","eventId":"<id>"}'
+
+Tasks (service=tasks):
+  tasklists.list  params='{}'
+  tasks.list      params='{"tasklist":"@default","showCompleted":false,"maxResults":20}'
+  tasks.insert    params='{"tasklist":"@default","requestBody":{"title":"...","due":"<RFC3339>"}}'
+  tasks.patch     params='{"tasklist":"@default","task":"<id>","requestBody":{"status":"completed"}}'
+  tasks.delete    params='{"tasklist":"@default","task":"<id>"}'
+
+Gmail search: from:, to:, subject:, newer_than:7d, label:INBOX, is:unread, has:attachment.
+Times: RFC3339 with the user's timezone (see TIME block).
+If call_workspace returns {"status":"error","code":"scope_required"}, call connect_workspace to prompt reconnect.
 `.trim();
 
 const STYLE_RULES = `

@@ -50,7 +50,7 @@ describe('call_workspace — happy path', () => {
       service: 'gmail',
       resource: 'messages',
       method: 'list',
-      params: { q: 'from:alex', maxResults: 5 },
+      params: JSON.stringify({ q: 'from:alex', maxResults: 5 }),
     });
 
     expect(r).toEqual({ status: 'ok', body: { messages: [{ id: 'abc' }] } });
@@ -140,6 +140,60 @@ describe('call_workspace — scope_required', () => {
       expect(r.code).toBe('scope_required');
     }
     expect(store.delete).toHaveBeenCalledWith('u-1');
+  });
+});
+
+describe('call_workspace — params JSON parsing', () => {
+  it('accepts empty/omitted params', async () => {
+    const fakeExec = vi.fn<ExecFileLike>(async () => ({
+      stdout: JSON.stringify({ ok: true }),
+      stderr: '',
+      code: 0,
+    }));
+    const tool = createCallWorkspaceTool({
+      store: fakeStore(),
+      uid: 'u',
+      execFile: fakeExec,
+    });
+    const r = await exec(tool, { service: 'tasks', resource: 'tasklists', method: 'list' });
+    expect(r.status).toBe('ok');
+    // argv[4] is the JSON stringification of {} when no params are given.
+    const argv = fakeExec.mock.calls[0]?.[1] as string[];
+    expect(argv[4]).toBe('{}');
+  });
+
+  it('returns invalid_args when params is not valid JSON', async () => {
+    const fakeExec = vi.fn<ExecFileLike>();
+    const tool = createCallWorkspaceTool({
+      store: fakeStore(),
+      uid: 'u',
+      execFile: fakeExec,
+    });
+    const r = await exec(tool, {
+      service: 'gmail',
+      resource: 'messages',
+      method: 'list',
+      params: 'not json {',
+    });
+    expect(r).toMatchObject({ status: 'error', code: 'invalid_args' });
+    expect(fakeExec).not.toHaveBeenCalled();
+  });
+
+  it('returns invalid_args when params JSON is not an object', async () => {
+    const fakeExec = vi.fn<ExecFileLike>();
+    const tool = createCallWorkspaceTool({
+      store: fakeStore(),
+      uid: 'u',
+      execFile: fakeExec,
+    });
+    const r = await exec(tool, {
+      service: 'gmail',
+      resource: 'messages',
+      method: 'list',
+      params: '[1,2,3]',
+    });
+    expect(r).toMatchObject({ status: 'error', code: 'invalid_args' });
+    expect(fakeExec).not.toHaveBeenCalled();
   });
 });
 

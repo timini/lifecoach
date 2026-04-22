@@ -143,6 +143,11 @@ export function createCallWorkspaceTool(deps: CreateCallWorkspaceToolDeps): Func
     log = () => undefined,
   } = deps;
 
+  // NOTE: `params` is a JSON *string*, not a free-form object. Gemini's
+  // function-calling schema doesn't reliably accept z.record/object-with-
+  // additionalProperties, so we serialise and parse server-side. The LLM
+  // gets a clear, predictable shape; we still preserve the generic
+  // dispatch ergonomics.
   const parameters = z.object({
     service: z
       .enum(WORKSPACE_SERVICES as unknown as [string, ...string[]])
@@ -151,19 +156,19 @@ export function createCallWorkspaceTool(deps: CreateCallWorkspaceToolDeps): Func
       .string()
       .min(1)
       .describe(
-        'Google API resource, e.g. "messages" for gmail, "events" for calendar, "tasks" or "tasklists" for tasks.',
+        'Google API resource: "messages" for gmail; "events" or "calendars" for calendar; "tasks" or "tasklists" for tasks.',
       ),
     method: z
       .string()
       .min(1)
       .describe(
-        'Method on the resource, e.g. "list", "get", "send", "modify", "trash", "insert", "patch", "delete".',
+        'Method on the resource: "list", "get", "send", "modify", "trash", "insert", "patch", "delete".',
       ),
     params: z
-      .record(z.unknown())
+      .string()
       .optional()
       .describe(
-        'Request parameters per the Google Discovery spec. JSON object; passed as --params to gws.',
+        'JSON-encoded request parameters per the Google Discovery spec. Example for gmail messages.list: \'{"q":"from:alex newer_than:7d","maxResults":5}\'. Omit for methods that take no params.',
       ),
   });
 
@@ -177,11 +182,42 @@ export function createCallWorkspaceTool(deps: CreateCallWorkspaceToolDeps): Func
       'automatically — do not attempt to pass tokens or secrets.',
     parameters,
     execute: async (input: unknown): Promise<CallWorkspaceResult> => {
-      const args = input as {
+      const rawArgs = input as {
         service: string;
         resource: string;
         method: string;
-        params?: Record<string, unknown>;
+        params?: string;
+      };
+
+      // Parse the JSON-encoded params string. Invalid JSON surfaces as an
+      // invalid_args error rather than silently dropping; the LLM retries
+      // with a valid shape.
+      let parsedParams: Record<string, unknown> = {};
+      if (rawArgs.params && rawArgs.params.trim() !== '') {
+        try {
+          const j = JSON.parse(rawArgs.params);
+          if (j && typeof j === 'object' && !Array.isArray(j)) {
+            parsedParams = j as Record<string, unknown>;
+          } else {
+            return {
+              status: 'error',
+              code: 'invalid_args',
+              message: 'params must be a JSON object string',
+            };
+          }
+        } catch {
+          return {
+            status: 'error',
+            code: 'invalid_args',
+            message: 'params must be a JSON-encoded object string',
+          };
+        }
+      }
+      const args = {
+        service: rawArgs.service,
+        resource: rawArgs.resource,
+        method: rawArgs.method,
+        params: parsedParams,
       };
 
       // Defence-in-depth: Zod enum already enforces this, but recheck so a
@@ -226,7 +262,7 @@ export function createCallWorkspaceTool(deps: CreateCallWorkspaceToolDeps): Func
         throw err;
       }
 
-      const paramsJson = JSON.stringify(args.params ?? {});
+      const paramsJson = JSON.stringify(args.params);
       const argv = [args.service, args.resource, args.method, '--params', paramsJson, '--json'];
 
       const res = await exec(gwsPath, argv, {
