@@ -55,11 +55,15 @@ data "google_firebase_web_app_config" "web" {
 resource "google_identity_platform_config" "auth" {
   project = var.project_id
 
-  # Allow anonymous users. Other providers (password, google.com) are added
-  # in later phases.
   sign_in {
     anonymous {
       enabled = true
+    }
+    # Email link (magic link) — not password. Firebase sends the
+    # verification email; no Cloud Function needed.
+    email {
+      enabled           = true
+      password_required = false
     }
     allow_duplicate_emails = false
   }
@@ -67,6 +71,36 @@ resource "google_identity_platform_config" "auth" {
   autodelete_anonymous_users = false
 
   depends_on = [google_firebase_project.fb]
+}
+
+# Google provider for linkWithPopup. Client ID/secret come from the OAuth
+# consent screen — set them after first apply with:
+#   gcloud auth-config ... (or Console → Auth → Sign-in method → Google)
+# The resource holds the enabled flag; values get filled in via console
+# or a follow-up tf-apply with real -var values.
+variable "google_client_id" {
+  type        = string
+  default     = ""
+  description = "OAuth client ID for Google sign-in (from the GCP OAuth consent screen). Leave empty to skip Google provider config."
+}
+
+variable "google_client_secret" {
+  type        = string
+  default     = ""
+  sensitive   = true
+  description = "OAuth client secret for Google sign-in. Leave empty to skip."
+}
+
+resource "google_identity_platform_default_supported_idp_config" "google" {
+  count = var.google_client_id != "" && var.google_client_secret != "" ? 1 : 0
+
+  project       = var.project_id
+  idp_id        = "google.com"
+  client_id     = var.google_client_id
+  client_secret = var.google_client_secret
+  enabled       = true
+
+  depends_on = [google_identity_platform_config.auth]
 }
 
 # --- Outputs (used by the web Cloud Run service as NEXT_PUBLIC_*) ---------
