@@ -1,9 +1,4 @@
-import {
-  PROFILE_WRITABLE_PATHS,
-  type UserProfile,
-  UserProfileSchema,
-  emptyUserProfile,
-} from '@lifecoach/shared-types';
+import { type UserProfile, emptyUserProfile } from '@lifecoach/shared-types';
 import yaml from 'js-yaml';
 
 /**
@@ -20,7 +15,13 @@ export interface BucketLike {
 
 export interface UserProfileStore {
   read(uid: string): Promise<UserProfile>;
+  /** Overwrite the whole doc — used by the /settings PATCH path. */
   write(uid: string, profile: UserProfile): Promise<void>;
+  /**
+   * Schema-free dotted-path write. The agent's update_user_profile tool
+   * calls this. Any path is accepted; missing intermediate objects are
+   * created on the fly.
+   */
   updatePath(uid: string, path: string, value: unknown): Promise<UserProfile>;
 }
 
@@ -28,8 +29,10 @@ export function userYamlPath(uid: string): string {
   return `users/${uid}/user.yaml`;
 }
 
-const WRITABLE = new Set<string>(PROFILE_WRITABLE_PATHS);
-
+/**
+ * Immutable dotted-path write. Creates intermediate objects as needed.
+ * Exported for tests.
+ */
 export function setDottedPath<T extends Record<string, unknown>>(
   obj: T,
   path: string,
@@ -41,7 +44,12 @@ export function setDottedPath<T extends Record<string, unknown>>(
   for (let i = 0; i < parts.length - 1; i++) {
     const key = parts[i] as string;
     const existing = cursor[key];
-    if (existing === null || existing === undefined || typeof existing !== 'object') {
+    if (
+      existing === null ||
+      existing === undefined ||
+      typeof existing !== 'object' ||
+      Array.isArray(existing)
+    ) {
       cursor[key] = {};
     }
     cursor = cursor[key] as Record<string, unknown>;
@@ -55,20 +63,29 @@ export function createUserProfileStore(deps: { bucket: BucketLike }): UserProfil
 
   async function read(uid: string): Promise<UserProfile> {
     const file = bucket.file(userYamlPath(uid));
+    let text: string;
     try {
       const [buf] = await file.download();
-      const parsed = yaml.load(buf.toString('utf8'));
-      if (parsed === null || parsed === undefined) return emptyUserProfile();
-      return UserProfileSchema.parse(parsed);
+      text = buf.toString('utf8');
     } catch (err: unknown) {
       if (isNotFound(err)) return emptyUserProfile();
       throw err;
     }
+    try {
+      const parsed = yaml.load(text);
+      if (parsed === null || parsed === undefined) return emptyUserProfile();
+      if (typeof parsed !== 'object' || Array.isArray(parsed)) return emptyUserProfile();
+      return parsed as UserProfile;
+    } catch {
+      // Corrupt YAML — fall back to the starter template rather than 500
+      // every subsequent turn for this user. The PATCH /profile endpoint
+      // will overwrite cleanly on the next write.
+      return emptyUserProfile();
+    }
   }
 
   async function write(uid: string, profile: UserProfile): Promise<void> {
-    const validated = UserProfileSchema.parse(profile);
-    const text = yaml.dump(validated, { lineWidth: 120, noRefs: true });
+    const text = yaml.dump(profile, { lineWidth: 120, noRefs: true });
     await bucket.file(userYamlPath(uid)).save(text, {
       contentType: 'application/yaml',
       resumable: false,
@@ -76,16 +93,13 @@ export function createUserProfileStore(deps: { bucket: BucketLike }): UserProfil
   }
 
   async function updatePath(uid: string, path: string, value: unknown): Promise<UserProfile> {
-    if (!WRITABLE.has(path)) {
-      throw new Error(
-        `"${path}" is not a writable path. Use one of: ${PROFILE_WRITABLE_PATHS.join(', ')}`,
-      );
+    if (!path || typeof path !== 'string') {
+      throw new Error('path is required');
     }
     const current = await read(uid);
     const updated = setDottedPath(current as Record<string, unknown>, path, value);
-    const validated = UserProfileSchema.parse(updated);
-    await write(uid, validated);
-    return validated;
+    await write(uid, updated);
+    return updated;
   }
 
   return { read, write, updatePath };

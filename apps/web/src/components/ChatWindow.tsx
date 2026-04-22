@@ -1,6 +1,8 @@
 'use client';
 
 import {
+  AccountMenu,
+  type AccountMenuAffordance,
   AuthPrompt,
   Bubble,
   Button,
@@ -10,14 +12,16 @@ import {
   LocationBadge,
 } from '@lifecoach/ui';
 import { Renderer, library as openUILibrary } from '@lifecoach/ui/openui';
+import { UserStateMachine } from '@lifecoach/user-state';
 import type { User } from 'firebase/auth';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { eventsToMessages } from '../lib/eventHistory';
 import {
   completeEmailSignInLink,
   ensureSignedIn,
   linkWithGoogle,
   sendEmailSignInLink,
+  signOutCurrent,
 } from '../lib/firebase';
 import { type BrowserLocation, requestBrowserLocation } from '../lib/geolocation';
 import { type AssistantElement, parseSseAssistant } from '../lib/sse';
@@ -60,7 +64,7 @@ export function ChatWindow() {
   const [locationRequested, setLocationRequested] = useState(false);
   const endRef = useRef<HTMLDivElement | null>(null);
 
-  const sessionId = useMemo(() => ensureSessionId(), []);
+  const [sessionId, setSessionId] = useState<string>(() => ensureSessionId());
 
   useEffect(() => {
     // If the current URL is a Firebase email-link return, finish the link
@@ -196,6 +200,23 @@ export function ChatWindow() {
     void sendText(answer);
   }
 
+  async function handleSignOut() {
+    try {
+      await signOutCurrent();
+      setUser(null);
+      setMessages([]);
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem('lifecoach.sessionId');
+      }
+      setSessionId(ensureSessionId());
+      const fresh = await ensureSignedIn();
+      setUser(fresh);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setAuthError(msg);
+    }
+  }
+
   async function handleGoogleSignIn() {
     try {
       const upgraded = await linkWithGoogle();
@@ -262,13 +283,41 @@ export function ChatWindow() {
     );
   }
 
+  const stateMachine = UserStateMachine.fromFirebaseUser({
+    isAnonymous: user.isAnonymous,
+    emailVerified: user.emailVerified,
+    providerData: user.providerData,
+  });
+  const userState = stateMachine.current();
+  const affordances = stateMachine
+    .policy()
+    .uiAffordances.map((a) => a.kind) as AccountMenuAffordance[];
+
   const header = (
     <>
-      <h1 className="text-lg font-semibold">Lifecoach</h1>
-      <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <span>
-          Signed in{user.isAnonymous ? ' anonymously' : ''} as {user.uid.slice(0, 12)}…
-        </span>
+      <div className="flex items-center justify-between gap-2">
+        <h1 className="text-lg font-semibold">Lifecoach</h1>
+        <AccountMenu
+          state={userState}
+          affordances={affordances}
+          user={{
+            displayName: user.displayName,
+            email: user.email,
+            photoURL: user.photoURL,
+            uid: user.uid,
+            isAnonymous: user.isAnonymous,
+          }}
+          onOpenSettings={() => {
+            if (typeof window !== 'undefined') window.location.assign('/settings');
+          }}
+          onSignOut={() => void handleSignOut()}
+          onGoogleSignIn={() => void handleGoogleSignIn()}
+          onResendVerification={() => {
+            if (user.email) void handleEmailSignIn(user.email);
+          }}
+        />
+      </div>
+      <div className="flex items-center justify-end">
         <LocationBadge
           shared={location !== null}
           requested={locationRequested}

@@ -14,6 +14,7 @@ import {
   sendSignInLinkToEmail,
   signInAnonymously,
   signInWithEmailLink,
+  signOut,
 } from 'firebase/auth';
 
 /**
@@ -141,4 +142,13 @@ export async function completeEmailSignInLink(currentUrl: string): Promise<User 
   const linked = await linkWithCredential(user, credential);
   window.localStorage.removeItem(EMAIL_PENDING_KEY);
   return linked.user;
+}
+
+/**
+ * Signs the current user out. ChatWindow's `ensureSignedIn()` effect will
+ * immediately sign them back in anonymously, producing a fresh UID and an
+ * empty Firestore session — the equivalent of "new user" for MVP.
+ */
+export async function signOutCurrent(): Promise<void> {
+  await signOut(firebaseAuth());
 }
