@@ -32,7 +32,10 @@ RUN pnpm --filter @lifecoach/agent... build
 # apps/agent/src/tools/callWorkspace.ts.
 FROM debian:bookworm-slim AS gws
 ARG GWS_VERSION=v0.22.5
-ARG GWS_ARCHIVE=google-workspace-cli-x86_64-unknown-linux-gnu.tar.gz
+# Use the musl (statically-linked libc) build so the binary runs on the
+# node:22-slim (debian bookworm, GLIBC 2.36) runtime base. The linux-gnu
+# build requires GLIBC 2.39+ which debian bookworm does not ship.
+ARG GWS_ARCHIVE=google-workspace-cli-x86_64-unknown-linux-musl.tar.gz
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 RUN set -eux; \
