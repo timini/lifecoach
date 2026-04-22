@@ -198,6 +198,9 @@ importers:
 
   packages/ui:
     dependencies:
+      '@openuidev/react-lang':
+        specifier: 0.2.3
+        version: 0.2.3(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))(react@19.0.0-rc-66855b96-20241106)(zod@3.25.76)
       '@radix-ui/react-checkbox':
         specifier: 1.1.2
         version: 1.1.2(@types/react-dom@18.3.1)(@types/react@18.3.12)(react-dom@19.0.0-rc-66855b96-20241106(react@19.0.0-rc-66855b96-20241106))(react@19.0.0-rc-66855b96-20241106)
@@ -225,6 +228,9 @@ importers:
       tailwind-merge:
         specifier: 2.5.5
         version: 2.5.5
+      zod:
+        specifier: 3.25.76
+        version: 3.25.76
     devDependencies:
       '@types/react':
         specifier: 18.3.12
@@ -1486,6 +1492,25 @@ packages:
   '@opentelemetry/semantic-conventions@1.40.0':
     resolution: {integrity: sha512-cifvXDhcqMwwTlTK04GBNeIe7yyo28Mfby85QXFe1Yk8nmi36Ab/5UQwptOx84SsoGNRg+EVSjwzfSZMy6pmlw==}
     engines: {node: '>=14'}
+
+  '@openuidev/lang-core@0.2.3':
+    resolution: {integrity: sha512-XvT+jjmfz4LFbTL7+6UQ9JrvdfL//Z203HO7cBoz7T7Oqjd3agpZUGqkaVi+yMspfLjpb9gaiAwjfuqJ9A8leg==}
+    peerDependencies:
+      '@modelcontextprotocol/sdk': '>=1.0.0'
+      zod: ^3.25.0 || ^4.0.0
+    peerDependenciesMeta:
+      '@modelcontextprotocol/sdk':
+        optional: true
+
+  '@openuidev/react-lang@0.2.3':
+    resolution: {integrity: sha512-qjBIS7UqQksms2R4u5gRBetWLkHvbhq0SfRPJv14kvwZf3qbiKDzbLqZTJehMet4qQFVPmb1ynEyirifxgK1+g==}
+    peerDependencies:
+      '@modelcontextprotocol/sdk': '>=1.0.0'
+      react: ^18.3.1 || ^19.0.0
+      zod: ^3.25.0 || ^4.0.0
+    peerDependenciesMeta:
+      '@modelcontextprotocol/sdk':
+        optional: true
 
   '@paralleldrive/cuid2@2.3.1':
     resolution: {integrity: sha512-XO7cAxhnTZl0Yggq6jOgjiOHhbgcO4NqFqwSmQpjK3b6TEE6Uj/jfSk6wzYyemh3+I0sHirKSetjQwn5cZktFw==}
@@ -5989,6 +6014,29 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
+  '@modelcontextprotocol/sdk@1.29.0(zod@3.25.76)':
+    dependencies:
+      '@hono/node-server': 1.19.14(hono@4.12.14)
+      ajv: 8.18.0
+      ajv-formats: 3.0.1(ajv@8.18.0)
+      content-type: 1.0.5
+      cors: 2.8.6
+      cross-spawn: 7.0.6
+      eventsource: 3.0.7
+      eventsource-parser: 3.0.8
+      express: 5.2.1
+      express-rate-limit: 8.3.2(express@5.2.1)
+      hono: 4.12.14
+      jose: 6.2.2
+      json-schema-typed: 8.0.2
+      pkce-challenge: 5.0.1
+      raw-body: 3.0.2
+      zod: 3.25.76
+      zod-to-json-schema: 3.25.2(zod@4.3.6)
+    transitivePeerDependencies:
+      - supports-color
+    optional: true
+
   '@modelcontextprotocol/sdk@1.29.0(zod@4.3.6)':
     dependencies:
       '@hono/node-server': 1.19.14(hono@4.12.14)
@@ -6190,6 +6238,20 @@ snapshots:
       '@opentelemetry/sdk-trace-base': 2.7.0(@opentelemetry/api@1.9.0)
 
   '@opentelemetry/semantic-conventions@1.40.0': {}
+
+  '@openuidev/lang-core@0.2.3(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))(zod@3.25.76)':
+    dependencies:
+      zod: 3.25.76
+    optionalDependencies:
+      '@modelcontextprotocol/sdk': 1.29.0(zod@3.25.76)
+
+  '@openuidev/react-lang@0.2.3(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))(react@19.0.0-rc-66855b96-20241106)(zod@3.25.76)':
+    dependencies:
+      '@openuidev/lang-core': 0.2.3(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))(zod@3.25.76)
+      react: 19.0.0-rc-66855b96-20241106
+      zod: 3.25.76
+    optionalDependencies:
+      '@modelcontextprotocol/sdk': 1.29.0(zod@3.25.76)
 
   '@paralleldrive/cuid2@2.3.1':
     dependencies:

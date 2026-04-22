@@ -1,4 +1,5 @@
 export { PACKAGE_NAME } from './meta.js';
+export { openUISystemPrompt } from './openUIPrompt.js';
 export {
   CHOICE_TOOL_NAMES,
   ChoiceQuestionSchema,

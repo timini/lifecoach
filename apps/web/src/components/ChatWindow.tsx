@@ -1,6 +1,7 @@
 'use client';
 
 import { Bubble, Button, ChatShell, ChoicePrompt, Input, LocationBadge } from '@lifecoach/ui';
+import { Renderer, library as openUILibrary } from '@lifecoach/ui/openui';
 import type { User } from 'firebase/auth';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { eventsToMessages } from '../lib/eventHistory';
@@ -86,6 +87,22 @@ export function ChatWindow() {
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, busy]);
+
+  // Generative-UI Picker → user-message bridge. The Picker in the OpenUI
+  // library dispatches a `lifecoach:choice` CustomEvent with the answer;
+  // here we treat it exactly like a typed message. Re-binds whenever
+  // user/sessionId/location/busy change so sendText's closure is fresh.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional — listener forwards detail to sendText which depends on these
+  useEffect(() => {
+    function onChoice(e: Event) {
+      const detail = (e as CustomEvent<string>).detail;
+      if (typeof detail === 'string' && detail.length > 0) {
+        void sendText(detail);
+      }
+    }
+    window.addEventListener('lifecoach:choice', onChoice);
+    return () => window.removeEventListener('lifecoach:choice', onChoice);
+  }, [user, sessionId, location, busy]);
 
   async function shareLocation() {
     setLocationRequested(true);
@@ -237,6 +254,10 @@ export function ChatWindow() {
   );
 }
 
+// Detects OpenUI Lang tags in assistant text. UI-2 MVP: just <Picker/>.
+// Extend when more components land in packages/ui/src/openui/library.tsx.
+const OPENUI_TAG = /<Picker\b/;
+
 function AssistantGroup({
   msgId,
   elements,
@@ -253,12 +274,25 @@ function AssistantGroup({
       {elements.map((el, i) => {
         const elKey = `${msgId}-${i}-${el.kind}`;
         if (el.kind === 'text') {
+          // Generative-UI path: if the assistant emitted an OpenUI tag,
+          // let the Renderer draw the real components. Otherwise, plain
+          // text goes into a bubble as before.
+          if (OPENUI_TAG.test(el.text)) {
+            return (
+              <div key={elKey} className="self-start max-w-[90%]">
+                <Renderer response={el.text} library={openUILibrary} isStreaming={false} />
+              </div>
+            );
+          }
           return (
             <Bubble key={elKey} from="assistant">
               {el.text}
             </Bubble>
           );
         }
+        // Legacy tool-call choice path — still supported as a fallback
+        // for when the model goes via ask_single_choice_question instead
+        // of emitting OpenUI Lang.
         return (
           <ChoicePrompt
             key={elKey}
