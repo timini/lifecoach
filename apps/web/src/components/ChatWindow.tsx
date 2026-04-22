@@ -23,7 +23,11 @@ import {
   sendEmailSignInLink,
   signOutCurrent,
 } from '../lib/firebase';
-import { type BrowserLocation, requestBrowserLocation } from '../lib/geolocation';
+import {
+  type BrowserLocation,
+  getLocationPermissionState,
+  requestBrowserLocation,
+} from '../lib/geolocation';
 import { type AssistantElement, parseSseAssistant } from '../lib/sse';
 
 interface UserMessage {
@@ -65,6 +69,20 @@ export function ChatWindow() {
   const endRef = useRef<HTMLDivElement | null>(null);
 
   const [sessionId, setSessionId] = useState<string>(() => ensureSessionId());
+
+  useEffect(() => {
+    // Resume location silently if the browser already granted permission in
+    // a prior visit. Avoids re-prompting on every page refresh.
+    (async () => {
+      const state = await getLocationPermissionState();
+      if (state !== 'granted') return;
+      const loc = await requestBrowserLocation();
+      if (loc) {
+        setLocation(loc);
+        setLocationRequested(true);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     // If the current URL is a Firebase email-link return, finish the link

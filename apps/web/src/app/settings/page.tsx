@@ -9,6 +9,7 @@ import {
   type JsonObject,
   type JsonValue,
   YamlTree,
+  cn,
 } from '@lifecoach/ui';
 import { UserStateMachine } from '@lifecoach/user-state';
 import type { User } from 'firebase/auth';
@@ -21,7 +22,11 @@ import {
   sendEmailSignInLink,
   signOutCurrent,
 } from '../../lib/firebase';
-import { type BrowserLocation, requestBrowserLocation } from '../../lib/geolocation';
+import {
+  type BrowserLocation,
+  getLocationPermissionState,
+  requestBrowserLocation,
+} from '../../lib/geolocation';
 
 type ProfileState =
   | { status: 'loading' }
@@ -43,6 +48,9 @@ export default function SettingsPage() {
   const [location, setLocation] = useState<BrowserLocation | null>(null);
   const [locationRequested, setLocationRequested] = useState(false);
   const [emailDraft, setEmailDraft] = useState('');
+  const [activeTab, setActiveTab] = useState<'connections' | 'profile' | 'goals' | 'account'>(
+    'connections',
+  );
 
   useEffect(() => {
     (async () => {
@@ -51,6 +59,19 @@ export default function SettingsPage() {
         setUser(u);
       } catch (err: unknown) {
         setAuthError(err instanceof Error ? err.message : String(err));
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    // Resume location silently when already granted — no re-prompt on refresh.
+    (async () => {
+      const state = await getLocationPermissionState();
+      if (state !== 'granted') return;
+      const loc = await requestBrowserLocation();
+      if (loc) {
+        setLocation(loc);
+        setLocationRequested(true);
       }
     })();
   }, []);
@@ -194,144 +215,170 @@ export default function SettingsPage() {
   const emailVerified = user.emailVerified;
   const hasEmail = Boolean(user.email);
 
+  const tabs: Array<{ id: typeof activeTab; label: string }> = [
+    { id: 'connections', label: 'Connections' },
+    { id: 'profile', label: 'Profile' },
+    { id: 'goals', label: 'Goal log' },
+    { id: 'account', label: 'Account' },
+  ];
+
   return (
     <ChatShell header={header} footer={footer}>
-      <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Connections
-        </h2>
-        <ConnectionRow
-          icon={<IconDot />}
-          label="Google account"
-          status={googleLinked ? `Linked as ${user.email ?? 'Google user'}` : 'Not linked'}
-          statusTone={googleLinked ? 'success' : 'muted'}
-          action={
-            googleLinked ? null : (
-              <Button size="sm" onClick={() => void handleLinkGoogle()}>
-                Sign in
+      <nav
+        aria-label="Settings sections"
+        className="sticky top-0 z-10 flex gap-1 border-b border-border bg-background pt-1 pb-0"
+      >
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === t.id}
+            onClick={() => setActiveTab(t.id)}
+            className={cn(
+              '-mb-px border-b-2 px-3 py-2 text-sm transition-colors',
+              activeTab === t.id
+                ? 'border-accent text-foreground'
+                : 'border-transparent text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
+      </nav>
+
+      {activeTab === 'connections' ? (
+        <section className="flex flex-col gap-3">
+          <ConnectionRow
+            icon={<IconDot />}
+            label="Google account"
+            status={googleLinked ? `Linked as ${user.email ?? 'Google user'}` : 'Not linked'}
+            statusTone={googleLinked ? 'success' : 'muted'}
+            action={
+              googleLinked ? null : (
+                <Button size="sm" onClick={() => void handleLinkGoogle()}>
+                  Sign in
+                </Button>
+              )
+            }
+          />
+          <ConnectionRow
+            icon={<IconDot />}
+            label="Email"
+            status={
+              hasEmail
+                ? emailVerified
+                  ? `Verified: ${user.email}`
+                  : `Pending verification: ${user.email}`
+                : 'None'
+            }
+            statusTone={hasEmail && emailVerified ? 'success' : hasEmail ? 'accent' : 'muted'}
+            action={
+              hasEmail ? null : (
+                <div className="flex gap-2">
+                  <input
+                    type="email"
+                    placeholder="you@example.com"
+                    value={emailDraft}
+                    onChange={(e) => setEmailDraft(e.target.value)}
+                    className="h-9 rounded-[var(--radius-control)] border border-border bg-background px-2 text-sm"
+                  />
+                  <Button
+                    size="sm"
+                    onClick={() => void handleSendEmail()}
+                    disabled={!emailDraft.includes('@')}
+                  >
+                    Send link
+                  </Button>
+                </div>
+              )
+            }
+          />
+          <ConnectionRow
+            icon={<IconDot />}
+            label="Google Workspace"
+            status="Not connected"
+            statusTone="muted"
+            action={
+              <Button size="sm" variant="subtle" disabled title="Coming in Phase 10">
+                Connect
               </Button>
-            )
-          }
-        />
-        <ConnectionRow
-          icon={<IconDot />}
-          label="Email"
-          status={
-            hasEmail
-              ? emailVerified
-                ? `Verified: ${user.email}`
-                : `Pending verification: ${user.email}`
-              : 'None'
-          }
-          statusTone={hasEmail && emailVerified ? 'success' : hasEmail ? 'accent' : 'muted'}
-          action={
-            hasEmail ? null : (
-              <div className="flex gap-2">
-                <input
-                  type="email"
-                  placeholder="you@example.com"
-                  value={emailDraft}
-                  onChange={(e) => setEmailDraft(e.target.value)}
-                  className="h-9 rounded-[var(--radius-control)] border border-border bg-background px-2 text-sm"
-                />
+            }
+          />
+          <ConnectionRow
+            icon={<IconDot />}
+            label="Device location"
+            status={
+              location
+                ? `Shared (±${Math.round(location.accuracy)}m) · ${location.lat.toFixed(3)},${location.lng.toFixed(3)}`
+                : locationRequested
+                  ? 'Denied or unavailable'
+                  : 'Not shared'
+            }
+            statusTone={location ? 'success' : locationRequested ? 'warn' : 'muted'}
+            action={
+              location ? null : (
                 <Button
                   size="sm"
-                  onClick={() => void handleSendEmail()}
-                  disabled={!emailDraft.includes('@')}
+                  onClick={() => void handleShareLocation()}
+                  disabled={locationRequested}
                 >
-                  Send link
+                  Enable
                 </Button>
-              </div>
-            )
-          }
-        />
-        <ConnectionRow
-          icon={<IconDot />}
-          label="Google Workspace"
-          status="Not connected"
-          statusTone="muted"
-          action={
-            <Button size="sm" variant="subtle" disabled title="Coming in Phase 10">
-              Connect
+              )
+            }
+          />
+        </section>
+      ) : null}
+
+      {activeTab === 'profile' ? (
+        <section className="flex flex-col gap-3">
+          <p className="text-xs text-muted-foreground">
+            What the coach remembers about you. Click any value to edit. Add any key — the coach
+            will also write here as it gets to know you.
+          </p>
+          {profileState.status === 'loading' ? (
+            <div className="text-xs text-muted-foreground">Loading…</div>
+          ) : profileState.status === 'error' ? (
+            <div className="text-xs text-destructive">{profileState.message}</div>
+          ) : (
+            <YamlTree value={profileState.profile} onChange={(v) => void handleProfileChange(v)} />
+          )}
+        </section>
+      ) : null}
+
+      {activeTab === 'goals' ? (
+        <section className="flex flex-col gap-3">
+          {goalsState.status === 'loading' ? (
+            <div className="text-xs text-muted-foreground">Loading…</div>
+          ) : goalsState.status === 'error' ? (
+            <div className="text-xs text-destructive">{goalsState.message}</div>
+          ) : (
+            <GoalLog entries={goalsState.entries} />
+          )}
+        </section>
+      ) : null}
+
+      {activeTab === 'account' ? (
+        <section className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-3 rounded-[var(--radius-control)] border border-destructive/40 bg-destructive/10 p-3">
+            <div className="flex-1 text-xs text-muted-foreground">
+              Sign out returns to a fresh guest chat. Your data stays on the server.
+            </div>
+            <Button variant="subtle" size="md" onClick={() => void handleSignOut()}>
+              Sign out
             </Button>
-          }
-        />
-        <ConnectionRow
-          icon={<IconDot />}
-          label="Device location"
-          status={
-            location
-              ? `Shared (±${Math.round(location.accuracy)}m) · ${location.lat.toFixed(3)},${location.lng.toFixed(3)}`
-              : locationRequested
-                ? 'Denied or unavailable'
-                : 'Not shared'
-          }
-          statusTone={location ? 'success' : locationRequested ? 'warn' : 'muted'}
-          action={
-            location ? null : (
-              <Button
-                size="sm"
-                onClick={() => void handleShareLocation()}
-                disabled={locationRequested}
-              >
-                Enable
-              </Button>
-            )
-          }
-        />
-      </section>
-
-      <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Profile
-        </h2>
-        <p className="text-xs text-muted-foreground">
-          What the coach remembers about you. Click any value to edit. Add any key — the coach will
-          also write here as it gets to know you.
-        </p>
-        {profileState.status === 'loading' ? (
-          <div className="text-xs text-muted-foreground">Loading…</div>
-        ) : profileState.status === 'error' ? (
-          <div className="text-xs text-destructive">{profileState.message}</div>
-        ) : (
-          <YamlTree value={profileState.profile} onChange={(v) => void handleProfileChange(v)} />
-        )}
-      </section>
-
-      <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Goal log
-        </h2>
-        {goalsState.status === 'loading' ? (
-          <div className="text-xs text-muted-foreground">Loading…</div>
-        ) : goalsState.status === 'error' ? (
-          <div className="text-xs text-destructive">{goalsState.message}</div>
-        ) : (
-          <GoalLog entries={goalsState.entries} />
-        )}
-      </section>
-
-      <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-destructive">
-          Danger zone
-        </h2>
-        <div className="flex flex-wrap items-center gap-3 rounded-[var(--radius-control)] border border-destructive/40 bg-destructive/10 p-3">
-          <div className="flex-1 text-xs text-muted-foreground">
-            Sign out returns to a fresh guest chat. Your data stays on the server.
           </div>
-          <Button variant="subtle" size="md" onClick={() => void handleSignOut()}>
-            Sign out
-          </Button>
-        </div>
-        <div className="flex flex-wrap items-center gap-3 rounded-[var(--radius-control)] border border-border bg-muted/30 p-3 opacity-60">
-          <div className="flex-1 text-xs text-muted-foreground">
-            Delete all my data — coming in Phase 11.
+          <div className="flex flex-wrap items-center gap-3 rounded-[var(--radius-control)] border border-border bg-muted/30 p-3 opacity-60">
+            <div className="flex-1 text-xs text-muted-foreground">
+              Delete all my data — coming in Phase 11.
+            </div>
+            <Button variant="subtle" size="md" disabled>
+              Delete
+            </Button>
           </div>
-          <Button variant="subtle" size="md" disabled>
-            Delete
-          </Button>
-        </div>
-      </section>
+        </section>
+      ) : null}
     </ChatShell>
   );
 }

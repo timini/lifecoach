@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { requestBrowserLocation } from './geolocation';
+import { getLocationPermissionState, requestBrowserLocation } from './geolocation';
 
 interface GeolocationStub {
   getCurrentPosition: ReturnType<typeof vi.fn>;
@@ -79,5 +79,36 @@ describe('requestBrowserLocation — browser-only (no IP fallback)', () => {
 
     await requestBrowserLocation();
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('getLocationPermissionState', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('returns the Permissions API state when available', async () => {
+    vi.stubGlobal('navigator', {
+      permissions: {
+        query: vi.fn(async () => ({ state: 'granted' })),
+      },
+    });
+    expect(await getLocationPermissionState()).toBe('granted');
+  });
+
+  it('returns null when the Permissions API is unavailable', async () => {
+    vi.stubGlobal('navigator', {});
+    expect(await getLocationPermissionState()).toBeNull();
+  });
+
+  it('returns null when the query throws (older browsers)', async () => {
+    vi.stubGlobal('navigator', {
+      permissions: {
+        query: vi.fn(async () => {
+          throw new Error('unsupported permission name');
+        }),
+      },
+    });
+    expect(await getLocationPermissionState()).toBeNull();
   });
 });
