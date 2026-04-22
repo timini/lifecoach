@@ -1,4 +1,4 @@
-import type { GoalUpdate, UserProfile } from '@lifecoach/shared-types';
+import { type GoalUpdate, type UserProfile, openUISystemPrompt } from '@lifecoach/shared-types';
 import { type UserState, policyFor } from '@lifecoach/user-state';
 import yaml from 'js-yaml';
 import type { Memory } from '../context/memory.js';
@@ -138,6 +138,7 @@ export function buildInstruction(ctx: InstructionContext): string {
     PERSONA_HEADER,
     STYLE_RULES,
     EXAMPLES,
+    openUISystemPrompt,
     `USER_STATE: ${ctx.userState}`,
     `STATE_DIRECTIVE: ${directive}`,
     formatTime(ctx),
