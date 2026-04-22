@@ -67,11 +67,17 @@ module "gws_oauth_secret" {
   project_id    = var.project_id
   client_secret = var.google_client_secret
 
+  # Hardcode the agent SA email (deterministic from the agent module's
+  # `service_name` arg) to break a terraform ordering cycle: if this
+  # module depends on `module.agent.service_account_email`, the agent's
+  # Cloud Run revision update (which references the GWS secret) gets
+  # planned before the secret's IAM grant, and the revision fails to
+  # start with "Permission denied on secret".
   accessor_members = [
-    "serviceAccount:${module.agent.service_account_email}",
+    "serviceAccount:lifecoach-agent@${var.project_id}.iam.gserviceaccount.com",
   ]
 
-  depends_on = [module.apis, module.agent]
+  depends_on = [module.apis]
 }
 
 # --- GCS bucket for per-user data (user.yaml, goal_updates.json) ---------

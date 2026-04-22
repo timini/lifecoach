@@ -48,13 +48,17 @@ log() { printf '\033[1;34m[deploy]\033[0m %s\n' "$*"; }
 ensure_prereq_infra() {
   # The web build needs Firebase config values as build args; Terraform must
   # have already created the Firebase project and web app before we build.
-  log "Ensuring prereq infra: APIs, Artifact Registry, Firebase Auth"
+  # The agent's secret_env references GWS_OAUTH_CLIENT_SECRET — the secret
+  # (with a version) and its IAM grant must exist before the Cloud Run
+  # revision update or the revision fails to start.
+  log "Ensuring prereq infra: APIs, Artifact Registry, Firebase Auth, Workspace OAuth secret"
   (
     cd "${ENV_DIR}"
     terraform apply -auto-approve -var-file=terraform.tfvars \
       -target=module.apis \
       -target=module.artifact_registry \
-      -target=module.firebase_auth
+      -target=module.firebase_auth \
+      -target=module.gws_oauth_secret
   )
 }
 
