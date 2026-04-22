@@ -77,13 +77,14 @@ describe('UserStateMachine — illegal transitions throw', () => {
 describe('UserStateMachine — policy per state', () => {
   it('anonymous has only core tools and share-location affordance', () => {
     const p = new UserStateMachine('anonymous').policy();
-    expect(p.tools).not.toContain('run_gws');
+    expect(p.tools).not.toContain('call_workspace');
+    expect(p.tools).not.toContain('connect_workspace');
     expect(p.uiAffordances).toContainEqual({ kind: 'share_location_button' });
     expect(p.uiAffordances).toContainEqual({ kind: 'save_progress_suggestion' });
     expect(p.directive).toMatch(/anonymous/i);
   });
 
-  it('workspace_connected is the only state with run_gws', () => {
+  it('workspace_connected is the only state with call_workspace', () => {
     const all = (
       [
         'anonymous',
@@ -94,8 +95,22 @@ describe('UserStateMachine — policy per state', () => {
       ] as const
     ).map((s) => new UserStateMachine(s).policy());
 
-    const withGws = all.filter((p) => p.tools.includes('run_gws')).map((p) => p.state);
-    expect(withGws).toEqual(['workspace_connected']);
+    const withCall = all.filter((p) => p.tools.includes('call_workspace')).map((p) => p.state);
+    expect(withCall).toEqual(['workspace_connected']);
+  });
+
+  it('google_linked and workspace_connected both expose connect_workspace (reconnect path)', () => {
+    const states = ['google_linked', 'workspace_connected'] as const;
+    for (const s of states) {
+      const p = new UserStateMachine(s).policy();
+      expect(p.tools).toContain('connect_workspace');
+    }
+    const withoutConnect = (['anonymous', 'email_pending', 'email_verified'] as const).map((s) =>
+      new UserStateMachine(s).policy(),
+    );
+    for (const p of withoutConnect) {
+      expect(p.tools).not.toContain('connect_workspace');
+    }
   });
 
   it('each state has a non-empty directive', () => {
@@ -190,6 +205,7 @@ describe('UserStateMachine — policy per state', () => {
             "ask_multiple_choice_question",
             "ask_single_choice_question",
             "auth_user",
+            "connect_workspace",
             "google_search",
             "log_goal_update",
             "memory_save",
@@ -206,11 +222,12 @@ describe('UserStateMachine — policy per state', () => {
             "ask_multiple_choice_question",
             "ask_single_choice_question",
             "auth_user",
+            "call_workspace",
+            "connect_workspace",
             "google_search",
             "log_goal_update",
             "memory_save",
             "memory_search",
-            "run_gws",
             "update_user_profile",
           ],
         },

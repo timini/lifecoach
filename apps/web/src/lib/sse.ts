@@ -11,7 +11,8 @@
 export type AssistantElement =
   | { kind: 'text'; text: string }
   | { kind: 'choice'; single: boolean; question: string; options: string[] }
-  | { kind: 'auth'; mode: 'google' | 'email'; email?: string };
+  | { kind: 'auth'; mode: 'google' | 'email'; email?: string }
+  | { kind: 'workspace' };
 
 export function parseSseAssistant(raw: string): AssistantElement[] {
   const out: AssistantElement[] = [];
@@ -92,6 +93,18 @@ export function parseSseAssistant(raw: string): AssistantElement[] {
           mode: resp.mode,
           ...(typeof resp.email === 'string' ? { email: resp.email } : {}),
         });
+      }
+
+      // Workspace connect prompt — LLM emits `connect_workspace` as a UI
+      // directive; the client renders the actual OAuth popup button. The
+      // response payload has no auth values (see apps/agent/src/tools/
+      // connectWorkspace.ts).
+      if (resp?.status === 'oauth_prompted' && fr.name === 'connect_workspace') {
+        if (pendingText.trim()) {
+          out.push({ kind: 'text', text: pendingText });
+          pendingText = '';
+        }
+        out.push({ kind: 'workspace' });
       }
     }
   }

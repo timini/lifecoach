@@ -10,6 +10,7 @@ import {
   ChoicePrompt,
   Input,
   LocationBadge,
+  WorkspacePrompt,
 } from '@lifecoach/ui';
 import { Renderer, library as openUILibrary } from '@lifecoach/ui/openui';
 import { UserStateMachine } from '@lifecoach/user-state';
@@ -29,6 +30,7 @@ import {
   requestBrowserLocation,
 } from '../lib/geolocation';
 import { type AssistantElement, parseSseAssistant } from '../lib/sse';
+import { connectWorkspace } from '../lib/workspace';
 
 interface UserMessage {
   id: string;
@@ -235,6 +237,26 @@ export function ChatWindow() {
     }
   }
 
+  async function handleConnectWorkspace() {
+    if (!user) return;
+    try {
+      await connectWorkspace(user);
+      // Nudge the agent's next turn so the LLM sees the state flip and
+      // can fulfil the original request.
+      void sendText('Connected — try that again please.');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: messageId(),
+          role: 'assistant',
+          elements: [{ kind: 'text', text: `workspace connect failed: ${msg}` }],
+        },
+      ]);
+    }
+  }
+
   async function handleGoogleSignIn() {
     try {
       const upgraded = await linkWithGoogle();
@@ -333,6 +355,7 @@ export function ChatWindow() {
           onResendVerification={() => {
             if (user.email) void handleEmailSignIn(user.email);
           }}
+          onConnectWorkspace={() => void handleConnectWorkspace()}
         />
       </div>
       <div className="flex items-center justify-end">
@@ -392,6 +415,7 @@ export function ChatWindow() {
             onChoice={submitChoice}
             onGoogleSignIn={() => void handleGoogleSignIn()}
             onEmailSignIn={handleEmailSignIn}
+            onConnectWorkspace={() => void handleConnectWorkspace()}
           />
         );
       })}
@@ -412,6 +436,7 @@ function AssistantGroup({
   onChoice,
   onGoogleSignIn,
   onEmailSignIn,
+  onConnectWorkspace,
 }: {
   msgId: string;
   elements: AssistantElement[];
@@ -419,6 +444,7 @@ function AssistantGroup({
   onChoice: (msgId: string, answer: string) => void;
   onGoogleSignIn: () => void;
   onEmailSignIn: (email: string) => void;
+  onConnectWorkspace: () => void;
 }) {
   return (
     <>
@@ -449,6 +475,9 @@ function AssistantGroup({
               onEmail={onEmailSignIn}
             />
           );
+        }
+        if (el.kind === 'workspace') {
+          return <WorkspacePrompt key={elKey} disabled={answered} onConnect={onConnectWorkspace} />;
         }
         // Legacy tool-call choice path (still supported as fallback).
         return (

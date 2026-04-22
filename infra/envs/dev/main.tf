@@ -57,6 +57,23 @@ module "mem0_secret" {
   depends_on = [module.apis, module.agent]
 }
 
+# --- GWS OAuth client secret (Workspace code exchange) -------------------
+# Reuses the same OAuth client already provisioned for Firebase Google
+# sign-in (same client_id/client_secret tfvars). The agent service reads
+# the secret to exchange the browser's auth code for refresh tokens.
+
+module "gws_oauth_secret" {
+  source        = "../../modules/gws-oauth-secret"
+  project_id    = var.project_id
+  client_secret = var.google_client_secret
+
+  accessor_members = [
+    "serviceAccount:${module.agent.service_account_email}",
+  ]
+
+  depends_on = [module.apis, module.agent]
+}
+
 # --- GCS bucket for per-user data (user.yaml, goal_updates.json) ---------
 
 module "user_bucket" {
@@ -107,6 +124,9 @@ module "agent" {
     # Name follows the gcs-user-bucket module's convention so we don't have
     # to pass the output (avoids a cycle between agent and user_bucket).
     USER_BUCKET = "lifecoach-users-${var.environment}-${var.project_id}"
+    # Google Workspace OAuth — client ID is public; secret is mounted via
+    # Secret Manager in `secret_env` below.
+    GWS_OAUTH_CLIENT_ID = module.firebase_auth.google_client_id
   }
 
   project_roles = [
@@ -115,9 +135,20 @@ module "agent" {
     "roles/logging.logWriter",
   ]
 
-  secret_env = var.mem0_enabled ? {
-    MEM0_API_KEY = { secret_id = "MEM0_API_KEY", version = "latest" }
-  } : {}
+  # Secret IDs used here are created by the *_secret modules that depend on
+  # this agent module. Referencing the literal name breaks the cycle (see
+  # mem0-secret for the same pattern).
+  secret_env = merge(
+    var.mem0_enabled ? {
+      MEM0_API_KEY = { secret_id = "MEM0_API_KEY", version = "latest" }
+    } : {},
+    {
+      GWS_OAUTH_CLIENT_SECRET = {
+        secret_id = "GWS_OAUTH_CLIENT_SECRET"
+        version   = "latest"
+      }
+    },
+  )
 
   allow_unauthenticated = true
 
@@ -186,4 +217,8 @@ output "firebase_auth_domain" {
 
 output "firebase_app_id" {
   value = module.firebase_auth.firebase_app_id
+}
+
+output "google_client_id" {
+  value = module.firebase_auth.google_client_id
 }

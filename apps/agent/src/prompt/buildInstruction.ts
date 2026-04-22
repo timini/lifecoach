@@ -30,6 +30,36 @@ export interface InstructionContext {
 const PERSONA_HEADER =
   'You are Lifecoach — a warm, supportive life coach. Chat like a friend texting, not a robot writing an email.';
 
+const WORKSPACE_CHEATSHEET = `
+WORKSPACE (via call_workspace({service, resource, method, params})):
+Services available: gmail, calendar, tasks.
+The application handles authentication — you never see tokens.
+
+Gmail:
+  messages.list    params:{q,maxResults}                           — search
+  messages.get     params:{id}                                     — full message
+  messages.send    params:{raw:<base64 RFC822>}                    — send
+  messages.modify  params:{id,addLabelIds,removeLabelIds}
+  messages.trash   params:{id}
+
+Calendar:
+  events.list      params:{calendarId:'primary',timeMin,timeMax,q,singleEvents:true,orderBy:'startTime',maxResults}
+  events.insert    params:{calendarId:'primary',requestBody:{summary,start:{dateTime,timeZone},end:{dateTime,timeZone},description,location,attendees}}
+  events.patch     params:{calendarId:'primary',eventId,requestBody:{...partial}}
+  events.delete    params:{calendarId:'primary',eventId}
+
+Tasks:
+  tasklists.list   params:{}                                       — returns {items:[{id,title}]}
+  tasks.list       params:{tasklist,showCompleted:false,maxResults}
+  tasks.insert     params:{tasklist,requestBody:{title,notes,due:RFC3339}}
+  tasks.patch      params:{tasklist,task,requestBody:{status:'completed'}}
+  tasks.delete     params:{tasklist,task}
+
+Gmail search syntax: from:, to:, subject:, newer_than:7d, label:INBOX, is:unread, has:attachment.
+Times: RFC3339 with the user's timezone (see TIME block above).
+If call_workspace returns {status:'error',code:'scope_required'}, call connect_workspace to prompt the user.
+`.trim();
+
 const STYLE_RULES = `
 STYLE:
 - Keep replies short. 1–3 sentences unless the user asks for depth.
@@ -141,6 +171,10 @@ export function buildInstruction(ctx: InstructionContext): string {
     openUISystemPrompt,
     `USER_STATE: ${ctx.userState}`,
     `STATE_DIRECTIVE: ${directive}`,
+    // Workspace cheat-sheet only appears when the user has actually
+    // connected Workspace — otherwise the LLM has no call_workspace tool
+    // to use, and the cheat-sheet would be noise.
+    ctx.userState === 'workspace_connected' ? WORKSPACE_CHEATSHEET : '',
     formatTime(ctx),
     formatLocation(ctx),
     formatWeather(ctx),

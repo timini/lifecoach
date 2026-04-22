@@ -1,5 +1,6 @@
 'use client';
 
+import type { WorkspaceStatus } from '@lifecoach/shared-types';
 import {
   Button,
   ChatShell,
@@ -27,6 +28,7 @@ import {
   getLocationPermissionState,
   requestBrowserLocation,
 } from '../../lib/geolocation';
+import { connectWorkspace, fetchWorkspaceStatus, revokeWorkspace } from '../../lib/workspace';
 
 type ProfileState =
   | { status: 'loading' }
@@ -51,6 +53,12 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<'connections' | 'profile' | 'goals' | 'account'>(
     'connections',
   );
+  const [workspace, setWorkspace] = useState<WorkspaceStatus>({
+    connected: false,
+    scopes: [],
+    grantedAt: null,
+  });
+  const [workspaceBusy, setWorkspaceBusy] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -116,7 +124,41 @@ export default function SettingsPage() {
     if (!user) return;
     void loadProfile(user);
     void loadGoals(user);
+    void (async () => {
+      try {
+        const status = await fetchWorkspaceStatus(user);
+        setWorkspace(status);
+      } catch {
+        // Missing or 4xx — treat as disconnected; row will say Not connected.
+      }
+    })();
   }, [user, loadProfile, loadGoals]);
+
+  async function handleConnectWorkspace() {
+    if (!user) return;
+    setWorkspaceBusy(true);
+    try {
+      const status = await connectWorkspace(user);
+      setWorkspace(status);
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  }
+
+  async function handleRevokeWorkspace() {
+    if (!user) return;
+    setWorkspaceBusy(true);
+    try {
+      const status = await revokeWorkspace(user);
+      setWorkspace(status);
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  }
 
   async function handleProfileChange(next: JsonValue) {
     if (!user) return;
@@ -297,12 +339,36 @@ export default function SettingsPage() {
           <ConnectionRow
             icon={<IconDot />}
             label="Google Workspace"
-            status="Not connected"
-            statusTone="muted"
+            status={
+              workspace.connected
+                ? `Connected — Gmail, Calendar, Tasks${
+                    workspace.grantedAt
+                      ? ` · since ${new Date(workspace.grantedAt).toLocaleDateString()}`
+                      : ''
+                  }`
+                : 'Not connected — read & send email, manage calendar and tasks'
+            }
+            statusTone={workspace.connected ? 'success' : 'muted'}
             action={
-              <Button size="sm" variant="subtle" disabled title="Coming in Phase 10">
-                Connect
-              </Button>
+              workspace.connected ? (
+                <Button
+                  size="sm"
+                  variant="subtle"
+                  onClick={() => void handleRevokeWorkspace()}
+                  disabled={workspaceBusy}
+                >
+                  Revoke
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  onClick={() => void handleConnectWorkspace()}
+                  disabled={workspaceBusy || !googleLinked}
+                  title={googleLinked ? undefined : 'Sign in with Google first'}
+                >
+                  Connect
+                </Button>
+              )
             }
           />
           <ConnectionRow
