@@ -130,6 +130,10 @@ export interface CreateCallWorkspaceToolDeps {
     exitCode: number | null;
     stdoutBytes: number;
     outcome: 'ok' | CallWorkspaceResultErr['code'];
+    /** First ~500 chars of stderr, token-redacted. Populated on error only. */
+    stderrSample?: string;
+    /** First ~500 chars of stdout, token-redacted. Populated on error only. */
+    stdoutSample?: string;
   }) => void;
 }
 
@@ -300,7 +304,10 @@ export function createCallWorkspaceTool(deps: CreateCallWorkspaceToolDeps): Func
       const message =
         code === 'scope_required'
           ? 'Workspace access expired. Ask the user to reconnect in Settings.'
-          : sanitiseStderr(res.stderr);
+          : sanitiseStderr(res.stderr) || sanitiseStderr(res.stdout);
+      // On error, include a small sample of stderr + stdout in the
+      // structured log so we can debug without re-running with new code.
+      // Both are token-redacted via sanitiseStderr.
       log({
         tool: 'call_workspace',
         service: args.service,
@@ -309,8 +316,23 @@ export function createCallWorkspaceTool(deps: CreateCallWorkspaceToolDeps): Func
         exitCode: res.code,
         stdoutBytes: Buffer.byteLength(res.stdout, 'utf8'),
         outcome: code,
+        stderrSample: sampleForLog(res.stderr),
+        stdoutSample: sampleForLog(res.stdout),
       });
       return { status: 'error', code, message, exitCode: res.code };
     },
   });
+}
+
+/**
+ * Token-redacted sample of up to 500 chars. Strip newlines so the sample
+ * fits on one log line. Used in the error-path log only; never for happy
+ * paths (we don't want the full Gmail response body in logs).
+ */
+function sampleForLog(buf: string): string {
+  if (!buf) return '';
+  return buf
+    .replace(/ya29\.[^\s]+/g, '[redacted]')
+    .replace(/\s+/g, ' ')
+    .slice(0, 500);
 }
