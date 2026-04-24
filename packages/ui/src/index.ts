@@ -38,6 +38,7 @@ export {
 export { Input, type InputProps } from './components/input';
 export { LocationBadge, type LocationBadgeProps } from './components/location-badge';
 export { RadioGroup, RadioGroupItem } from './components/radio-group';
+export { ToolCallBadge, type ToolCallBadgeProps } from './components/tool-call-badge';
 export { WorkspacePrompt, type WorkspacePromptProps } from './components/workspace-prompt';
 export { YamlTree, type YamlTreeProps } from './components/yaml-tree';
 export { cn } from './lib/utils';
