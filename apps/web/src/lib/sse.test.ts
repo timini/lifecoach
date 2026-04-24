@@ -250,4 +250,159 @@ describe('labelForToolCall', () => {
   it('falls back to `using <name>` for unknown tools', () => {
     expect(labelForToolCall('something_new', {})).toBe('using something_new');
   });
+
+  it('covers every tool-name branch', () => {
+    expect(labelForToolCall('ask_single_choice_question', {})).toBe('showing a choice');
+    expect(labelForToolCall('ask_multiple_choice_question', {})).toBe('showing a choice');
+    expect(labelForToolCall('memory_save', {})).toBe('saving memory');
+    expect(labelForToolCall('memory_search', {})).toBe('recalling');
+    expect(labelForToolCall('google_search', {})).toBe('searching the web');
+  });
+
+  it('covers update_user_profile + log_goal_update fallbacks when args are missing', () => {
+    expect(labelForToolCall('update_user_profile', {})).toBe('remembering that');
+    expect(labelForToolCall('log_goal_update', {})).toBe('logging goal');
+  });
+
+  it('covers every call_workspace method verb + service fallback', () => {
+    expect(
+      labelForToolCall('call_workspace', { service: 'gmail', resource: 'messages', method: 'get' }),
+    ).toContain('reading');
+    expect(
+      labelForToolCall('call_workspace', {
+        service: 'gmail',
+        resource: 'messages',
+        method: 'send',
+      }),
+    ).toContain('sending');
+    expect(
+      labelForToolCall('call_workspace', {
+        service: 'calendar',
+        resource: 'events',
+        method: 'patch',
+      }),
+    ).toContain('updating');
+    expect(
+      labelForToolCall('call_workspace', {
+        service: 'unknown-service',
+        resource: 'x',
+        method: 'weird',
+      }),
+    ).toContain('using workspace');
+    // No args at all — still produces a sane label.
+    expect(labelForToolCall('call_workspace', undefined)).toContain('workspace');
+  });
+});
+
+describe('parseSseBlock — extra branches', () => {
+  function blockFor(event: unknown): string {
+    return `data: ${JSON.stringify(event)}\n\n`;
+  }
+
+  it('does not append empty text chunks', () => {
+    const ops = parseSseBlock(
+      blockFor({ author: 'lifecoach', content: { parts: [{ text: '' }] } }),
+    );
+    expect(ops).toEqual([]);
+  });
+
+  it('handles a functionCall with no id by falling back to name', () => {
+    const ops = parseSseBlock(
+      blockFor({
+        author: 'lifecoach',
+        content: { parts: [{ functionCall: { name: 'log_goal_update', args: {} } }] },
+      }),
+    );
+    expect(ops[0]).toMatchObject({
+      op: 'push',
+      element: { kind: 'tool-call', id: 'log_goal_update' },
+    });
+  });
+
+  it('pushes an auth element from auth_user functionResponse', () => {
+    const ops = parseSseBlock(
+      blockFor({
+        author: 'lifecoach',
+        content: {
+          parts: [
+            {
+              functionResponse: {
+                id: 'a1',
+                name: 'auth_user',
+                response: { status: 'auth_prompted', mode: 'google' },
+              },
+            },
+          ],
+        },
+      }),
+    );
+    expect(ops).toContainEqual({ op: 'push', element: { kind: 'auth', mode: 'google' } });
+  });
+
+  it('pushes a workspace element from connect_workspace functionResponse', () => {
+    const ops = parseSseBlock(
+      blockFor({
+        author: 'lifecoach',
+        content: {
+          parts: [
+            {
+              functionResponse: {
+                id: 'w1',
+                name: 'connect_workspace',
+                response: { status: 'oauth_prompted' },
+              },
+            },
+          ],
+        },
+      }),
+    );
+    expect(ops).toContainEqual({ op: 'push', element: { kind: 'workspace' } });
+  });
+
+  it('pushes a choice element from ask_multiple_choice_question response', () => {
+    const ops = parseSseBlock(
+      blockFor({
+        author: 'lifecoach',
+        content: {
+          parts: [
+            {
+              functionResponse: {
+                id: 'c1',
+                name: 'ask_multiple_choice_question',
+                response: {
+                  status: 'shown',
+                  question: 'pick some',
+                  options: ['a', 'b'],
+                },
+              },
+            },
+          ],
+        },
+      }),
+    );
+    expect(ops).toContainEqual({
+      op: 'push',
+      element: { kind: 'choice', single: false, question: 'pick some', options: ['a', 'b'] },
+    });
+  });
+
+  it('treats scope_required responses as ok (so the pill is not error-styled)', () => {
+    const ops = parseSseBlock(
+      blockFor({
+        author: 'lifecoach',
+        content: {
+          parts: [
+            {
+              functionResponse: {
+                id: 't1',
+                name: 'call_workspace',
+                response: { status: 'error', code: 'scope_required' },
+              },
+            },
+          ],
+        },
+      }),
+    );
+    expect(ops).toContainEqual({ op: 'finish-tool-call', id: 't1', ok: true });
+  });
 });

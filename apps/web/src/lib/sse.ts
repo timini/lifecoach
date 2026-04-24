@@ -217,9 +217,12 @@ export function parseSseBlock(block: string): AssistantOp[] {
         }
       | undefined;
 
-    // Mark the running pill done. ok=false when the response shape
-    // indicates an error (has `code` field or status === 'error').
-    const errored = resp?.status === 'error' || (resp?.code && resp.code !== 'scope_required');
+    // Mark the running pill done. ok=false only for real errors.
+    // `scope_required` is a recoverable signal — the LLM will follow up
+    // with a connect_workspace widget — so we close the pill cleanly
+    // rather than flashing red.
+    const isScopeRequired = resp?.code === 'scope_required';
+    const errored = !isScopeRequired && (resp?.status === 'error' || Boolean(resp?.code));
     out.push({
       op: 'finish-tool-call',
       id: fr.id ?? fr.name ?? 'unknown',
