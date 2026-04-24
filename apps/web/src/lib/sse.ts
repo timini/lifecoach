@@ -3,6 +3,10 @@
  *   - { kind: 'text', text } — concatenated text parts from lifecoach events
  *   - { kind: 'choice', single, question, options } — surfaced by the
  *     ask_single/multiple_choice_question tool's response
+ *   - { kind: 'tool-call', id, name, label, done, ok? } — streaming marker
+ *     for a tool invocation, surfaced to the UI as a pill badge so the
+ *     user sees what the coach is doing while it runs. Replaces the silent
+ *     "thinking..." window.
  *
  * The previous shape (parseSseAssistantText → string) is still exported as
  * a thin wrapper so older callers / tests don't break.
@@ -12,7 +16,19 @@ export type AssistantElement =
   | { kind: 'text'; text: string }
   | { kind: 'choice'; single: boolean; question: string; options: string[] }
   | { kind: 'auth'; mode: 'google' | 'email'; email?: string }
-  | { kind: 'workspace' };
+  | { kind: 'workspace' }
+  | {
+      kind: 'tool-call';
+      id: string;
+      /** Internal tool name, for state matching (functionCall.id). */
+      name: string;
+      /** User-facing label, e.g. "checking your gmail · messages.list". */
+      label: string;
+      /** true once the matching functionResponse has arrived. */
+      done: boolean;
+      /** Only meaningful when done=true. Undefined while running. */
+      ok?: boolean;
+    };
 
 export function parseSseAssistant(raw: string): AssistantElement[] {
   const out: AssistantElement[] = [];
@@ -121,13 +137,214 @@ export function parseSseAssistantText(raw: string): string {
     .join('');
 }
 
+/**
+ * A delta reducer for streaming SSE. Feed it one complete `\n\n`-separated
+ * block at a time (from a stream reader) and it returns zero or more
+ * operations to apply to the current in-progress assistant message.
+ *
+ * The operations handle:
+ *   - appending text as model parts stream in
+ *   - pushing a `tool-call` element when a functionCall fires (done=false)
+ *   - flipping that same tool-call to done=true when its functionResponse
+ *     arrives (matched by fc.id)
+ *   - pushing choice / auth / workspace elements from function responses
+ */
+export type AssistantOp =
+  | { op: 'append-text'; text: string }
+  | { op: 'push'; element: AssistantElement }
+  | { op: 'finish-tool-call'; id: string; ok: boolean };
+
+export function parseSseBlock(block: string): AssistantOp[] {
+  const out: AssistantOp[] = [];
+  if (!block.trim()) return out;
+  const dataLine = block.split('\n').find((line) => line.startsWith('data: '));
+  if (!dataLine) return out;
+  const payload = dataLine.slice('data: '.length);
+  if (!payload || payload === '{}') return out;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(payload);
+  } catch {
+    return out;
+  }
+  if (!isAgentEvent(parsed)) return out;
+
+  const parts = parsed.content?.parts ?? [];
+
+  // Text chunks from the lifecoach author stream in throughout the turn.
+  if (parsed.author === 'lifecoach') {
+    for (const part of parts) {
+      if (typeof part.text === 'string' && part.text.length > 0) {
+        out.push({ op: 'append-text', text: part.text });
+      }
+    }
+  }
+
+  // functionCall events — emitted when the model decides to run a tool.
+  // We push a tool-call element with done=false so the UI can show a
+  // running pill.
+  for (const part of parts) {
+    const fc = part.functionCall;
+    if (!fc || typeof fc.name !== 'string') continue;
+    out.push({
+      op: 'push',
+      element: {
+        kind: 'tool-call',
+        id: fc.id ?? fc.name,
+        name: fc.name,
+        label: labelForToolCall(fc.name, fc.args),
+        done: false,
+      },
+    });
+  }
+
+  // functionResponse events — one per tool completion. We flip the
+  // matching in-progress pill to done=true, AND for UI-directive tools
+  // (choice / auth / workspace) also push the widget element.
+  for (const part of parts) {
+    const fr = part.functionResponse;
+    if (!fr) continue;
+    const resp = fr.response as
+      | {
+          status?: string;
+          kind?: string;
+          question?: string;
+          options?: unknown;
+          mode?: string;
+          email?: string;
+          code?: string;
+        }
+      | undefined;
+
+    // Mark the running pill done. ok=false when the response shape
+    // indicates an error (has `code` field or status === 'error').
+    const errored = resp?.status === 'error' || (resp?.code && resp.code !== 'scope_required');
+    out.push({
+      op: 'finish-tool-call',
+      id: fr.id ?? fr.name ?? 'unknown',
+      ok: !errored,
+    });
+
+    // Choice pickers.
+    if (
+      resp?.status === 'shown' &&
+      (fr.name === 'ask_single_choice_question' || fr.name === 'ask_multiple_choice_question') &&
+      typeof resp.question === 'string' &&
+      Array.isArray(resp.options) &&
+      resp.options.every((o) => typeof o === 'string')
+    ) {
+      out.push({
+        op: 'push',
+        element: {
+          kind: 'choice',
+          single: fr.name === 'ask_single_choice_question',
+          question: resp.question,
+          options: resp.options as string[],
+        },
+      });
+      continue;
+    }
+
+    // Auth prompt.
+    if (
+      resp?.status === 'auth_prompted' &&
+      fr.name === 'auth_user' &&
+      (resp.mode === 'google' || resp.mode === 'email')
+    ) {
+      out.push({
+        op: 'push',
+        element: {
+          kind: 'auth',
+          mode: resp.mode,
+          ...(typeof resp.email === 'string' ? { email: resp.email } : {}),
+        },
+      });
+    }
+
+    // Workspace connect prompt.
+    if (resp?.status === 'oauth_prompted' && fr.name === 'connect_workspace') {
+      out.push({ op: 'push', element: { kind: 'workspace' } });
+    }
+  }
+
+  return out;
+}
+
+/**
+ * User-facing label for a running tool call. Designed to read as "the
+ * coach is doing X" — short, specific, no jargon.
+ */
+export function labelForToolCall(name: string, args: unknown): string {
+  const a = (args ?? {}) as Record<string, unknown>;
+  switch (name) {
+    case 'call_workspace': {
+      const service = typeof a.service === 'string' ? a.service : 'workspace';
+      const resource = typeof a.resource === 'string' ? a.resource : '';
+      const method = typeof a.method === 'string' ? a.method : '';
+      const verb =
+        method === 'list'
+          ? 'checking'
+          : method === 'get'
+            ? 'reading'
+            : method === 'send'
+              ? 'sending'
+              : method === 'insert' || method === 'create'
+                ? 'creating'
+                : method === 'patch' || method === 'modify' || method === 'update'
+                  ? 'updating'
+                  : method === 'delete' || method === 'trash'
+                    ? 'removing'
+                    : 'using';
+      const subject =
+        service === 'gmail'
+          ? 'your gmail'
+          : service === 'calendar'
+            ? 'your calendar'
+            : service === 'tasks'
+              ? 'your tasks'
+              : 'workspace';
+      return `${verb} ${subject}${resource ? ` · ${resource}.${method || '*'}` : ''}`;
+    }
+    case 'update_user_profile': {
+      const path = typeof a.path === 'string' ? a.path : '';
+      return path ? `remembering ${path}` : 'remembering that';
+    }
+    case 'log_goal_update': {
+      const goal = typeof a.goal === 'string' ? a.goal : '';
+      return goal ? `logging goal: ${goal}` : 'logging goal';
+    }
+    case 'ask_single_choice_question':
+    case 'ask_multiple_choice_question':
+      return 'showing a choice';
+    case 'auth_user':
+      return 'offering sign-in';
+    case 'connect_workspace':
+      return 'offering workspace connect';
+    case 'memory_save':
+      return 'saving memory';
+    case 'memory_search':
+      return 'recalling';
+    case 'google_search':
+      return 'searching the web';
+    default:
+      return `using ${name}`;
+  }
+}
+
 interface AgentEvent {
   author?: string;
   content?: { parts?: Array<AgentPart> };
 }
 interface AgentPart {
   text?: string;
+  functionCall?: {
+    id?: string;
+    name?: string;
+    args?: unknown;
+  };
   functionResponse?: {
+    id?: string;
     name?: string;
     response?: unknown;
   };

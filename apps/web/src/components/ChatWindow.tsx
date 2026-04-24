@@ -10,6 +10,7 @@ import {
   ChoicePrompt,
   Input,
   LocationBadge,
+  ToolCallBadge,
   WorkspacePrompt,
 } from '@lifecoach/ui';
 import { Renderer, library as openUILibrary } from '@lifecoach/ui/openui';
@@ -29,7 +30,7 @@ import {
   getLocationPermissionState,
   requestBrowserLocation,
 } from '../lib/geolocation';
-import { type AssistantElement, parseSseAssistant } from '../lib/sse';
+import { type AssistantElement, type AssistantOp, parseSseBlock } from '../lib/sse';
 import { connectWorkspace } from '../lib/workspace';
 
 interface UserMessage {
@@ -168,6 +169,11 @@ export function ChatWindow() {
     setBusy(true);
     setMessages((prev) => [...prev, { id: messageId(), role: 'user', text }]);
 
+    const assistantId = messageId();
+    // Seed an empty assistant message immediately so streaming ops can
+    // update it in place instead of racing to create it.
+    setMessages((prev) => [...prev, { id: assistantId, role: 'assistant', elements: [] }]);
+
     try {
       const idToken = await user.getIdToken();
       const res = await fetch('/api/chat', {
@@ -184,33 +190,94 @@ export function ChatWindow() {
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         }),
       });
-      const raw = await res.text();
-      const elements = parseSseAssistant(raw);
-      if (elements.length === 0) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: messageId(),
-            role: 'assistant',
-            elements: [{ kind: 'text', text: '(no response — check agent logs)' }],
-          },
-        ]);
+
+      if (!res.body) {
+        // Fallback: no streaming body (should never happen on modern
+        // browsers) — degrade to the old blob-parse path.
+        const raw = await res.text();
+        for (const block of raw.split(/\n\n+/)) {
+          applyOps(assistantId, parseSseBlock(block));
+        }
       } else {
-        setMessages((prev) => [...prev, { id: messageId(), role: 'assistant', elements }]);
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          // Split on blank-line SSE separators; keep trailing partial.
+          const blocks = buffer.split(/\n\n/);
+          buffer = blocks.pop() ?? '';
+          for (const block of blocks) {
+            applyOps(assistantId, parseSseBlock(block));
+          }
+        }
+        // Flush any remaining buffered block.
+        if (buffer.trim()) applyOps(assistantId, parseSseBlock(buffer));
       }
+
+      // If the final assistant message has no rendered content, swap in
+      // a terse placeholder so the user isn't staring at an empty turn.
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.id !== assistantId || m.role !== 'assistant') return m;
+          const visible = m.elements.some(
+            (el) => el.kind !== 'tool-call' || (el.kind === 'tool-call' && el.done && el.ok),
+          );
+          if (visible) return m;
+          return {
+            ...m,
+            elements: [{ kind: 'text', text: '(no response — check agent logs)' }],
+          };
+        }),
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: messageId(),
-          role: 'assistant',
-          elements: [{ kind: 'text', text: `error: ${msg}` }],
-        },
-      ]);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantId && m.role === 'assistant'
+            ? { ...m, elements: [...m.elements, { kind: 'text', text: `error: ${msg}` }] }
+            : m,
+        ),
+      );
     } finally {
       setBusy(false);
     }
+  }
+
+  /**
+   * Applies a batch of streaming SSE operations to the assistant message
+   * with the given id. Safe to call inside React state setters because
+   * `setMessages` takes a pure-function updater.
+   */
+  function applyOps(msgId: string, ops: AssistantOp[]) {
+    if (ops.length === 0) return;
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== msgId || m.role !== 'assistant') return m;
+        let elements: AssistantElement[] = m.elements;
+        for (const op of ops) {
+          if (op.op === 'append-text') {
+            const last = elements[elements.length - 1];
+            if (last?.kind === 'text') {
+              elements = [...elements.slice(0, -1), { kind: 'text', text: last.text + op.text }];
+            } else {
+              elements = [...elements, { kind: 'text', text: op.text }];
+            }
+          } else if (op.op === 'push') {
+            elements = [...elements, op.element];
+          } else if (op.op === 'finish-tool-call') {
+            elements = elements.map((el) =>
+              el.kind === 'tool-call' && el.id === op.id && !el.done
+                ? { ...el, done: true, ok: op.ok }
+                : el,
+            );
+          }
+        }
+        return { ...m, elements };
+      }),
+    );
   }
 
   function submitChoice(mid: string, answer: string) {
@@ -419,10 +486,28 @@ export function ChatWindow() {
           />
         );
       })}
-      {busy && <div className="text-sm italic text-muted-foreground">thinking…</div>}
+      {busy && lastAssistantHasNoContent(messages) && (
+        <div className="text-sm italic text-muted-foreground">thinking…</div>
+      )}
       <div ref={endRef} />
     </ChatShell>
   );
+}
+
+/**
+ * True when the most recent assistant message has zero rendered elements —
+ * i.e., we've seeded an empty bubble but nothing has streamed yet. Used to
+ * gate the "thinking…" placeholder so it only shows during the initial
+ * silent window, not alongside tool-call badges.
+ */
+function lastAssistantHasNoContent(messages: Message[]): boolean {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (!m) continue;
+    if (m.role === 'assistant') return m.elements.length === 0;
+    if (m.role === 'user') return true;
+  }
+  return true;
 }
 
 // Detects OpenUI Lang tags in assistant text. UI-2 MVP: just <Picker/>.
@@ -478,6 +563,9 @@ function AssistantGroup({
         }
         if (el.kind === 'workspace') {
           return <WorkspacePrompt key={elKey} disabled={answered} onConnect={onConnectWorkspace} />;
+        }
+        if (el.kind === 'tool-call') {
+          return <ToolCallBadge key={elKey} label={el.label} done={el.done} ok={el.ok} />;
         }
         // Legacy tool-call choice path (still supported as fallback).
         return (
