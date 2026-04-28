@@ -118,6 +118,12 @@ module "agent" {
   service_name = "lifecoach-agent"
   image        = "${module.artifact_registry.repository_url}/lifecoach-agent:${var.image_tag}"
 
+  # Keep one instance warm so dev users don't eat the ~6s ADK + ~30s
+  # Vertex/auth-handshake cold-start tax on the first chat after idle.
+  # The ADK + Firebase Admin + Vertex SDK boot is heavy (~1s); the first
+  # LLM call against a cold instance is what blows the perceived latency.
+  min_instances = 1
+
   env = {
     GOOGLE_GENAI_USE_VERTEXAI = "true"
     GOOGLE_CLOUD_PROJECT      = var.project_id
@@ -169,6 +175,11 @@ module "web" {
   region       = var.region
   service_name = "lifecoach-web"
   image        = "${module.artifact_registry.repository_url}/lifecoach-web:${var.image_tag}"
+
+  # Pair with the agent's min_instances=1 so the first reload after idle
+  # doesn't hit a cold Next.js server. Next start-up is lighter (~2s) but
+  # still adds to the perceived "warming up" delay.
+  min_instances = 1
 
   container_port = 3000
 
