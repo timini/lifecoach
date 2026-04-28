@@ -7,6 +7,12 @@ import type { Holiday } from '../context/holidays.js';
 import type { Memory } from '../context/memory.js';
 import type { NearbyPlace } from '../context/places.js';
 import type { Coord, Weather } from '../context/weather.js';
+import {
+  type Practice,
+  getDisabledPractices,
+  getEnabledPractices,
+  practiceStateFor,
+} from '../practices/index.js';
 
 export interface LocationCtx {
   city?: string;
@@ -419,6 +425,27 @@ function formatDay(
   return line;
 }
 
+function formatEnabledPractices(ctx: InstructionContext): string[] {
+  const enabled = getEnabledPractices(ctx.userProfile);
+  return enabled.map((p) => {
+    if (!p.directive) return '';
+    const out = p.directive({ ...ctx, practiceState: practiceStateFor(ctx.userProfile, p.id) });
+    return out ?? '';
+  });
+}
+
+function formatAvailablePractices(ctx: InstructionContext): string {
+  const disabled = getDisabledPractices(ctx.userProfile).filter(
+    (p): p is Practice & { offerHint: string } => Boolean(p.offerHint),
+  );
+  if (disabled.length === 0) return '';
+  const lines = disabled.map((p) => `- ${p.label}: ${p.offerHint}`).join('\n');
+  return `AVAILABLE_PRACTICES (not yet enabled):
+${lines}
+
+If a moment naturally fits one of these, ask the user (single-choice yes/no via ask_single_choice_question) whether they'd like to enable it. On "yes", call update_user_profile with path="practices.<id>.enabled" value="true" and continue normally. Don't pitch unprompted; once per session at most.`;
+}
+
 function formatRecentGoals(ctx: InstructionContext): string {
   if (!ctx.recentGoalUpdates || ctx.recentGoalUpdates.length === 0) return '';
   const lines = ctx.recentGoalUpdates
@@ -459,6 +486,12 @@ export function buildInstruction(ctx: InstructionContext): string {
     formatProfile(ctx),
     formatRecentGoals(ctx),
     formatMemories(ctx),
+    // Practices: enabled ones inject their own per-turn directive (some
+    // skip via null, e.g. evening_gratitude outside its window). Disabled
+    // ones surface a single combined "available" hint so the agent can
+    // offer to enable.
+    ...formatEnabledPractices(ctx),
+    formatAvailablePractices(ctx),
   ]
     .filter(Boolean)
     .join('\n\n');

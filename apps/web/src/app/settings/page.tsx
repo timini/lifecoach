@@ -29,6 +29,7 @@ import {
   requestBrowserLocation,
 } from '../../lib/geolocation';
 import { connectWorkspace, fetchWorkspaceStatus, revokeWorkspace } from '../../lib/workspace';
+import { PracticesSection } from './PracticesSection';
 
 type ProfileState =
   | { status: 'loading' }
@@ -50,9 +51,9 @@ export default function SettingsPage() {
   const [location, setLocation] = useState<BrowserLocation | null>(null);
   const [locationRequested, setLocationRequested] = useState(false);
   const [emailDraft, setEmailDraft] = useState('');
-  const [activeTab, setActiveTab] = useState<'connections' | 'profile' | 'goals' | 'account'>(
-    'connections',
-  );
+  const [activeTab, setActiveTab] = useState<
+    'connections' | 'practices' | 'profile' | 'goals' | 'account'
+  >('connections');
   const [workspace, setWorkspace] = useState<WorkspaceStatus>({
     connected: false,
     scopes: [],
@@ -259,6 +260,7 @@ export default function SettingsPage() {
 
   const tabs: Array<{ id: typeof activeTab; label: string }> = [
     { id: 'connections', label: 'Connections' },
+    { id: 'practices', label: 'Practices' },
     { id: 'profile', label: 'Profile' },
     { id: 'goals', label: 'Goal log' },
     { id: 'account', label: 'Account' },
@@ -395,6 +397,19 @@ export default function SettingsPage() {
             }
           />
         </section>
+      ) : null}
+
+      {activeTab === 'practices' ? (
+        profileState.status === 'loading' ? (
+          <div className="text-xs text-muted-foreground">Loading…</div>
+        ) : profileState.status === 'error' ? (
+          <div className="text-xs text-destructive">{profileState.message}</div>
+        ) : (
+          <PracticesSection
+            profile={profileState.profile}
+            onChange={(next) => void handleProfileChange(next)}
+          />
+        )
       ) : null}
 
       {activeTab === 'profile' ? (
