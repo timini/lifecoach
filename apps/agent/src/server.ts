@@ -8,6 +8,9 @@ import {
   claimsToFirebaseUserLike,
   verifyRequest,
 } from './auth.js';
+import type { AirQualityClient } from './context/airQuality.js';
+import type { CalendarDensityClient } from './context/calendarDensity.js';
+import type { HolidaysClient } from './context/holidays.js';
 import type { MemoryClient } from './context/memory.js';
 import type { PlacesClient } from './context/places.js';
 import type { Coord, WeatherClient } from './context/weather.js';
@@ -82,6 +85,9 @@ export interface CreateAppDeps {
   requireAuth?: boolean;
   weather?: WeatherClient;
   places?: PlacesClient;
+  airQuality?: AirQualityClient;
+  holidays?: HolidaysClient;
+  calendarDensity?: CalendarDensityClient;
   memory?: MemoryClient;
   profileStore?: UserProfileStore;
   goalUpdatesStore?: GoalUpdatesStore;
@@ -386,12 +392,34 @@ export function createApp(deps: CreateAppDeps): Express {
       ? UserStateMachine.fromFirebaseUser(claimsToFirebaseUserLike(claims, workspaceScopesGranted))
       : new UserStateMachine('anonymous');
 
-    // Fetch weather if location provided — cached for 30 min per region so
-    // it's cheap across many turns.
+    // Fetch weather + nearby places + air quality + holidays + calendar
+    // density in parallel. Each provider is cached per-region (or per-uid
+    // for calendar density), so identical inputs across turns hit memory
+    // rather than upstream. Calendar density is only fetched when the user
+    // is workspace_connected — otherwise we have no token to use.
     const coord: Coord | null = location ? { lat: location.lat, lng: location.lng } : null;
-    const [weather, nearbyPlaces] = await Promise.all([
-      coord && deps.weather ? deps.weather.get(coord) : Promise.resolve(null),
-      coord && deps.places ? deps.places.get(coord) : Promise.resolve(undefined),
+    // Country code from IANA timezone — not from coord (no reverse-geocode).
+    // Unmapped timezone → no holidays block (graceful).
+    const { tzToCountry } = await import('./context/holidays.js');
+    const countryCode = tzToCountry(timezone ?? null);
+    const wantCalendarDensity =
+      machine.current() === 'workspace_connected' && deps.calendarDensity && timezone;
+    const [weather, nearbyPlaces, airQuality, holidays, calendarDensity] = await Promise.all([
+      coord && deps.weather ? deps.weather.get(coord).catch(() => null) : Promise.resolve(null),
+      coord && deps.places
+        ? deps.places.get(coord).catch(() => undefined)
+        : Promise.resolve(undefined),
+      coord && deps.airQuality
+        ? deps.airQuality.get(coord).catch(() => null)
+        : Promise.resolve(null),
+      countryCode && deps.holidays
+        ? deps.holidays.next7Days(countryCode).catch(() => [])
+        : Promise.resolve([]),
+      wantCalendarDensity
+        ? (deps.calendarDensity as CalendarDensityClient)
+            .get({ uid: effectiveUserId, timezone: timezone as string, now: now() })
+            .catch(() => null)
+        : Promise.resolve(null),
     ]);
     const locationCtx: LocationCtx | null = coord ? { coord } : null;
 
@@ -442,6 +470,9 @@ export function createApp(deps: CreateAppDeps): Express {
       userState: machine.current(),
       location: locationCtx,
       weather,
+      airQuality,
+      holidays,
+      calendarDensity,
       userProfile,
       recentGoalUpdates,
       nearbyPlaces,
@@ -539,6 +570,10 @@ export function createApp(deps: CreateAppDeps): Express {
           authenticated: claims !== null,
           hasLocation: coord !== null,
           hasWeather: weather !== null,
+          airQualityAqi: airQuality?.aqi ?? null,
+          holidayCount: holidays?.length ?? 0,
+          todayEventCount: calendarDensity?.today.count ?? null,
+          tomorrowEventCount: calendarDensity?.tomorrow.count ?? null,
           hasProfile: userProfile !== undefined,
           nearbyPlacesCount: nearbyPlaces?.length ?? 0,
           memoriesCount: memories?.length ?? 0,
@@ -566,6 +601,9 @@ async function main(): Promise<void> {
     { Runner: RealRunner },
     { createRootAgent },
     { createWeatherClient },
+    { createAirQualityClient },
+    { createHolidaysClient },
+    { createCalendarDensityClient },
     { createPlacesClient },
     { createMem0MemoryClient, noopMemoryClient },
     { createUserProfileStore },
@@ -589,6 +627,9 @@ async function main(): Promise<void> {
     import('@google/adk'),
     import('./agent.js'),
     import('./context/weather.js'),
+    import('./context/airQuality.js'),
+    import('./context/holidays.js'),
+    import('./context/calendarDensity.js'),
     import('./context/places.js'),
     import('./context/memory.js'),
     import('./storage/userProfile.js'),
@@ -640,6 +681,8 @@ async function main(): Promise<void> {
   const firestore = new Firestore({ ignoreUndefinedProperties: true });
   const sessionService = createFirestoreSessionService({ firestore });
   const weather = createWeatherClient();
+  const airQuality = createAirQualityClient();
+  const holidays = createHolidaysClient();
 
   // Workspace OAuth + token store. Enabled only when client-id + secret are
   // plumbed through env (set by Terraform). If missing, the state never
@@ -658,6 +701,11 @@ async function main(): Promise<void> {
     : undefined;
   const workspaceTokensStore = workspaceOAuthClient
     ? createWorkspaceTokensStore({ firestore, oauthClient: workspaceOAuthClient })
+    : undefined;
+  // Calendar density: only meaningful when workspace tokens exist. Same store
+  // path as call_workspace, so refreshes share the same per-uid mutex.
+  const calendarDensity = workspaceTokensStore
+    ? createCalendarDensityClient({ store: workspaceTokensStore })
     : undefined;
   // Per-uid usage meta: chat counter + tier. Drives UsageStateMachine
   // policy in /chat (model selection + signup/pro nudges + upgrade tool).
@@ -759,6 +807,9 @@ async function main(): Promise<void> {
     verifyToken,
     requireAuth: process.env.REQUIRE_AUTH === 'true',
     weather,
+    airQuality,
+    holidays,
+    calendarDensity,
     places,
     memory,
     profileStore,

@@ -65,11 +65,194 @@ describe('buildInstruction', () => {
           { date: '2026-04-21', maxC: 22, minC: 12, code: 2 },
           { date: '2026-04-22', maxC: 20, minC: 11, code: 3 },
         ],
+        today: {
+          sunrise: '2026-04-21T06:32',
+          sunset: '2026-04-21T18:14',
+          daylightHours: 11.7,
+          uvIndexMax: 7.2,
+          rainChancePeak: { hour: '2026-04-21T15:00', probability: 60 },
+        },
       },
     });
     expect(s).toMatch(/Melbourne/);
     expect(s).toMatch(/18\.5/);
     expect(s).toMatch(/forecast/i);
+  });
+
+  it('renders a WEATHER_TODAY block with sunrise, sunset, UV (when high), and rain peak', () => {
+    const s = buildInstruction({
+      ...BASE,
+      location: { city: 'Melbourne', country: 'AU', coord: { lat: -37.81, lng: 144.96 } },
+      weather: {
+        current: { temperatureC: 18.5, windKph: 12, code: 2, time: '2026-04-21T09:00' },
+        forecast: [{ date: '2026-04-21', maxC: 22, minC: 12, code: 2 }],
+        today: {
+          sunrise: '2026-04-21T06:32',
+          sunset: '2026-04-21T18:14',
+          daylightHours: 11.7,
+          uvIndexMax: 7.2,
+          rainChancePeak: { hour: '2026-04-21T15:00', probability: 60 },
+        },
+      },
+    });
+    expect(s).toMatch(/WEATHER_TODAY:/);
+    expect(s).toMatch(/06:32 → 18:14/);
+    expect(s).toMatch(/11\.7h/);
+    expect(s).toMatch(/UV peak: 7\.2/);
+    expect(s).toMatch(/rain: 60% likely around 15:00/);
+  });
+
+  it('omits the rain line when no peak; omits the UV line when UV is low', () => {
+    const s = buildInstruction({
+      ...BASE,
+      location: { city: 'Melbourne', country: 'AU', coord: { lat: -37.81, lng: 144.96 } },
+      weather: {
+        current: { temperatureC: 12, windKph: 5, code: 1, time: '2026-04-21T09:00' },
+        forecast: [{ date: '2026-04-21', maxC: 14, minC: 8, code: 1 }],
+        today: {
+          sunrise: '2026-04-21T07:00',
+          sunset: '2026-04-21T17:30',
+          daylightHours: 10.5,
+          uvIndexMax: 3,
+          rainChancePeak: null,
+        },
+      },
+    });
+    expect(s).toMatch(/WEATHER_TODAY:/);
+    expect(s).not.toMatch(/UV peak/);
+    expect(s).not.toMatch(/rain:/);
+  });
+
+  it('renders the AIR_QUALITY block when AQI is moderate or worse', () => {
+    const s = buildInstruction({
+      ...BASE,
+      location: { city: 'Melbourne', country: 'AU', coord: { lat: -37.81, lng: 144.96 } },
+      airQuality: {
+        aqi: 85,
+        pm2_5: 35,
+        pm10: 50,
+        ozone: 80,
+        pollen: { alder: 0.2, grass: 0.5, ragweed: 0.1 },
+      },
+    });
+    expect(s).toMatch(/AIR_QUALITY:/);
+    expect(s).toMatch(/poor.*AQI 85/);
+    expect(s).not.toMatch(/pollen elevated/);
+  });
+
+  it('renders the AIR_QUALITY block when any pollen is elevated, even if AQI is low', () => {
+    const s = buildInstruction({
+      ...BASE,
+      location: { city: 'Melbourne', country: 'AU', coord: { lat: -37.81, lng: 144.96 } },
+      airQuality: {
+        aqi: 20,
+        pm2_5: 5,
+        pm10: 10,
+        ozone: 30,
+        pollen: { alder: 0.1, grass: 4.1, ragweed: 0.2 },
+      },
+    });
+    expect(s).toMatch(/AIR_QUALITY:/);
+    expect(s).toMatch(/pollen elevated:.*grass 4\.1/);
+    // AQI is fine — should NOT print the air-quality severity line.
+    expect(s).not.toMatch(/AQI 20/);
+  });
+
+  it('omits AIR_QUALITY entirely on a clear day (silence-on-clean)', () => {
+    const s = buildInstruction({
+      ...BASE,
+      location: { city: 'Melbourne', country: 'AU', coord: { lat: -37.81, lng: 144.96 } },
+      airQuality: {
+        aqi: 25,
+        pm2_5: 5,
+        pm10: 10,
+        ozone: 30,
+        pollen: { alder: 0.1, grass: 0.2, ragweed: 0.1 },
+      },
+    });
+    expect(s).not.toMatch(/AIR_QUALITY/);
+  });
+
+  it('renders the HOLIDAYS block when at least one falls in the next 7 days', () => {
+    const s = buildInstruction({
+      ...BASE,
+      holidays: [{ date: '2026-05-04', localName: 'Early May Bank Holiday', countryCode: 'GB' }],
+    });
+    expect(s).toMatch(/HOLIDAYS \(next 7 days/);
+    expect(s).toMatch(/2026-05-04: Early May Bank Holiday \(GB\)/);
+  });
+
+  it('omits HOLIDAYS when the list is empty', () => {
+    const s = buildInstruction({ ...BASE, holidays: [] });
+    expect(s).not.toMatch(/HOLIDAYS/);
+  });
+
+  it('renders CALENDAR_DENSITY when there are events, with next/last on today and first/last on tomorrow', () => {
+    const s = buildInstruction({
+      ...BASE,
+      calendarDensity: {
+        today: { count: 3, firstStart: '10:00', lastEnd: '17:30', nextStart: '14:00' },
+        tomorrow: { count: 2, firstStart: '09:00', lastEnd: '15:00' },
+      },
+    });
+    expect(s).toMatch(/CALENDAR_DENSITY/);
+    expect(s).toMatch(/today: 3 events \(next at 14:00, last ends 17:30\)/);
+    expect(s).toMatch(/tomorrow: 2 events \(first 09:00, last ends 15:00\)/);
+    expect(s).not.toMatch(/heavy day/); // 2 events isn't heavy
+  });
+
+  it('flags tomorrow as a heavy day when count >= 7', () => {
+    const s = buildInstruction({
+      ...BASE,
+      calendarDensity: {
+        today: { count: 1, firstStart: '11:00', lastEnd: '11:30', nextStart: '11:00' },
+        tomorrow: { count: 8, firstStart: '09:00', lastEnd: '18:00' },
+      },
+    });
+    expect(s).toMatch(/tomorrow: 8 events.*heavy day/);
+  });
+
+  it('omits CALENDAR_DENSITY when both days are empty (silence-on-clear)', () => {
+    const s = buildInstruction({
+      ...BASE,
+      calendarDensity: {
+        today: { count: 0, firstStart: null, lastEnd: null, nextStart: null },
+        tomorrow: { count: 0, firstStart: null, lastEnd: null },
+      },
+    });
+    expect(s).not.toMatch(/CALENDAR_DENSITY/);
+  });
+
+  it('omits CALENDAR_DENSITY when null (workspace not connected or fetch failed)', () => {
+    const s = buildInstruction({ ...BASE, calendarDensity: null });
+    expect(s).not.toMatch(/CALENDAR_DENSITY/);
+  });
+
+  it('CALENDAR_DENSITY omits "next at" when all today events are past', () => {
+    const s = buildInstruction({
+      ...BASE,
+      calendarDensity: {
+        today: { count: 2, firstStart: '08:00', lastEnd: '12:00', nextStart: null },
+        tomorrow: { count: 0, firstStart: null, lastEnd: null },
+      },
+    });
+    expect(s).toMatch(/today: 2 events \(last ends 12:00\)/);
+    expect(s).toMatch(/tomorrow: no events/);
+  });
+
+  it('omits AIR_QUALITY when location is unknown (avoid hallucinating)', () => {
+    const s = buildInstruction({
+      ...BASE,
+      location: null,
+      airQuality: {
+        aqi: 200,
+        pm2_5: 100,
+        pm10: 200,
+        ozone: 150,
+        pollen: { alder: 0, grass: 0, ragweed: 0 },
+      },
+    });
+    expect(s).not.toMatch(/AIR_QUALITY/);
   });
 
   it('mentions location even if weather is null (e.g., API timed out)', () => {
