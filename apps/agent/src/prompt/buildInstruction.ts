@@ -1,6 +1,9 @@
 import { type GoalUpdate, type UserProfile, openUISystemPrompt } from '@lifecoach/shared-types';
 import { type NudgeMode, type UserState, policyFor } from '@lifecoach/user-state';
 import yaml from 'js-yaml';
+import type { AirQuality } from '../context/airQuality.js';
+import type { CalendarDensitySummary } from '../context/calendarDensity.js';
+import type { Holiday } from '../context/holidays.js';
 import type { Memory } from '../context/memory.js';
 import type { NearbyPlace } from '../context/places.js';
 import type { Coord, Weather } from '../context/weather.js';
@@ -17,6 +20,12 @@ export interface InstructionContext {
   userState: UserState;
   location: LocationCtx | null;
   weather: Weather | null;
+  /** Open-Meteo air quality + pollen for the user's location, when known. */
+  airQuality?: AirQuality | null;
+  /** Public holidays in the next 7 days for the user's country. Empty when none / unknown. */
+  holidays?: Holiday[];
+  /** Pre-fetched calendar density (today + tomorrow) — only set when workspace is connected. */
+  calendarDensity?: CalendarDensitySummary | null;
   /** Full user.yaml — nulls preserved so the agent sees what it doesn't know. */
   userProfile?: UserProfile;
   /** Last N goal updates (oldest → newest). */
@@ -203,10 +212,24 @@ function formatWeather(ctx: InstructionContext): string {
   if (!ctx.location) return ''; // no weather without location
   if (!ctx.weather) return 'WEATHER:\nweather_unavailable';
   const c = ctx.weather.current;
+  const t = ctx.weather.today;
   const fcLines = ctx.weather.forecast
     .map((d) => `  ${d.date}: ${d.minC}°C – ${d.maxC}°C (code ${d.code})`)
     .join('\n');
-  return `WEATHER:
+  // Pre-compute the today block so the LLM doesn't have to scan hourly arrays
+  // or convert UTC↔local. Keep entries terse and skip what isn't actionable
+  // (no rain peak when the day is dry → omit that line entirely).
+  const sunriseHHMM = t.sunrise.slice(11, 16);
+  const sunsetHHMM = t.sunset.slice(11, 16);
+  const dayLine = `daylight ${sunriseHHMM} → ${sunsetHHMM} (${t.daylightHours}h)`;
+  const uvLine = t.uvIndexMax >= 6 ? `UV peak: ${t.uvIndexMax} — sunscreen if outside midday` : '';
+  const rainLine = t.rainChancePeak
+    ? `rain: ${t.rainChancePeak.probability}% likely around ${t.rainChancePeak.hour.slice(11, 16)}`
+    : '';
+  const todayBlock = ['WEATHER_TODAY:', dayLine, uvLine, rainLine].filter(Boolean).join('\n');
+  return `${todayBlock}
+
+WEATHER:
 current: ${c.temperatureC}°C, wind ${c.windKph} kph (code ${c.code}) at ${c.time}
 forecast:
 ${fcLines}`;
@@ -226,11 +249,80 @@ function formatNearbyPlaces(ctx: InstructionContext): string {
   return `NEARBY_PLACES (within ~2km):\n${lines}`;
 }
 
+const AQI_MODERATE = 50; // European AQI: >50 is "moderate" or worse.
+const POLLEN_MODERATE = 3; // grains/m³ — Open-Meteo's "moderate" boundary.
+
+function formatAirQuality(ctx: InstructionContext): string {
+  if (!ctx.location) return '';
+  const aq = ctx.airQuality;
+  if (!aq) return '';
+  // Silence-on-clear: if AQI and all three pollens are below "moderate",
+  // don't waste tokens on a "everything fine" block. The coach can assume
+  // air quality is fine when the block is absent.
+  const hasAir = aq.aqi >= AQI_MODERATE;
+  const heavyPollens: string[] = [];
+  if (aq.pollen.alder >= POLLEN_MODERATE) heavyPollens.push(`alder ${aq.pollen.alder}`);
+  if (aq.pollen.grass >= POLLEN_MODERATE) heavyPollens.push(`grass ${aq.pollen.grass}`);
+  if (aq.pollen.ragweed >= POLLEN_MODERATE) heavyPollens.push(`ragweed ${aq.pollen.ragweed}`);
+  if (!hasAir && heavyPollens.length === 0) return '';
+
+  const lines = ['AIR_QUALITY:'];
+  if (hasAir) {
+    const band = aq.aqi >= 100 ? 'unhealthy' : aq.aqi >= 80 ? 'poor' : 'moderate';
+    lines.push(`${band} (AQI ${aq.aqi}, PM2.5 ${aq.pm2_5} µg/m³, ozone ${aq.ozone} µg/m³)`);
+  }
+  if (heavyPollens.length > 0) {
+    lines.push(`pollen elevated: ${heavyPollens.join(', ')} — heads-up if outdoor + sensitive`);
+  }
+  return lines.join('\n');
+}
+
 function formatMemories(ctx: InstructionContext): string {
   if (!ctx.memories || ctx.memories.length === 0) return '';
   const lines = ctx.memories.map((m) => `  - ${m.text}`).join('\n');
   return `RELEVANT_MEMORIES (retrieved silently — never say "checking my memory"):
 ${lines}`;
+}
+
+function formatHolidays(ctx: InstructionContext): string {
+  if (!ctx.holidays || ctx.holidays.length === 0) return '';
+  const lines = ctx.holidays
+    .map((h) => `  ${h.date}: ${h.localName} (${h.countryCode})`)
+    .join('\n');
+  return `HOLIDAYS (next 7 days — heads-up for adjusted expectations):\n${lines}`;
+}
+
+const HEAVY_DAY_THRESHOLD = 7;
+
+function formatCalendarDensity(ctx: InstructionContext): string {
+  const cd = ctx.calendarDensity;
+  if (!cd) return '';
+  // No events at all — silence-on-clear; the coach can assume a clear two
+  // days when this block is absent.
+  if (cd.today.count === 0 && cd.tomorrow.count === 0) return '';
+  const today = formatDay(cd.today, false);
+  const tomorrow = formatDay(cd.tomorrow, true, cd.tomorrow.count >= HEAVY_DAY_THRESHOLD);
+  return `CALENDAR_DENSITY (pre-fetched — reference without calling call_workspace):\ntoday: ${today}\ntomorrow: ${tomorrow}`;
+}
+
+function formatDay(
+  day: {
+    count: number;
+    firstStart: string | null;
+    lastEnd: string | null;
+    nextStart?: string | null;
+  },
+  isTomorrow: boolean,
+  heavy = false,
+): string {
+  if (day.count === 0) return 'no events';
+  const bits: string[] = [`${day.count} event${day.count === 1 ? '' : 's'}`];
+  if (!isTomorrow && day.nextStart) bits.push(`next at ${day.nextStart}`);
+  if (isTomorrow && day.firstStart) bits.push(`first ${day.firstStart}`);
+  if (day.lastEnd) bits.push(`last ends ${day.lastEnd}`);
+  let line = `${bits[0]} (${bits.slice(1).join(', ')})`;
+  if (heavy) line += ' — heavy day';
+  return line;
 }
 
 function formatRecentGoals(ctx: InstructionContext): string {
@@ -265,7 +357,10 @@ export function buildInstruction(ctx: InstructionContext): string {
     formatTime(ctx),
     formatLocation(ctx),
     formatWeather(ctx),
+    formatAirQuality(ctx),
+    formatHolidays(ctx),
     formatNearbyPlaces(ctx),
+    formatCalendarDensity(ctx),
     formatProfile(ctx),
     formatRecentGoals(ctx),
     formatMemories(ctx),
