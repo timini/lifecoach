@@ -15,6 +15,7 @@ import {
   sendSignInLinkToEmail,
   signInAnonymously,
   signInWithCredential,
+  signInWithEmailAndPassword,
   signInWithEmailLink,
   signOut,
 } from 'firebase/auth';
@@ -187,4 +188,38 @@ export async function completeEmailSignInLink(currentUrl: string): Promise<User 
  */
 export async function signOutCurrent(): Promise<void> {
   await signOut(firebaseAuth());
+}
+
+/**
+ * Sign in with email + password. Used by the e2e test harness; production
+ * users go through Google sign-in or magic link. Safe to ship in prod
+ * because callers must already know a valid password — the function just
+ * delegates to Firebase Auth's standard primitive.
+ */
+export async function signInWithEmail(email: string, password: string): Promise<User> {
+  const cred = await signInWithEmailAndPassword(firebaseAuth(), email, password);
+  return cred.user;
+}
+
+/**
+ * E2E test hook: exposes a small set of auth helpers on `window` so a
+ * Playwright spec can drive sign-in/sign-out without simulating the OAuth
+ * popup. Always-on (dev and prod) — the surface is just real Firebase auth
+ * that requires creds the caller has to know. The harness env injects
+ * those creds from Secret Manager; nothing leaks otherwise.
+ */
+declare global {
+  interface Window {
+    __lifecoachE2E?: {
+      signInWithEmail: (email: string, password: string) => Promise<User>;
+      signOut: () => Promise<void>;
+    };
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.__lifecoachE2E = {
+    signInWithEmail,
+    signOut: signOutCurrent,
+  };
 }
