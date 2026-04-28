@@ -49,7 +49,7 @@ describe('call_workspace — happy path', () => {
     });
     const r = await exec(tool, {
       service: 'gmail',
-      resource: 'messages',
+      resource: 'users.messages',
       method: 'list',
       params: JSON.stringify({ q: 'from:alex', maxResults: 5 }),
     });
@@ -63,18 +63,45 @@ describe('call_workspace — happy path', () => {
       { env: NodeJS.ProcessEnv },
     ];
     expect(cmd).toBe('gws');
-    // argv is structured, not a shell string.
-    expect(argv[0]).toBe('gmail');
-    expect(argv[1]).toBe('messages');
-    expect(argv[2]).toBe('list');
-    expect(argv[3]).toBe('--params');
-    expect(JSON.parse(argv[4] as string)).toEqual({ q: 'from:alex', maxResults: 5 });
-    expect(argv).toContain('--json');
+    // argv mirrors the real Google API hierarchy: <service> <resource>...
+    // <method> --params <JSON>. Dotted resource splits into pieces.
+    expect(argv).toEqual([
+      'gmail',
+      'users',
+      'messages',
+      'list',
+      '--params',
+      JSON.stringify({ q: 'from:alex', maxResults: 5 }),
+    ]);
+    // gws's --json flag is for request body, not output format. Don't pass
+    // it on read calls.
+    expect(argv).not.toContain('--json');
     // Token reaches the child via env, not argv.
     expect(opts.env.GOOGLE_WORKSPACE_CLI_TOKEN).toBe('ya29.valid');
     for (const piece of argv) {
       expect(piece).not.toContain('ya29.valid');
     }
+  });
+
+  it('passes a single-segment resource through unchanged (e.g. calendar.events)', async () => {
+    const fakeExec = vi.fn<ExecFileLike>(async () => ({
+      stdout: '{}',
+      stderr: '',
+      code: 0,
+    }));
+    const tool = createCallWorkspaceTool({
+      store: fakeStore(),
+      uid: 'u',
+      execFile: fakeExec,
+    });
+    await exec(tool, {
+      service: 'calendar',
+      resource: 'events',
+      method: 'list',
+      params: JSON.stringify({ calendarId: 'primary' }),
+    });
+    const argv = fakeExec.mock.calls[0]?.[1] as string[];
+    expect(argv.slice(0, 4)).toEqual(['calendar', 'events', 'list', '--params']);
   });
 
   it('returns the raw stdout when it is not JSON', async () => {

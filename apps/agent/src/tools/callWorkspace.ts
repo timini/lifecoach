@@ -370,7 +370,16 @@ export function createCallWorkspaceTool(deps: CreateCallWorkspaceToolDeps): Func
       }
 
       const paramsJson = JSON.stringify(args.params);
-      const argv = [args.service, args.resource, args.method, '--params', paramsJson, '--json'];
+      // gws follows the real Google Discovery API hierarchy:
+      //   gws <service> <resource>[ <sub-resource>...] <method> --params <JSON>
+      // For Gmail messages this is `gws gmail users messages list` (not just
+      // `gmail messages list`). We let the LLM pass `resource` as a dotted
+      // path (e.g. "users.messages") and split it into separate argv pieces.
+      // gws does NOT have a `--json` flag for output — output is already
+      // JSON by default. The `--json` flag in gws is for the request body
+      // on POST/PATCH/PUT, which we'll plumb through if/when needed.
+      const resourcePath = args.resource.split('.').filter(Boolean);
+      const argv = [args.service, ...resourcePath, args.method, '--params', paramsJson];
 
       const res = await exec(gwsPath, argv, {
         env: { ...process.env, GOOGLE_WORKSPACE_CLI_TOKEN: accessToken },
