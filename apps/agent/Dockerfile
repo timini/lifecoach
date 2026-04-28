@@ -53,6 +53,14 @@ RUN set -eux; \
 FROM node:22-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+# `gws` is a statically-linked Rust binary (musl) that uses rustls-native-
+# certs to verify TLS connections. Without an explicit CA bundle it fails
+# with `invalid peer certificate: UnknownIssuer` against googleapis.com.
+# `ca-certificates` ships /etc/ssl/certs/ca-certificates.crt — install it
+# explicitly and point gws at it via SSL_CERT_FILE / SSL_CERT_DIR.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 # Run as non-root
 RUN useradd --system --uid 10001 --gid 0 --shell /sbin/nologin lifecoach
 COPY --from=build --chown=lifecoach:0 /app /app
@@ -66,6 +74,8 @@ USER 10001
 ENV HOME=/tmp \
     XDG_CACHE_HOME=/tmp/.cache \
     XDG_CONFIG_HOME=/tmp/.config \
+    SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
+    SSL_CERT_DIR=/etc/ssl/certs \
     PORT=8080
 EXPOSE 8080
 CMD ["node", "apps/agent/dist/server.js"]

@@ -77,7 +77,8 @@ Tasks (service=tasks):
 
 Gmail search: from:, to:, subject:, newer_than:7d, label:INBOX, is:unread, has:attachment.
 Times: RFC3339 with the user's timezone (see TIME block).
-If call_workspace returns {"status":"error","code":"scope_required"}, call connect_workspace to prompt reconnect.
+
+ERROR HANDLING — if call_workspace returns {"status":"error", ...}, your next action is to call connect_workspace. That renders a one-click reconnect button. Do not describe the error in technical detail (no mention of "certificate", "discovery", "scope", "token"). One short sentence is fine ("Hmm, the workspace connection hit a snag — try reconnecting?"), then the tool call. The reconnect button gives the user agency; a paragraph of apology does not.
 `.trim();
 
 const STYLE_RULES = `
