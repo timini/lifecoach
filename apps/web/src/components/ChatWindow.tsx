@@ -233,21 +233,48 @@ export function ChatWindow() {
         if (buffer.trim()) applyOps(assistantId, parseSseBlock(buffer));
       }
 
-      // If the final assistant message has no rendered content, swap in
-      // a terse placeholder so the user isn't staring at an empty turn.
-      setMessages((prev) =>
-        prev.map((m) => {
-          if (m.id !== assistantId || m.role !== 'assistant') return m;
-          const visible = m.elements.some(
-            (el) => el.kind !== 'tool-call' || (el.kind === 'tool-call' && el.done && el.ok),
+      // SSE finished cleanly. If the assistant message has no visible
+      // content, the model returned an empty turn — or the SSE stream
+      // ran clean but the agent's reply was lost in transit. Try
+      // re-fetching from Firestore-backed history once: if the agent
+      // actually persisted a reply, swap it in. Only fall back to a
+      // friendly placeholder if history is also empty for this turn.
+      const isVisible = (els: AssistantElement[]) =>
+        els.some((el) => el.kind !== 'tool-call' || (el.kind === 'tool-call' && el.done && el.ok));
+      let currentEmpty = false;
+      setMessages((prev) => {
+        const m = prev.find((x) => x.id === assistantId);
+        if (m && m.role === 'assistant' && !isVisible(m.elements)) currentEmpty = true;
+        return prev;
+      });
+      if (currentEmpty) {
+        const rehydrated = await fetchAndApplyHistory().catch(() => null);
+        const ourMessageLanded = rehydrated?.some(
+          (m, i) =>
+            m.role === 'user' &&
+            m.text === text &&
+            rehydrated.slice(i + 1).some((later) => later.role === 'assistant'),
+        );
+        if (rehydrated && ourMessageLanded) {
+          setMessages(rehydrated);
+        } else {
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (m.id !== assistantId || m.role !== 'assistant') return m;
+              if (isVisible(m.elements)) return m;
+              return {
+                ...m,
+                elements: [
+                  {
+                    kind: 'text',
+                    text: 'Hmm, I missed that — could you say it again?',
+                  },
+                ],
+              };
+            }),
           );
-          if (visible) return m;
-          return {
-            ...m,
-            elements: [{ kind: 'text', text: '(no response — check agent logs)' }],
-          };
-        }),
-      );
+        }
+      }
     } catch (err) {
       // Stream broke. Most often the agent still completed and saved
       // events to Firestore — refetch /history and check whether our

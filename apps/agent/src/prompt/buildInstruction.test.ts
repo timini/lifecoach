@@ -174,8 +174,9 @@ describe('buildInstruction — nudgeMode', () => {
     expect(s).not.toMatch(/PRO_NUDGE/);
     // Some hint that the nudge is about creating an account / remembering
     expect(s).toMatch(/account|remember/i);
-    // No "upgrade" wording in signup mode
-    expect(s).not.toMatch(/upgrade_to_pro/);
+    // No Pro pitch wording in signup mode (structural turn-ending mentions
+    // of upgrade_to_pro in STYLE_RULES are fine — they don't pitch Pro).
+    expect(s).not.toMatch(/Pro would genuinely help|once per session is enough/);
   });
 
   it('renders only the pro directive for nudgeMode=pro and references the tool', () => {
