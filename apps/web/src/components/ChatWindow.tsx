@@ -16,7 +16,7 @@ import {
 import { Renderer, library as openUILibrary } from '@lifecoach/ui/openui';
 import { UserStateMachine } from '@lifecoach/user-state';
 import type { User } from 'firebase/auth';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { eventsToMessages } from '../lib/eventHistory';
 import {
   completeEmailSignInLink,
@@ -108,33 +108,47 @@ export function ChatWindow() {
     })();
   }, []);
 
+  /**
+   * Fetches the canonical Firestore-backed transcript for this session.
+   * Used both on initial mount and as the recovery path when the SSE
+   * stream from /api/chat is interrupted mid-flight — the agent usually
+   * completes and persists even when the browser drops the connection,
+   * so re-pulling history is a safe, idempotent way to surface the real
+   * outcome without double-sending the user's message.
+   */
+  const fetchAndApplyHistory = useCallback(async (): Promise<Message[] | null> => {
+    if (!user) return null;
+    try {
+      const idToken = await user.getIdToken();
+      const res = await fetch(
+        `/api/chat/history?userId=${encodeURIComponent(user.uid)}&sessionId=${encodeURIComponent(sessionId)}`,
+        { headers: { authorization: `Bearer ${idToken}` } },
+      );
+      if (!res.ok) return null;
+      const body = (await res.json()) as { events?: unknown[] };
+      const rehydrated: Message[] = eventsToMessages((body.events ?? []) as never).map((m) =>
+        m.role === 'user'
+          ? { id: m.id, role: 'user', text: m.text }
+          : { id: m.id, role: 'assistant', elements: m.elements, answered: true },
+      );
+      return rehydrated;
+    } catch {
+      return null;
+    }
+  }, [user, sessionId]);
+
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
     (async () => {
-      try {
-        const idToken = await user.getIdToken();
-        const res = await fetch(
-          `/api/chat/history?userId=${encodeURIComponent(user.uid)}&sessionId=${encodeURIComponent(sessionId)}`,
-          { headers: { authorization: `Bearer ${idToken}` } },
-        );
-        if (!res.ok) return;
-        const body = (await res.json()) as { events?: unknown[] };
-        if (cancelled) return;
-        const rehydrated: Message[] = eventsToMessages((body.events ?? []) as never).map((m) =>
-          m.role === 'user'
-            ? { id: m.id, role: 'user', text: m.text }
-            : { id: m.id, role: 'assistant', elements: m.elements, answered: true },
-        );
-        if (rehydrated.length > 0) setMessages(rehydrated);
-      } catch {
-        /* best-effort */
-      }
+      const rehydrated = await fetchAndApplyHistory();
+      if (cancelled || !rehydrated || rehydrated.length === 0) return;
+      setMessages(rehydrated);
     })();
     return () => {
       cancelled = true;
     };
-  }, [user, sessionId]);
+  }, [user, fetchAndApplyHistory]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: rescroll on any render tick
   useEffect(() => {
@@ -233,14 +247,31 @@ export function ChatWindow() {
         }),
       );
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === assistantId && m.role === 'assistant'
-            ? { ...m, elements: [...m.elements, { kind: 'text', text: `error: ${msg}` }] }
-            : m,
-        ),
+      // Stream broke. Most often the agent still completed and saved
+      // events to Firestore — refetch /history and check whether our
+      // user message is in there with at least one assistant turn after
+      // it. If yes, that transcript is the truth; swap it in. If no,
+      // the request never reached the agent, so surface the raw error
+      // so the user can manually retry.
+      const rehydrated = await fetchAndApplyHistory();
+      const ourMessageLanded = rehydrated?.some(
+        (m, i) =>
+          m.role === 'user' &&
+          m.text === text &&
+          rehydrated.slice(i + 1).some((later) => later.role === 'assistant'),
       );
+      if (rehydrated && ourMessageLanded) {
+        setMessages(rehydrated);
+      } else {
+        const msg = err instanceof Error ? err.message : String(err);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId && m.role === 'assistant'
+              ? { ...m, elements: [...m.elements, { kind: 'text', text: `error: ${msg}` }] }
+              : m,
+          ),
+        );
+      }
     } finally {
       setBusy(false);
     }
