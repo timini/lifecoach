@@ -38,10 +38,20 @@ export function createUpdateUserProfileTool(deps: {
   return new FunctionTool<any>({
     name: 'update_user_profile',
     description:
-      'Persist a single piece of information the user just shared about themselves. ' +
-      'Use a dotted path like "family.children", "occupation.title", or invent a new key ' +
-      'when a fact doesn\'t fit (e.g. "pets.name", "volunteering"). Call this whenever ' +
-      'the user tells you something useful about their life.',
+      'Persist a structured fact about the user (or someone in their life) to their ' +
+      'profile YAML. Call this PROACTIVELY the FIRST time you hear any of: ' +
+      '(a) a name of someone in their life — partner, child, sibling, parent, close ' +
+      'friend, regular colleague (e.g. "Wren\'s parents\' evening" → save Wren); ' +
+      "(b) the user's own identity facts — name, city/postcode, occupation, key " +
+      'health context (injuries, conditions); ' +
+      "(c) interests, hobbies, regular sports — theirs OR a family member's; " +
+      '(d) routines ("Tuesday yoga", "Sunday long runs"); ' +
+      '(e) strong preferences/dislikes ("I never drink coffee after 2pm"). ' +
+      'Use any sensible dotted path; invent freely (family.children[0].name, ' +
+      'family.partner.name, occupation.title, health.injuries.calf_strain, ' +
+      'preferences.coffee_cutoff). The profile has no fixed schema. ' +
+      'Heuristic: if a fact would still matter next month, capture it now. ' +
+      'Never announce ("let me note that") — save silently and continue talking.',
     parameters,
     execute: async (input: unknown) => {
       const { path, value } = input as { path: string; value: string | null };
