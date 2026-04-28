@@ -3,6 +3,7 @@
 import { type FirebaseApp, type FirebaseOptions, getApps, initializeApp } from 'firebase/app';
 import {
   type Auth,
+  type AuthError,
   EmailAuthProvider,
   GoogleAuthProvider,
   type User,
@@ -13,6 +14,7 @@ import {
   onAuthStateChanged,
   sendSignInLinkToEmail,
   signInAnonymously,
+  signInWithCredential,
   signInWithEmailLink,
   signOut,
 } from 'firebase/auth';
@@ -88,13 +90,47 @@ const EMAIL_PENDING_KEY = 'lifecoach.pendingEmail';
 /**
  * Link the current (anonymous) user to a Google account via popup. Preserves
  * the UID so all GCS/Firestore data follows the user through the upgrade.
+ *
+ * Returning-user case: if the Google account is already in use by another
+ * Firebase user (the user signed out and is signing back in — a fresh anon
+ * UID was created for them in the meantime), `linkWithPopup` rejects with
+ * `auth/credential-already-in-use`. We catch that, pull the credential out
+ * of the error, and sign in to the existing account directly. The freshly-
+ * minted anonymous user is abandoned — fine, it had no data.
  */
 export async function linkWithGoogle(): Promise<User> {
-  const user = firebaseAuth().currentUser;
+  const auth = firebaseAuth();
+  const user = auth.currentUser;
   if (!user) throw new Error('no current user — sign-in must complete first');
   const provider = new GoogleAuthProvider();
-  const cred = await linkWithPopup(user, provider);
-  return cred.user;
+  try {
+    const cred = await linkWithPopup(user, provider);
+    return cred.user;
+  } catch (err) {
+    const credential = credentialFromAuthError(err);
+    if (credential) {
+      const cred = await signInWithCredential(auth, credential);
+      return cred.user;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Pull the GoogleAuthProvider credential out of an auth error so we can
+ * recover from the `credential-already-in-use` / `email-already-in-use`
+ * cases. Firebase exposes the credential on the error in those exact
+ * scenarios; null when it isn't recoverable.
+ */
+function credentialFromAuthError(
+  err: unknown,
+): ReturnType<typeof GoogleAuthProvider.credential> | null {
+  if (!err || typeof err !== 'object') return null;
+  const code = (err as AuthError).code;
+  if (code !== 'auth/credential-already-in-use' && code !== 'auth/email-already-in-use') {
+    return null;
+  }
+  return GoogleAuthProvider.credentialFromError(err as AuthError);
 }
 
 /**
