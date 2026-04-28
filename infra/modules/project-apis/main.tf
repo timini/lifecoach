@@ -37,10 +37,15 @@ locals {
     # Vertex AI + memory bank
     "aiplatform.googleapis.com",
 
-    # Google Workspace integrations the agent can call
+    # Google Workspace integrations the agent can call.
+    # Tasks API is required for service=tasks (tasklists.list,
+    # tasks.list, tasks.insert, ...) — without it the underlying CLI
+    # gets a SERVICE_DISABLED 403 from Google and the agent surfaces
+    # a `forbidden`-coded error.
     "gmail.googleapis.com",
     "calendar-json.googleapis.com",
     "drive.googleapis.com",
+    "tasks.googleapis.com",
 
     # Places (for "nearby interesting places" context)
     "places.googleapis.com",
