@@ -15,6 +15,43 @@ describe('buildInstruction', () => {
     expect(s).toMatch(/warm, supportive life coach/i);
   });
 
+  it('lists not-yet-enabled practices in AVAILABLE_PRACTICES (so the agent can offer)', () => {
+    // Default fixture has no practices.* in profile → all practices disabled.
+    const s = buildInstruction({ ...BASE, userProfile: {} });
+    expect(s).toMatch(/AVAILABLE_PRACTICES/);
+    expect(s).toMatch(/Evening gratitude/);
+    expect(s).toMatch(/Journaling/);
+    expect(s).toMatch(/ask_single_choice_question/);
+    expect(s).toMatch(/practices\.<id>\.enabled/);
+  });
+
+  it('injects an enabled practice directive (journaling, no time gate)', () => {
+    const s = buildInstruction({
+      ...BASE,
+      userProfile: { practices: { journaling: { enabled: true } } },
+    });
+    expect(s).toMatch(/JOURNALING \(practice on\)/);
+    expect(s).toMatch(/journal_entry/);
+    // And it should drop journaling from AVAILABLE_PRACTICES (still lists evening_gratitude).
+    expect(s).toMatch(/AVAILABLE_PRACTICES/);
+    const available = s.split('AVAILABLE_PRACTICES')[1] ?? '';
+    expect(available).not.toMatch(/Journaling/);
+    expect(available).toMatch(/Evening gratitude/);
+  });
+
+  it('omits AVAILABLE_PRACTICES when every practice is enabled', () => {
+    const s = buildInstruction({
+      ...BASE,
+      userProfile: {
+        practices: {
+          evening_gratitude: { enabled: true },
+          journaling: { enabled: true },
+        },
+      },
+    });
+    expect(s).not.toMatch(/AVAILABLE_PRACTICES/);
+  });
+
   it('always includes the INFO_CAPTURE directive (proactive fact-capture rules)', () => {
     const s = buildInstruction(BASE);
     expect(s).toMatch(/INFO_CAPTURE/);

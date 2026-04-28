@@ -30,3 +30,4 @@ export {
   type WorkspaceScope,
   type WorkspaceStatus,
 } from './workspace.js';
+export { PRACTICE_METADATA, practiceEnabledPath, type PracticeMetadata } from './practices.js';

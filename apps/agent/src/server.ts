@@ -15,6 +15,7 @@ import type { MemoryClient } from './context/memory.js';
 import type { PlacesClient } from './context/places.js';
 import type { Coord, WeatherClient } from './context/weather.js';
 import type { WorkspaceOAuthClient } from './oauth/workspaceClient.js';
+import { getEnabledPractices } from './practices/index.js';
 import type { InstructionContext, LocationCtx } from './prompt/buildInstruction.js';
 import type { GoalUpdatesStore } from './storage/goalUpdates.js';
 import type { UserMetaStore } from './storage/userMeta.js';
@@ -878,6 +879,13 @@ async function main(): Promise<void> {
           // upgrade_to_pro is a UI directive available only when the
           // UsageStateMachine says so (free user past PRO_NUDGE_AFTER turns).
           ...(usagePolicy.upgradeToolAvailable ? [createUpgradeToProTool()] : []),
+          // Practices: each enabled practice contributes its own tools
+          // (e.g. log_gratitude, journal_entry). Disabled practices add
+          // nothing here — the prompt-side "available practices" hint
+          // tells the agent how to offer enabling them.
+          ...getEnabledPractices(ctx.userProfile).flatMap((p) =>
+            p.tools ? p.tools({ profileStore }, uid) : [],
+          ),
         ],
         // Model is driven by tier — anonymous heavy users get Flash Lite.
         { model: usagePolicy.model },
