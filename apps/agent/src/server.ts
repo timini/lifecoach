@@ -102,6 +102,17 @@ export interface CreateAppDeps {
   now?: () => Date;
 }
 
+/**
+ * Wrap a promise with a stopwatch. Used to record per-fetch latencies in the
+ * /chat parallel block (weather/places/etc) so the chat.turn log shows which
+ * branch dominated the prep phase.
+ */
+async function timed<T>(p: Promise<T>): Promise<[T, number]> {
+  const t0 = Date.now();
+  const v = await p;
+  return [v, Date.now() - t0];
+}
+
 interface ChatBody {
   userId?: string;
   sessionId?: string;
@@ -361,6 +372,15 @@ export function createApp(deps: CreateAppDeps): Express {
       return;
     }
 
+    // Per-turn timing instrumentation. Each `timed(fn)` returns [value, ms];
+    // we accumulate ms-fields under `timings` for the chat.turn log line so
+    // we can spot which phase is slow (auth, parallel fetches, profile read,
+    // memory search, runner stream, individual tool calls).
+    const t0 = Date.now();
+    const timings: Record<string, number> = {};
+    const tick = () => Date.now() - t0;
+
+    const tAuth0 = Date.now();
     let claims: VerifiedClaims | null = null;
     if (deps.verifyToken) {
       claims = await verifyRequest(
@@ -368,6 +388,7 @@ export function createApp(deps: CreateAppDeps): Express {
         deps.verifyToken,
       );
     }
+    timings.authMs = Date.now() - tAuth0;
     if (deps.requireAuth && !claims) {
       res.status(401).json({ error: 'unauthenticated' });
       return;
@@ -378,6 +399,7 @@ export function createApp(deps: CreateAppDeps): Express {
     // involvement, no token in context. Presence of a non-empty refresh
     // token is enough; the tool handler does the expiry-and-refresh check
     // lazily when actually called.
+    const tWsGrant0 = Date.now();
     let workspaceScopesGranted = false;
     if (claims && deps.workspaceTokensStore) {
       try {
@@ -387,6 +409,7 @@ export function createApp(deps: CreateAppDeps): Express {
         workspaceScopesGranted = false;
       }
     }
+    timings.wsGrantMs = Date.now() - tWsGrant0;
 
     const machine = claims
       ? UserStateMachine.fromFirebaseUser(claimsToFirebaseUserLike(claims, workspaceScopesGranted))
@@ -404,47 +427,77 @@ export function createApp(deps: CreateAppDeps): Express {
     const countryCode = tzToCountry(timezone ?? null);
     const wantCalendarDensity =
       machine.current() === 'workspace_connected' && deps.calendarDensity && timezone;
-    const [weather, nearbyPlaces, airQuality, holidays, calendarDensity] = await Promise.all([
-      coord && deps.weather ? deps.weather.get(coord).catch(() => null) : Promise.resolve(null),
-      coord && deps.places
-        ? deps.places.get(coord).catch(() => undefined)
-        : Promise.resolve(undefined),
-      coord && deps.airQuality
-        ? deps.airQuality.get(coord).catch(() => null)
-        : Promise.resolve(null),
-      countryCode && deps.holidays
-        ? deps.holidays.next7Days(countryCode).catch(() => [])
-        : Promise.resolve([]),
-      wantCalendarDensity
-        ? (deps.calendarDensity as CalendarDensityClient)
-            .get({ uid: effectiveUserId, timezone: timezone as string, now: now() })
-            .catch(() => null)
-        : Promise.resolve(null),
+    const tParallel0 = Date.now();
+    const [
+      [weather, weatherMs],
+      [nearbyPlaces, placesMs],
+      [airQuality, airQualityMs],
+      [holidays, holidaysMs],
+      [calendarDensity, calendarDensityMs],
+    ] = await Promise.all([
+      timed(
+        coord && deps.weather ? deps.weather.get(coord).catch(() => null) : Promise.resolve(null),
+      ),
+      timed(
+        coord && deps.places
+          ? deps.places.get(coord).catch(() => undefined)
+          : Promise.resolve(undefined),
+      ),
+      timed(
+        coord && deps.airQuality
+          ? deps.airQuality.get(coord).catch(() => null)
+          : Promise.resolve(null),
+      ),
+      timed(
+        countryCode && deps.holidays
+          ? deps.holidays.next7Days(countryCode).catch(() => [])
+          : Promise.resolve([]),
+      ),
+      timed(
+        wantCalendarDensity
+          ? (deps.calendarDensity as CalendarDensityClient)
+              .get({ uid: effectiveUserId, timezone: timezone as string, now: now() })
+              .catch(() => null)
+          : Promise.resolve(null),
+      ),
     ]);
+    timings.parallelMs = Date.now() - tParallel0;
+    timings.weatherMs = weatherMs;
+    timings.placesMs = placesMs;
+    timings.airQualityMs = airQualityMs;
+    timings.holidaysMs = holidaysMs;
+    timings.calendarDensityMs = calendarDensityMs;
     const locationCtx: LocationCtx | null = coord ? { coord } : null;
 
     // Read the user's profile so the agent sees the full user.yaml (including
     // nulls) as part of its system prompt every turn. Writes happen via the
     // update_user_profile tool that runnerFor will register with the uid.
+    const tProfile0 = Date.now();
     const userProfile = deps.profileStore
       ? await deps.profileStore.read(effectiveUserId).catch(() => undefined)
       : undefined;
+    timings.profileMs = Date.now() - tProfile0;
 
+    const tGoals0 = Date.now();
     const recentGoalUpdates = deps.goalUpdatesStore
       ? await deps.goalUpdatesStore.recent(effectiveUserId, 20).catch(() => undefined)
       : undefined;
+    timings.goalsMs = Date.now() - tGoals0;
 
     // Silent memory retrieval — searched with the user's current message as
     // the query. Any error yields an empty list; never fails a turn.
+    const tMem0 = Date.now();
     const memories = deps.memory
       ? await deps.memory.search(effectiveUserId, message, 5).catch(() => [])
       : [];
+    timings.memoryMs = Date.now() - tMem0;
 
     // Compute the usage policy for this turn. Increments the per-uid
     // chat counter (creating the doc on first turn), reads the stored
     // tier, and combines with the auth state to decide model + nudge +
     // upgrade-tool gating. When userMetaStore isn't wired (test app),
     // fall back to a generous policy: full Flash, no nudge, no tool.
+    const tMeta0 = Date.now();
     let usagePolicy: UsagePolicy;
     let chatTurnCount = 0;
     let tier: 'free' | 'pro' = 'free';
@@ -458,6 +511,8 @@ export function createApp(deps: CreateAppDeps): Express {
         // defaults so the user still gets a response.
       }
     }
+    timings.metaMs = Date.now() - tMeta0;
+    timings.prepMs = tick();
     usagePolicy = UsageStateMachine.from({
       userState: machine.current(),
       chatCount: chatTurnCount,
@@ -488,15 +543,19 @@ export function createApp(deps: CreateAppDeps): Express {
     const runner = deps.runnerFor({ ctx: instructionCtx, uid: effectiveUserId, usagePolicy });
 
     // Track tool invocations for the structured turn log. We care about name
-    // + args (for debugging) and whether the response had an error status.
+    // + args (for debugging), whether the response had an error status, AND
+    // per-tool latency (call→response delta) so we can spot e.g. slow gws
+    // subprocess calls in the chat.turn log.
     const toolInvocations: Array<{
       name: string;
       args: unknown;
       ok: boolean | null;
+      latencyMs: number | null;
     }> = [];
-    const pendingById = new Map<string, { name: string; args: unknown }>();
+    const pendingById = new Map<string, { name: string; args: unknown; startedAt: number }>();
 
     try {
+      const tSession0 = Date.now();
       const existing = await runner.sessionService.getSession({
         appName: runner.appName,
         userId: effectiveUserId,
@@ -509,6 +568,7 @@ export function createApp(deps: CreateAppDeps): Express {
           sessionId,
         });
       }
+      timings.sessionMs = Date.now() - tSession0;
 
       const newMessage: Content = { role: 'user', parts: [{ text: message }] };
       // When a choice tool fires, stop the model's stream after its response
@@ -527,20 +587,39 @@ export function createApp(deps: CreateAppDeps): Express {
         'connect_workspace',
         'upgrade_to_pro',
       ]);
+      const tStream0 = Date.now();
+      let firstEventMs: number | null = null;
+      let firstTextMs: number | null = null;
       for await (const event of runner.runAsync({
         userId: effectiveUserId,
         sessionId,
         newMessage,
       })) {
+        if (firstEventMs === null) firstEventMs = Date.now() - tStream0;
+        if (
+          firstTextMs === null &&
+          (event as { content?: { parts?: Array<{ text?: string }> } }).content?.parts?.some(
+            (p) => typeof p.text === 'string' && p.text.length > 0,
+          )
+        ) {
+          firstTextMs = Date.now() - tStream0;
+        }
         for (const call of getFunctionCalls(event)) {
-          if (call.id) pendingById.set(call.id, { name: call.name ?? '?', args: call.args });
+          if (call.id) {
+            pendingById.set(call.id, {
+              name: call.name ?? '?',
+              args: call.args,
+              startedAt: Date.now(),
+            });
+          }
         }
         for (const resp of getFunctionResponses(event)) {
           const pending = resp.id ? pendingById.get(resp.id) : undefined;
           const name = pending?.name ?? resp.name ?? '?';
           const respObj = resp.response as { status?: string } | undefined;
           const ok = respObj?.status === undefined ? null : respObj.status !== 'error';
-          toolInvocations.push({ name, args: pending?.args ?? null, ok });
+          const latencyMs = pending ? Date.now() - pending.startedAt : null;
+          toolInvocations.push({ name, args: pending?.args ?? null, ok, latencyMs });
           if (resp.id) pendingById.delete(resp.id);
           if (
             turnEndingToolNames.has(name) &&
@@ -555,6 +634,9 @@ export function createApp(deps: CreateAppDeps): Express {
         res.write(`data: ${JSON.stringify(event)}\n\n`);
         if (choiceShown) break;
       }
+      timings.streamMs = Date.now() - tStream0;
+      timings.ttfbMs = firstEventMs ?? -1;
+      timings.ttftMs = firstTextMs ?? -1;
       res.write('event: done\ndata: {}\n\n');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -587,6 +669,11 @@ export function createApp(deps: CreateAppDeps): Express {
           usageState: usagePolicy.state,
           model: usagePolicy.model,
           nudgeMode: usagePolicy.nudgeMode,
+          // Per-phase timings (ms). Populated as we go; missing keys mean
+          // the phase short-circuited. totalMs is the wall-clock from /chat
+          // entry to the finally block.
+          totalMs: tick(),
+          timings,
         }),
       );
       res.end();
