@@ -10,6 +10,7 @@ import {
   ChoicePrompt,
   Input,
   LocationBadge,
+  Markdown,
   ToolCallBadge,
   WorkspacePrompt,
 } from '@lifecoach/ui';
@@ -576,7 +577,7 @@ function AssistantGroup({
           }
           return (
             <Bubble key={elKey} from="assistant">
-              {el.text}
+              <Markdown>{el.text}</Markdown>
             </Bubble>
           );
         }
