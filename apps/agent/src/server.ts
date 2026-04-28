@@ -1,4 +1,11 @@
-import { type Event, type Session, getFunctionCalls, getFunctionResponses } from '@google/adk';
+import {
+  type Event,
+  type RunConfig,
+  type Session,
+  StreamingMode,
+  getFunctionCalls,
+  getFunctionResponses,
+} from '@google/adk';
 import type { Content } from '@google/genai';
 import { type UsagePolicy, UsageStateMachine, UserStateMachine } from '@lifecoach/user-state';
 import express, { type Express, type Request, type Response } from 'express';
@@ -44,6 +51,7 @@ export interface RunnerLike {
     userId: string;
     sessionId: string;
     newMessage: Content;
+    runConfig?: RunConfig;
   }): AsyncGenerator<Event, void, undefined>;
 }
 
@@ -416,11 +424,13 @@ export function createApp(deps: CreateAppDeps): Express {
       ? UserStateMachine.fromFirebaseUser(claimsToFirebaseUserLike(claims, workspaceScopesGranted))
       : new UserStateMachine('anonymous');
 
-    // Fetch weather + nearby places + air quality + holidays + calendar
-    // density in parallel. Each provider is cached per-region (or per-uid
-    // for calendar density), so identical inputs across turns hit memory
-    // rather than upstream. Calendar density is only fetched when the user
-    // is workspace_connected — otherwise we have no token to use.
+    // Fetch all per-turn context in ONE parallel block. None of these depend
+    // on each other and they were previously partly sequential — that cost
+    // ~900ms unnecessarily on every turn. Each provider is cached
+    // per-region (or per-uid for calendar density), so identical inputs
+    // across turns hit memory rather than upstream. Calendar density is
+    // only fetched when the user is workspace_connected — otherwise we
+    // have no token to use.
     const coord: Coord | null = location ? { lat: location.lat, lng: location.lng } : null;
     // Country code from IANA timezone — not from coord (no reverse-geocode).
     // Unmapped timezone → no holidays block (graceful).
@@ -435,6 +445,10 @@ export function createApp(deps: CreateAppDeps): Express {
       [airQuality, airQualityMs],
       [holidays, holidaysMs],
       [calendarDensity, calendarDensityMs],
+      [userProfile, profileMs],
+      [recentGoalUpdates, goalsMs],
+      [memories, memoryMs],
+      [meta, metaMs],
     ] = await Promise.all([
       timed(
         coord && deps.weather ? deps.weather.get(coord).catch(() => null) : Promise.resolve(null),
@@ -461,6 +475,33 @@ export function createApp(deps: CreateAppDeps): Express {
               .catch(() => null)
           : Promise.resolve(null),
       ),
+      timed(
+        deps.profileStore
+          ? deps.profileStore.read(effectiveUserId).catch(() => undefined)
+          : Promise.resolve(undefined),
+      ),
+      timed(
+        deps.goalUpdatesStore
+          ? deps.goalUpdatesStore.recent(effectiveUserId, 20).catch(() => undefined)
+          : Promise.resolve(undefined),
+      ),
+      timed(
+        // Silent memory retrieval — searched with the user's current message
+        // as the query. Any error yields an empty list; never fails a turn.
+        deps.memory
+          ? deps.memory.search(effectiveUserId, message, 5).catch(() => [])
+          : Promise.resolve([]),
+      ),
+      timed(
+        // Increments the per-uid chat counter and reads the stored tier.
+        // Counter failure should never block a turn; on error we get
+        // {chatTurnCount:0, tier:'free'} defaults via .catch().
+        deps.userMetaStore
+          ? deps.userMetaStore
+              .incrementTurnCount(effectiveUserId)
+              .catch(() => ({ chatTurnCount: 0, tier: 'free' as const }))
+          : Promise.resolve({ chatTurnCount: 0, tier: 'free' as const }),
+      ),
     ]);
     timings.parallelMs = Date.now() - tParallel0;
     timings.weatherMs = weatherMs;
@@ -468,53 +509,15 @@ export function createApp(deps: CreateAppDeps): Express {
     timings.airQualityMs = airQualityMs;
     timings.holidaysMs = holidaysMs;
     timings.calendarDensityMs = calendarDensityMs;
+    timings.profileMs = profileMs;
+    timings.goalsMs = goalsMs;
+    timings.memoryMs = memoryMs;
+    timings.metaMs = metaMs;
     const locationCtx: LocationCtx | null = coord ? { coord } : null;
-
-    // Read the user's profile so the agent sees the full user.yaml (including
-    // nulls) as part of its system prompt every turn. Writes happen via the
-    // update_user_profile tool that runnerFor will register with the uid.
-    const tProfile0 = Date.now();
-    const userProfile = deps.profileStore
-      ? await deps.profileStore.read(effectiveUserId).catch(() => undefined)
-      : undefined;
-    timings.profileMs = Date.now() - tProfile0;
-
-    const tGoals0 = Date.now();
-    const recentGoalUpdates = deps.goalUpdatesStore
-      ? await deps.goalUpdatesStore.recent(effectiveUserId, 20).catch(() => undefined)
-      : undefined;
-    timings.goalsMs = Date.now() - tGoals0;
-
-    // Silent memory retrieval — searched with the user's current message as
-    // the query. Any error yields an empty list; never fails a turn.
-    const tMem0 = Date.now();
-    const memories = deps.memory
-      ? await deps.memory.search(effectiveUserId, message, 5).catch(() => [])
-      : [];
-    timings.memoryMs = Date.now() - tMem0;
-
-    // Compute the usage policy for this turn. Increments the per-uid
-    // chat counter (creating the doc on first turn), reads the stored
-    // tier, and combines with the auth state to decide model + nudge +
-    // upgrade-tool gating. When userMetaStore isn't wired (test app),
-    // fall back to a generous policy: full Flash, no nudge, no tool.
-    const tMeta0 = Date.now();
-    let usagePolicy: UsagePolicy;
-    let chatTurnCount = 0;
-    let tier: 'free' | 'pro' = 'free';
-    if (deps.userMetaStore) {
-      try {
-        const meta = await deps.userMetaStore.incrementTurnCount(effectiveUserId);
-        chatTurnCount = meta.chatTurnCount;
-        tier = meta.tier;
-      } catch {
-        // Counter failure should never block a turn; fall through with
-        // defaults so the user still gets a response.
-      }
-    }
-    timings.metaMs = Date.now() - tMeta0;
+    const chatTurnCount = meta.chatTurnCount;
+    const tier = meta.tier;
     timings.prepMs = tick();
-    usagePolicy = UsageStateMachine.from({
+    const usagePolicy = UsageStateMachine.from({
       userState: machine.current(),
       chatCount: chatTurnCount,
       tier,
@@ -595,6 +598,10 @@ export function createApp(deps: CreateAppDeps): Express {
         userId: effectiveUserId,
         sessionId,
         newMessage,
+        // SSE streaming so partial events flow back to the browser as the
+        // model produces them — drops first-text latency from "wait for
+        // whole reply" to ~the first paragraph break.
+        runConfig: { streamingMode: StreamingMode.SSE },
       })) {
         if (firstEventMs === null) firstEventMs = Date.now() - tStream0;
         if (
