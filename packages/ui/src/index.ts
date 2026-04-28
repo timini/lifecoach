@@ -37,6 +37,7 @@ export {
 } from './components/goal-log';
 export { Input, type InputProps } from './components/input';
 export { LocationBadge, type LocationBadgeProps } from './components/location-badge';
+export { Markdown, type MarkdownProps } from './components/markdown';
 export { RadioGroup, RadioGroupItem } from './components/radio-group';
 export { ToolCallBadge, type ToolCallBadgeProps } from './components/tool-call-badge';
 export { WorkspacePrompt, type WorkspacePromptProps } from './components/workspace-prompt';
