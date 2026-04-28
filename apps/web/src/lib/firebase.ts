@@ -86,6 +86,18 @@ export async function ensureSignedIn(): Promise<User> {
   });
 }
 
+/**
+ * Subscribe to auth-state changes for the lifetime of the page. Used by
+ * ChatWindow to keep its `user` React state in sync with whatever auth
+ * action just landed — necessary for sign-in flows that bypass the
+ * component's own handlers (the e2e window hook, or any future external
+ * trigger). `cb` receives `null` on sign-out, the new User on sign-in.
+ * Returns the unsubscribe.
+ */
+export function onAuthChange(cb: (user: User | null) => void): () => void {
+  return onAuthStateChanged(firebaseAuth(), cb);
+}
+
 const EMAIL_PENDING_KEY = 'lifecoach.pendingEmail';
 
 /**
