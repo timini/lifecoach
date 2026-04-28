@@ -187,52 +187,124 @@ describe('buildInstruction', () => {
     expect(s).not.toMatch(/HOLIDAYS/);
   });
 
-  it('renders CALENDAR_DENSITY when there are events, with next/last on today and first/last on tomorrow', () => {
+  it('renders CALENDAR with today events listed inline; tomorrow stays a summary', () => {
     const s = buildInstruction({
       ...BASE,
       calendarDensity: {
-        today: { count: 3, firstStart: '10:00', lastEnd: '17:30', nextStart: '14:00' },
+        today: {
+          count: 3,
+          firstStart: '10:00',
+          lastEnd: '17:30',
+          nextStart: '14:00',
+          events: [
+            { summary: 'Standup', start: '10:00', end: '10:30', allDay: false },
+            { summary: 'Lunch with Alex', start: '13:00', end: '14:00', allDay: false },
+            { summary: '1:1', start: '16:00', end: '17:30', allDay: false },
+          ],
+        },
         tomorrow: { count: 2, firstStart: '09:00', lastEnd: '15:00' },
       },
     });
-    expect(s).toMatch(/CALENDAR_DENSITY/);
+    expect(s).toMatch(/CALENDAR \(pre-fetched/);
     expect(s).toMatch(/today: 3 events \(next at 14:00, last ends 17:30\)/);
+    expect(s).toMatch(/10:00–10:30 {2}Standup/);
+    expect(s).toMatch(/13:00–14:00 {2}Lunch with Alex/);
+    expect(s).toMatch(/16:00–17:30 {2}1:1/);
     expect(s).toMatch(/tomorrow: 2 events \(first 09:00, last ends 15:00\)/);
     expect(s).not.toMatch(/heavy day/); // 2 events isn't heavy
+  });
+
+  it('renders all-day events with "all-day" instead of a time range', () => {
+    const s = buildInstruction({
+      ...BASE,
+      calendarDensity: {
+        today: {
+          count: 2,
+          firstStart: '11:00',
+          lastEnd: '12:00',
+          nextStart: '11:00',
+          events: [
+            { summary: 'Birthday', start: null, end: null, allDay: true },
+            { summary: 'Standup', start: '11:00', end: '12:00', allDay: false },
+          ],
+        },
+        tomorrow: { count: 0, firstStart: null, lastEnd: null },
+      },
+    });
+    expect(s).toMatch(/all-day/);
+    expect(s).toMatch(/Birthday/);
+  });
+
+  it('signals truncation when today has more events than the inline list', () => {
+    const s = buildInstruction({
+      ...BASE,
+      calendarDensity: {
+        today: {
+          count: 12,
+          firstStart: '09:00',
+          lastEnd: '18:00',
+          nextStart: '09:00',
+          // Only 10 inline (the cap) — 2 left over.
+          events: Array.from({ length: 10 }, (_, i) => ({
+            summary: `event-${i}`,
+            start: '09:00',
+            end: '09:30',
+            allDay: false,
+          })),
+        },
+        tomorrow: { count: 0, firstStart: null, lastEnd: null },
+      },
+    });
+    expect(s).toMatch(/…and 2 more \(call_workspace to see them\)/);
   });
 
   it('flags tomorrow as a heavy day when count >= 7', () => {
     const s = buildInstruction({
       ...BASE,
       calendarDensity: {
-        today: { count: 1, firstStart: '11:00', lastEnd: '11:30', nextStart: '11:00' },
+        today: {
+          count: 1,
+          firstStart: '11:00',
+          lastEnd: '11:30',
+          nextStart: '11:00',
+          events: [{ summary: 'Standup', start: '11:00', end: '11:30', allDay: false }],
+        },
         tomorrow: { count: 8, firstStart: '09:00', lastEnd: '18:00' },
       },
     });
     expect(s).toMatch(/tomorrow: 8 events.*heavy day/);
   });
 
-  it('omits CALENDAR_DENSITY when both days are empty (silence-on-clear)', () => {
+  it('omits CALENDAR when both days are empty (silence-on-clear)', () => {
     const s = buildInstruction({
       ...BASE,
       calendarDensity: {
-        today: { count: 0, firstStart: null, lastEnd: null, nextStart: null },
+        today: { count: 0, firstStart: null, lastEnd: null, nextStart: null, events: [] },
         tomorrow: { count: 0, firstStart: null, lastEnd: null },
       },
     });
-    expect(s).not.toMatch(/CALENDAR_DENSITY/);
+    expect(s).not.toMatch(/CALENDAR/);
   });
 
-  it('omits CALENDAR_DENSITY when null (workspace not connected or fetch failed)', () => {
+  it('omits CALENDAR when null (workspace not connected or fetch failed)', () => {
     const s = buildInstruction({ ...BASE, calendarDensity: null });
-    expect(s).not.toMatch(/CALENDAR_DENSITY/);
+    expect(s).not.toMatch(/CALENDAR/);
   });
 
-  it('CALENDAR_DENSITY omits "next at" when all today events are past', () => {
+  it('CALENDAR omits "next at" when all today events are past', () => {
     const s = buildInstruction({
       ...BASE,
       calendarDensity: {
-        today: { count: 2, firstStart: '08:00', lastEnd: '12:00', nextStart: null },
+        today: {
+          count: 2,
+          firstStart: '08:00',
+          lastEnd: '12:00',
+          nextStart: null,
+          events: [
+            { summary: 'Early standup', start: '08:00', end: '08:30', allDay: false },
+            { summary: 'Coffee', start: '11:30', end: '12:00', allDay: false },
+          ],
+        },
         tomorrow: { count: 0, firstStart: null, lastEnd: null },
       },
     });

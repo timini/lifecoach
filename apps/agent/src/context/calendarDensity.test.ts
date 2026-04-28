@@ -111,6 +111,11 @@ describe('createCalendarDensityClient', () => {
         lastEnd: '17:30',
         // The next event after 09:30 is the 10:00 standup.
         nextStart: '10:00',
+        events: [
+          { summary: 'Standup', start: '10:00', end: '10:30', allDay: false },
+          { summary: 'Lunch', start: '13:00', end: '14:00', allDay: false },
+          { summary: '1:1', start: '16:00', end: '17:30', allDay: false },
+        ],
       },
       tomorrow: {
         count: 8,
@@ -216,7 +221,7 @@ describe('createCalendarDensityClient', () => {
     });
     const summary = await client.get({ uid: 'u1', timezone: 'Europe/London', now: NOW });
     expect(summary).toEqual({
-      today: { count: 0, firstStart: null, lastEnd: null, nextStart: null },
+      today: { count: 0, firstStart: null, lastEnd: null, nextStart: null, events: [] },
       tomorrow: { count: 0, firstStart: null, lastEnd: null },
     });
   });
@@ -234,6 +239,7 @@ describe('createCalendarDensityClient', () => {
           },
           {
             id: 'a',
+            summary: 'standup',
             start: { dateTime: '2026-04-28T11:00:00+01:00' },
             end: { dateTime: '2026-04-28T12:00:00+01:00' },
           },
@@ -246,7 +252,54 @@ describe('createCalendarDensityClient', () => {
       firstStart: '11:00',
       lastEnd: '12:00',
       nextStart: '11:00',
+      events: [
+        // All-day events float to the top of the events list.
+        { summary: 'birthday', start: null, end: null, allDay: true },
+        { summary: 'standup', start: '11:00', end: '12:00', allDay: false },
+      ],
     });
+  });
+
+  it('caps inline today events at TODAY_EVENT_LIMIT (10) but count reflects the full total', async () => {
+    const items = Array.from({ length: 15 }, (_, i) => {
+      // 06:00, 06:30, 07:00, ... well-ordered so we can spot-check the slice.
+      const startMin = 6 * 60 + i * 30;
+      const hh = String(Math.floor(startMin / 60)).padStart(2, '0');
+      const mm = String(startMin % 60).padStart(2, '0');
+      return {
+        id: `e${i}`,
+        summary: `event-${i}`,
+        start: { dateTime: `2026-04-28T${hh}:${mm}:00+01:00` },
+        end: { dateTime: `2026-04-28T${hh}:${mm}:00+01:00` },
+      };
+    });
+    const client = createCalendarDensityClient({
+      store: fakeStore(),
+      exec: fakeExec({ items }),
+    });
+    const summary = await client.get({ uid: 'u1', timezone: 'Europe/London', now: NOW });
+    expect(summary?.today.count).toBe(15);
+    expect(summary?.today.events).toHaveLength(10);
+    expect(summary?.today.events[0]?.summary).toBe('event-0');
+    expect(summary?.today.events[9]?.summary).toBe('event-9');
+  });
+
+  it('falls back to "(no title)" when an event has no summary', async () => {
+    const client = createCalendarDensityClient({
+      store: fakeStore(),
+      exec: fakeExec({
+        items: [
+          {
+            id: 'a',
+            // no summary field at all
+            start: { dateTime: '2026-04-28T11:00:00+01:00' },
+            end: { dateTime: '2026-04-28T12:00:00+01:00' },
+          },
+        ],
+      }),
+    });
+    const summary = await client.get({ uid: 'u1', timezone: 'Europe/London', now: NOW });
+    expect(summary?.today.events[0]?.summary).toBe('(no title)');
   });
 
   it('nextStart is null when all today events are already past', async () => {

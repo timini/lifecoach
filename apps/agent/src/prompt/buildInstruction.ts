@@ -300,9 +300,31 @@ function formatCalendarDensity(ctx: InstructionContext): string {
   // No events at all — silence-on-clear; the coach can assume a clear two
   // days when this block is absent.
   if (cd.today.count === 0 && cd.tomorrow.count === 0) return '';
-  const today = formatDay(cd.today, false);
-  const tomorrow = formatDay(cd.tomorrow, true, cd.tomorrow.count >= HEAVY_DAY_THRESHOLD);
-  return `CALENDAR_DENSITY (pre-fetched — reference without calling call_workspace):\ntoday: ${today}\ntomorrow: ${tomorrow}`;
+  const todayHeader = formatDay(cd.today, false);
+  const tomorrowHeader = formatDay(cd.tomorrow, true, cd.tomorrow.count >= HEAVY_DAY_THRESHOLD);
+  const lines = [
+    "CALENDAR (pre-fetched — reference today's schedule directly without calling call_workspace; for tomorrow or other days, call_workspace):",
+    `today: ${todayHeader}`,
+  ];
+  for (const e of cd.today.events) {
+    lines.push(`  ${formatEventLine(e)}`);
+  }
+  if (cd.today.events.length < cd.today.count) {
+    const more = cd.today.count - cd.today.events.length;
+    lines.push(`  …and ${more} more (call_workspace to see them)`);
+  }
+  lines.push(`tomorrow: ${tomorrowHeader}`);
+  return lines.join('\n');
+}
+
+function formatEventLine(e: {
+  summary: string;
+  start: string | null;
+  end: string | null;
+  allDay: boolean;
+}): string {
+  const time = e.allDay ? 'all-day     ' : `${e.start ?? '??:??'}–${e.end ?? '??:??'}`;
+  return `${time}  ${e.summary}`;
 }
 
 function formatDay(
@@ -316,11 +338,12 @@ function formatDay(
   heavy = false,
 ): string {
   if (day.count === 0) return 'no events';
-  const bits: string[] = [`${day.count} event${day.count === 1 ? '' : 's'}`];
-  if (!isTomorrow && day.nextStart) bits.push(`next at ${day.nextStart}`);
-  if (isTomorrow && day.firstStart) bits.push(`first ${day.firstStart}`);
-  if (day.lastEnd) bits.push(`last ends ${day.lastEnd}`);
-  let line = `${bits[0]} (${bits.slice(1).join(', ')})`;
+  const head = `${day.count} event${day.count === 1 ? '' : 's'}`;
+  const tail: string[] = [];
+  if (!isTomorrow && day.nextStart) tail.push(`next at ${day.nextStart}`);
+  if (isTomorrow && day.firstStart) tail.push(`first ${day.firstStart}`);
+  if (day.lastEnd) tail.push(`last ends ${day.lastEnd}`);
+  let line = tail.length === 0 ? head : `${head} (${tail.join(', ')})`;
   if (heavy) line += ' — heavy day';
   return line;
 }

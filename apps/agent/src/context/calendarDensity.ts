@@ -18,6 +18,19 @@
 import { ScopeRequiredError, type WorkspaceTokensStore } from '../storage/workspaceTokens.js';
 import { type ExecFileLike, defaultExecFile } from '../tools/callWorkspace.js';
 
+export interface TodayEvent {
+  /** Event summary/title. Empty events fall back to '(no title)'. */
+  summary: string;
+  /** HH:MM in user's tz; null for all-day events. */
+  start: string | null;
+  /** HH:MM in user's tz; null for all-day events. */
+  end: string | null;
+  allDay: boolean;
+}
+
+/** Cap the inline today-events list. The coach can call_workspace for more. */
+export const TODAY_EVENT_LIMIT = 10;
+
 export interface CalendarDensitySummary {
   today: {
     count: number;
@@ -27,6 +40,12 @@ export interface CalendarDensitySummary {
     lastEnd: string | null;
     /** HH:MM of next not-yet-started event today, or null if all are past. */
     nextStart: string | null;
+    /**
+     * Inline list of today's events (sorted by start, all-day first).
+     * Capped at TODAY_EVENT_LIMIT so the prompt stays compact; truncation
+     * is signalled by `events.length < count`.
+     */
+    events: TodayEvent[];
   };
   tomorrow: {
     count: number;
@@ -59,6 +78,7 @@ interface GoogleEventTime {
 }
 
 interface GoogleEvent {
+  summary?: string;
   start?: GoogleEventTime;
   end?: GoogleEventTime;
 }
@@ -146,6 +166,11 @@ export function createCalendarDensityClient(
   };
 }
 
+interface ScratchToday {
+  startMs: number; // sort key; all-day events use 0 so they float to the top
+  event: TodayEvent;
+}
+
 function bucket(
   items: GoogleEvent[],
   todayDate: string,
@@ -155,6 +180,7 @@ function bucket(
 ): CalendarDensitySummary {
   const todayStarts: Date[] = [];
   const todayEnds: Date[] = [];
+  const todayEvents: ScratchToday[] = [];
   let todayCount = 0;
   const tomorrowStarts: Date[] = [];
   const tomorrowEnds: Date[] = [];
@@ -169,8 +195,19 @@ function bucket(
     const eventDay = isAllDay ? (startStr as string) : dateInTz(new Date(startStr), tz);
     if (eventDay === todayDate) {
       todayCount += 1;
-      if (!isAllDay && item.start?.dateTime) todayStarts.push(new Date(item.start.dateTime));
-      if (!isAllDay && item.end?.dateTime) todayEnds.push(new Date(item.end.dateTime));
+      const startDate = item.start?.dateTime ? new Date(item.start.dateTime) : null;
+      const endDate = item.end?.dateTime ? new Date(item.end.dateTime) : null;
+      if (!isAllDay && startDate) todayStarts.push(startDate);
+      if (!isAllDay && endDate) todayEnds.push(endDate);
+      todayEvents.push({
+        startMs: startDate?.getTime() ?? 0,
+        event: {
+          summary: (item.summary ?? '').trim() || '(no title)',
+          start: startDate ? timeInTz(startDate, tz) : null,
+          end: endDate ? timeInTz(endDate, tz) : null,
+          allDay: isAllDay,
+        },
+      });
     } else if (eventDay === tomorrowDate) {
       tomorrowCount += 1;
       if (!isAllDay && item.start?.dateTime) tomorrowStarts.push(new Date(item.start.dateTime));
@@ -184,12 +221,18 @@ function bucket(
     .filter((d) => d.getTime() >= now.getTime())
     .sort((a, b) => a.getTime() - b.getTime())[0];
 
+  const events = todayEvents
+    .sort((a, b) => a.startMs - b.startMs)
+    .slice(0, TODAY_EVENT_LIMIT)
+    .map((e) => e.event);
+
   return {
     today: {
       count: todayCount,
       firstStart: firstTodayStart ? timeInTz(firstTodayStart, tz) : null,
       lastEnd: lastTodayEnd ? timeInTz(lastTodayEnd, tz) : null,
       nextStart: nextTodayStart ? timeInTz(nextTodayStart, tz) : null,
+      events,
     },
     tomorrow: {
       count: tomorrowCount,
