@@ -32,6 +32,7 @@ import {
   getLocationPermissionState,
   requestBrowserLocation,
 } from '../lib/geolocation';
+import { ensureSessionIdForUid } from '../lib/sessionId';
 import { type AssistantElement, type AssistantOp, parseSseBlock } from '../lib/sse';
 import { connectWorkspace } from '../lib/workspace';
 
@@ -52,17 +53,6 @@ function messageId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function ensureSessionId(): string {
-  const KEY = 'lifecoach.sessionId';
-  if (typeof window === 'undefined') return 'ssr';
-  let id = window.localStorage.getItem(KEY);
-  if (!id) {
-    id = crypto.randomUUID();
-    window.localStorage.setItem(KEY, id);
-  }
-  return id;
-}
-
 export function ChatWindow() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -76,7 +66,11 @@ export function ChatWindow() {
   const [locationRequested, setLocationRequested] = useState(false);
   const endRef = useRef<HTMLDivElement | null>(null);
 
-  const [sessionId, setSessionId] = useState<string>(() => ensureSessionId());
+  // SessionId is bound to the firebase uid: returning users (same uid → same
+  // sessionId) reload their previous chat; fresh anon users get a fresh one.
+  // Empty string until auth settles — guards in fetchAndApplyHistory/sendText
+  // already short-circuit on `!user`, so no /history call fires before this.
+  const [sessionId, setSessionId] = useState<string>('');
 
   useEffect(() => {
     // Resume location silently if the browser already granted permission in
@@ -113,6 +107,17 @@ export function ChatWindow() {
     })();
   }, []);
 
+  // Resolve the sessionId for the currently-signed-in uid. Runs after every
+  // user change (anon → google upgrade keeps the same uid; sign-out → fresh
+  // anon flips to a new uid → new sessionId). Empty string until user is set.
+  useEffect(() => {
+    if (!user) {
+      setSessionId('');
+      return;
+    }
+    setSessionId(ensureSessionIdForUid(user.uid));
+  }, [user]);
+
   /**
    * Fetches the canonical Firestore-backed transcript for this session.
    * Used both on initial mount and as the recovery path when the SSE
@@ -122,7 +127,7 @@ export function ChatWindow() {
    * outcome without double-sending the user's message.
    */
   const fetchAndApplyHistory = useCallback(async (): Promise<Message[] | null> => {
-    if (!user) return null;
+    if (!user || !sessionId) return null;
     try {
       const idToken = await user.getIdToken();
       const res = await fetch(
@@ -183,7 +188,7 @@ export function ChatWindow() {
   }
 
   async function sendText(text: string) {
-    if (!text.trim() || busy || !user) return;
+    if (!text.trim() || busy || !user || !sessionId) return;
     setInput('');
     setBusy(true);
     setMessages((prev) => [...prev, { id: messageId(), role: 'user', text }]);
@@ -396,10 +401,8 @@ export function ChatWindow() {
       await signOutCurrent();
       setUser(null);
       setMessages([]);
-      if (typeof window !== 'undefined') {
-        window.localStorage.removeItem('lifecoach.sessionId');
-      }
-      setSessionId(ensureSessionId());
+      // SessionId follows the uid — the [user] effect will derive a fresh
+      // sessionId for the new anonymous user once setUser fires below.
       const fresh = await ensureSignedIn();
       setUser(fresh);
     } catch (err) {

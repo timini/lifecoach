@@ -113,6 +113,29 @@ deploy-web env="dev":
 seed-user uid:
     pnpm --filter @lifecoach/agent exec tsx scripts/seed-user.ts {{uid}}
 
+# Idempotent: creates / updates the dedicated e2e test user and stores its
+# password in Secret Manager (E2E_TEST_PASSWORD). See apps/agent/scripts/
+# provision-e2e-user.ts for prerequisites (firebaseauth.admin + secretmanager
+# .admin on the caller's gcloud ADC).
+provision-e2e-user env="dev":
+    #!/usr/bin/env bash
+    set -eu
+    project=$(cd infra/envs/{{env}} && terraform output -raw project_id)
+    pnpm --filter @lifecoach/agent exec tsx scripts/provision-e2e-user.ts --project="$project"
+
+# Runs the chat-persistence Playwright spec against an environment. Reads
+# baseURL + creds from the deployed Cloud Run web URL and Secret Manager.
+e2e-deployed env="dev":
+    #!/usr/bin/env bash
+    set -eu
+    project=$(cd infra/envs/{{env}} && terraform output -raw project_id)
+    base_url=$(cd infra/envs/{{env}} && terraform output -raw web_url)
+    password=$(gcloud secrets versions access latest --secret=E2E_TEST_PASSWORD --project="$project")
+    E2E_BASE_URL="$base_url" \
+    E2E_TEST_EMAIL="e2e-test@lifecoach.invalid" \
+    E2E_TEST_PASSWORD="$password" \
+    pnpm --filter @lifecoach/web exec playwright test
+
 logs-agent env="dev":
     #!/usr/bin/env bash
     set -eu
