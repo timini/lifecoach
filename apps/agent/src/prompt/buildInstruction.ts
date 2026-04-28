@@ -1,5 +1,5 @@
 import { type GoalUpdate, type UserProfile, openUISystemPrompt } from '@lifecoach/shared-types';
-import { type UserState, policyFor } from '@lifecoach/user-state';
+import { type NudgeMode, type UserState, policyFor } from '@lifecoach/user-state';
 import yaml from 'js-yaml';
 import type { Memory } from '../context/memory.js';
 import type { NearbyPlace } from '../context/places.js';
@@ -25,6 +25,12 @@ export interface InstructionContext {
   nearbyPlaces?: NearbyPlace[];
   /** Relevant long-term memories retrieved silently at session start. */
   memories?: Memory[];
+  /**
+   * Per-turn nudge directive driven by UsageStateMachine. 'signup' is for
+   * heavy anonymous users; 'pro' is for heavy signed-in free users. Absent
+   * when no nudge applies.
+   */
+  nudgeMode?: NudgeMode;
 }
 
 const PERSONA_HEADER =
@@ -103,6 +109,14 @@ ERROR HANDLING — if call_workspace returns {"status":"error","code":"<X>", ...
 In every case, never mention "certificate", "discovery", "scope", "token", "rustls", "401/403/etc" in the user-facing text. Speak like a friend, not a pager.
 `.trim();
 
+const SIGNUP_NUDGE_DIRECTIVE = `
+SIGNUP_NUDGE: this user is still anonymous and has been chatting for a while. When a moment fits naturally — at most once or twice per session — suggest creating an account so you can remember them across devices. Lean on a benefit they've already felt (e.g. "so I remember the kids' names next time"). Never nag, never block the conversation on it. The auth_user tool is available when the user agrees.
+`.trim();
+
+const PRO_NUDGE_DIRECTIVE = `
+PRO_NUDGE: this user has chatted with you many times on the free plan. If a moment arises where Pro would genuinely help (deeper analysis, faster replies, no daily nudges), call upgrade_to_pro. Don't pitch Pro every turn — once per session is enough. Don't oversell.
+`.trim();
+
 const STYLE_RULES = `
 STYLE:
 - Keep replies short. 1–3 sentences unless the user asks for depth.
@@ -142,12 +156,31 @@ Assistant: "Nice. How far?"
 `.trim();
 
 function formatTime(ctx: InstructionContext): string {
+  const tz = ctx.timezone ?? 'UTC';
   const iso = ctx.now.toISOString();
-  const day = ctx.now.toLocaleDateString('en-US', {
+  // Pre-format the local time so the agent doesn't have to do UTC→local
+  // conversion every turn — Gemini fumbles that. The stronger failure
+  // mode, though, is that Flash will *invent* a plausible-looking time
+  // ("It's 12:51 PM") or echo a time from earlier in the session rather
+  // than read this block. Hence the explicit "verbatim" rule and the
+  // anchoring rule for event times.
+  const local = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
     weekday: 'long',
-    timeZone: ctx.timezone ?? 'UTC',
-  });
-  return `TIME:\nnow: ${iso}\nday_of_week: ${day}\ntimezone: ${ctx.timezone ?? 'unknown'}`;
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZoneName: 'short',
+  }).format(ctx.now);
+  return `CURRENT_TIME (single source of truth — never infer, never guess, never echo a time from earlier in the conversation):
+now_local: ${local}
+now_utc: ${iso}
+timezone: ${tz}
+
+When the user asks what time it is, state now_local verbatim (e.g. "It's 12:40 PM"). When you mention an event's start time relative to now (e.g. "starting now", "in 5 minutes"), compute the delta against now_local — never claim an event is "starting now" unless its start is within a few minutes of now_local.`;
 }
 
 function formatLocation(ctx: InstructionContext): string {
@@ -214,6 +247,10 @@ export function buildInstruction(ctx: InstructionContext): string {
     openUISystemPrompt,
     `USER_STATE: ${ctx.userState}`,
     `STATE_DIRECTIVE: ${directive}`,
+    // Tier-driven nudges. At most one fires per turn; UsageStateMachine
+    // computes the right one server-side from (userState, chatCount, tier).
+    ctx.nudgeMode === 'signup' ? SIGNUP_NUDGE_DIRECTIVE : '',
+    ctx.nudgeMode === 'pro' ? PRO_NUDGE_DIRECTIVE : '',
     // Workspace cheat-sheet only appears when the user has actually
     // connected Workspace — otherwise the LLM has no call_workspace tool
     // to use, and the cheat-sheet would be noise.

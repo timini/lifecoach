@@ -40,6 +40,7 @@ export { LocationBadge, type LocationBadgeProps } from './components/location-ba
 export { Markdown, type MarkdownProps } from './components/markdown';
 export { RadioGroup, RadioGroupItem } from './components/radio-group';
 export { ToolCallBadge, type ToolCallBadgeProps } from './components/tool-call-badge';
+export { UpgradePrompt, type UpgradePromptProps } from './components/upgrade-prompt';
 export { WorkspacePrompt, type WorkspacePromptProps } from './components/workspace-prompt';
 export { YamlTree, type YamlTreeProps } from './components/yaml-tree';
 export { cn } from './lib/utils';

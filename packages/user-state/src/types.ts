@@ -32,7 +32,8 @@ export type ToolName =
   | 'memory_search'
   | 'memory_save'
   | 'connect_workspace'
-  | 'call_workspace';
+  | 'call_workspace'
+  | 'upgrade_to_pro';
 
 /**
  * Discriminated union of UI affordances the web app may render. New kinds

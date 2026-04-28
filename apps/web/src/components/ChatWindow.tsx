@@ -12,6 +12,7 @@ import {
   LocationBadge,
   Markdown,
   ToolCallBadge,
+  UpgradePrompt,
   WorkspacePrompt,
 } from '@lifecoach/ui';
 import { Renderer, library as openUILibrary } from '@lifecoach/ui/openui';
@@ -356,6 +357,17 @@ export function ChatWindow() {
     }
   }
 
+  function handleProInterest() {
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: messageId(),
+        role: 'assistant',
+        elements: [{ kind: 'text', text: "Thanks — we'll be in touch when Pro is ready." }],
+      },
+    ]);
+  }
+
   async function handleGoogleSignIn() {
     try {
       const upgraded = await linkWithGoogle();
@@ -515,6 +527,7 @@ export function ChatWindow() {
             onGoogleSignIn={() => void handleGoogleSignIn()}
             onEmailSignIn={handleEmailSignIn}
             onConnectWorkspace={() => void handleConnectWorkspace()}
+            onProInterest={handleProInterest}
           />
         );
       })}
@@ -554,6 +567,7 @@ function AssistantGroup({
   onGoogleSignIn,
   onEmailSignIn,
   onConnectWorkspace,
+  onProInterest,
 }: {
   msgId: string;
   elements: AssistantElement[];
@@ -562,6 +576,7 @@ function AssistantGroup({
   onGoogleSignIn: () => void;
   onEmailSignIn: (email: string) => void;
   onConnectWorkspace: () => void;
+  onProInterest: () => void;
 }) {
   return (
     <>
@@ -595,6 +610,9 @@ function AssistantGroup({
         }
         if (el.kind === 'workspace') {
           return <WorkspacePrompt key={elKey} disabled={answered} onConnect={onConnectWorkspace} />;
+        }
+        if (el.kind === 'upgrade') {
+          return <UpgradePrompt key={elKey} disabled={answered} onInterest={onProInterest} />;
         }
         if (el.kind === 'tool-call') {
           return <ToolCallBadge key={elKey} label={el.label} done={el.done} ok={el.ok} />;

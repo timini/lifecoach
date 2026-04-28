@@ -245,6 +245,7 @@ describe('labelForToolCall', () => {
     expect(labelForToolCall('log_goal_update', { goal: 'half marathon' })).toContain('goal');
     expect(labelForToolCall('auth_user', { mode: 'google' })).toContain('sign-in');
     expect(labelForToolCall('connect_workspace', {})).toContain('workspace');
+    expect(labelForToolCall('upgrade_to_pro', {})).toMatch(/pro/i);
   });
 
   it('falls back to `using <name>` for unknown tools', () => {
@@ -257,6 +258,7 @@ describe('labelForToolCall', () => {
     expect(labelForToolCall('memory_save', {})).toBe('saving memory');
     expect(labelForToolCall('memory_search', {})).toBe('recalling');
     expect(labelForToolCall('google_search', {})).toBe('searching the web');
+    expect(labelForToolCall('upgrade_to_pro', {})).toBe('offering pro upgrade');
   });
 
   it('covers update_user_profile + log_goal_update fallbacks when args are missing', () => {
@@ -357,6 +359,26 @@ describe('parseSseBlock — extra branches', () => {
       }),
     );
     expect(ops).toContainEqual({ op: 'push', element: { kind: 'workspace' } });
+  });
+
+  it('pushes an upgrade element from upgrade_to_pro functionResponse', () => {
+    const ops = parseSseBlock(
+      blockFor({
+        author: 'lifecoach',
+        content: {
+          parts: [
+            {
+              functionResponse: {
+                id: 'u1',
+                name: 'upgrade_to_pro',
+                response: { status: 'upgrade_prompted' },
+              },
+            },
+          ],
+        },
+      }),
+    );
+    expect(ops).toContainEqual({ op: 'push', element: { kind: 'upgrade' } });
   });
 
   it('pushes a choice element from ask_multiple_choice_question response', () => {

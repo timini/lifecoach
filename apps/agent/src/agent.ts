@@ -13,14 +13,27 @@ export const AGENT_NAME = 'lifecoach';
 // (also reachable on location=global).
 export const AGENT_MODEL = 'gemini-3-flash-preview';
 
+export interface CreateRootAgentOptions {
+  /**
+   * Override the model for this turn — typically driven by the
+   * UsageStateMachine's policy (free_throttled anonymous users get the
+   * cheaper Flash Lite). Defaults to AGENT_MODEL.
+   */
+  model?: string;
+}
+
 /**
  * Create a root agent with instructions baked in for a specific turn's
  * context, plus any tools that should be available this turn.
  */
-export function createRootAgent(ctx: InstructionContext, tools: FunctionTool[] = []): LlmAgent {
+export function createRootAgent(
+  ctx: InstructionContext,
+  tools: FunctionTool[] = [],
+  options: CreateRootAgentOptions = {},
+): LlmAgent {
   return new LlmAgent({
     name: AGENT_NAME,
-    model: AGENT_MODEL,
+    model: options.model ?? AGENT_MODEL,
     description: 'A warm, supportive AI life coach.',
     instruction: buildInstruction(ctx),
     tools,

@@ -213,6 +213,18 @@ describe('eventsToMessages', () => {
           ],
         },
       },
+      {
+        id: 'e4',
+        author: 'lifecoach',
+        content: {
+          role: 'model',
+          parts: [
+            {
+              functionCall: { id: 'u1', name: 'upgrade_to_pro', args: {} },
+            },
+          ],
+        },
+      },
     ]);
     expect(msgs).toEqual([]);
   });

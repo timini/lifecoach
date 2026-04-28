@@ -1,6 +1,6 @@
 import { type Event, type Session, getFunctionCalls, getFunctionResponses } from '@google/adk';
 import type { Content } from '@google/genai';
-import { UserStateMachine } from '@lifecoach/user-state';
+import { type UsagePolicy, UsageStateMachine, UserStateMachine } from '@lifecoach/user-state';
 import express, { type Express, type Request, type Response } from 'express';
 import {
   type TokenVerifier,
@@ -14,6 +14,7 @@ import type { Coord, WeatherClient } from './context/weather.js';
 import type { WorkspaceOAuthClient } from './oauth/workspaceClient.js';
 import type { InstructionContext, LocationCtx } from './prompt/buildInstruction.js';
 import type { GoalUpdatesStore } from './storage/goalUpdates.js';
+import type { UserMetaStore } from './storage/userMeta.js';
 import type { UserProfileStore } from './storage/userProfile.js';
 import type { WorkspaceTokensStore } from './storage/workspaceTokens.js';
 
@@ -45,6 +46,13 @@ export interface RunnerLike {
 export interface RunnerForParams {
   ctx: InstructionContext;
   uid: string;
+  /**
+   * Usage policy for this turn — drives model selection (e.g. Flash Lite
+   * for free_throttled anonymous users) and conditional registration of
+   * the upgrade_to_pro tool. Computed by the /chat handler from
+   * UsageStateMachine before calling this factory.
+   */
+  usagePolicy: UsagePolicy;
 }
 
 export interface SessionReader {
@@ -79,6 +87,12 @@ export interface CreateAppDeps {
   goalUpdatesStore?: GoalUpdatesStore;
   workspaceTokensStore?: WorkspaceTokensStore;
   workspaceOAuthClient?: WorkspaceOAuthClient;
+  /**
+   * Per-uid usage meta (chat turn count, tier). Optional only because the
+   * test app sometimes runs without it; in production it's always set so
+   * the UsageStateMachine can derive a real policy.
+   */
+  userMetaStore?: UserMetaStore;
   now?: () => Date;
 }
 
@@ -398,6 +412,30 @@ export function createApp(deps: CreateAppDeps): Express {
       ? await deps.memory.search(effectiveUserId, message, 5).catch(() => [])
       : [];
 
+    // Compute the usage policy for this turn. Increments the per-uid
+    // chat counter (creating the doc on first turn), reads the stored
+    // tier, and combines with the auth state to decide model + nudge +
+    // upgrade-tool gating. When userMetaStore isn't wired (test app),
+    // fall back to a generous policy: full Flash, no nudge, no tool.
+    let usagePolicy: UsagePolicy;
+    let chatTurnCount = 0;
+    let tier: 'free' | 'pro' = 'free';
+    if (deps.userMetaStore) {
+      try {
+        const meta = await deps.userMetaStore.incrementTurnCount(effectiveUserId);
+        chatTurnCount = meta.chatTurnCount;
+        tier = meta.tier;
+      } catch {
+        // Counter failure should never block a turn; fall through with
+        // defaults so the user still gets a response.
+      }
+    }
+    usagePolicy = UsageStateMachine.from({
+      userState: machine.current(),
+      chatCount: chatTurnCount,
+      tier,
+    }).policy();
+
     const instructionCtx: InstructionContext = {
       now: now(),
       timezone: timezone ?? null,
@@ -408,6 +446,7 @@ export function createApp(deps: CreateAppDeps): Express {
       recentGoalUpdates,
       nearbyPlaces,
       memories,
+      nudgeMode: usagePolicy.nudgeMode,
     };
 
     res.setHeader('Content-Type', 'text/event-stream');
@@ -415,7 +454,7 @@ export function createApp(deps: CreateAppDeps): Express {
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders?.();
 
-    const runner = deps.runnerFor({ ctx: instructionCtx, uid: effectiveUserId });
+    const runner = deps.runnerFor({ ctx: instructionCtx, uid: effectiveUserId, usagePolicy });
 
     // Track tool invocations for the structured turn log. We care about name
     // + args (for debugging) and whether the response had an error status.
@@ -455,6 +494,7 @@ export function createApp(deps: CreateAppDeps): Express {
         'ask_multiple_choice_question',
         'auth_user',
         'connect_workspace',
+        'upgrade_to_pro',
       ]);
       for await (const event of runner.runAsync({
         userId: effectiveUserId,
@@ -475,7 +515,8 @@ export function createApp(deps: CreateAppDeps): Express {
             turnEndingToolNames.has(name) &&
             (respObj?.status === 'shown' ||
               respObj?.status === 'auth_prompted' ||
-              respObj?.status === 'oauth_prompted')
+              respObj?.status === 'oauth_prompted' ||
+              respObj?.status === 'upgrade_prompted')
           ) {
             choiceShown = true;
           }
@@ -504,6 +545,13 @@ export function createApp(deps: CreateAppDeps): Express {
           recentGoalCount: recentGoalUpdates?.length ?? 0,
           toolCount: toolInvocations.length,
           tools: toolInvocations,
+          // Tier-policy fields — track post-deploy distribution so we can
+          // tune thresholds without re-instrumenting.
+          chatTurnCount,
+          tier,
+          usageState: usagePolicy.state,
+          model: usagePolicy.model,
+          nudgeMode: usagePolicy.nudgeMode,
         }),
       );
       res.end();
@@ -523,6 +571,7 @@ async function main(): Promise<void> {
     { createUserProfileStore },
     { createGoalUpdatesStore },
     { createWorkspaceTokensStore },
+    { createUserMetaStore },
     { createWorkspaceOAuthClient, createRealWorkspaceOAuthClient },
     { createFirestoreSessionService },
     { createUpdateUserProfileTool },
@@ -532,6 +581,7 @@ async function main(): Promise<void> {
     { createMemorySaveTool },
     { createConnectWorkspaceTool },
     { createCallWorkspaceTool },
+    { createUpgradeToProTool },
     { Storage },
     { Firestore },
     admin,
@@ -544,6 +594,7 @@ async function main(): Promise<void> {
     import('./storage/userProfile.js'),
     import('./storage/goalUpdates.js'),
     import('./storage/workspaceTokens.js'),
+    import('./storage/userMeta.js'),
     import('./oauth/workspaceClient.js'),
     import('./storage/firestoreSession.js'),
     import('./tools/updateUserProfile.js'),
@@ -553,6 +604,7 @@ async function main(): Promise<void> {
     import('./tools/memorySave.js'),
     import('./tools/connectWorkspace.js'),
     import('./tools/callWorkspace.js'),
+    import('./tools/upgradeToPro.js'),
     import('@google-cloud/storage'),
     import('@google-cloud/firestore'),
     import('firebase-admin/app'),
@@ -607,6 +659,9 @@ async function main(): Promise<void> {
   const workspaceTokensStore = workspaceOAuthClient
     ? createWorkspaceTokensStore({ firestore, oauthClient: workspaceOAuthClient })
     : undefined;
+  // Per-uid usage meta: chat counter + tier. Drives UsageStateMachine
+  // policy in /chat (model selection + signup/pro nudges + upgrade tool).
+  const userMetaStore = createUserMetaStore({ firestore });
   if (!workspaceEnabled) {
     // eslint-disable-next-line no-console
     console.log(
@@ -650,40 +705,48 @@ async function main(): Promise<void> {
       }),
     );
   }
-  const runnerFor = ({ ctx, uid }: RunnerForParams): RunnerLike =>
+  const runnerFor = ({ ctx, uid, usagePolicy }: RunnerForParams): RunnerLike =>
     new RealRunner({
       appName: 'lifecoach',
-      agent: createRootAgent(ctx, [
-        createUpdateUserProfileTool({ store: profileStore, uid }),
-        createLogGoalUpdateTool({ store: goalUpdatesStore, uid }),
-        createAskSingleChoiceTool(),
-        createAskMultipleChoiceTool(),
-        // auth_user only matters when the user is anonymous. Gate by state
-        // so a signed-in user's agent doesn't even see the tool.
-        ...(ctx.userState === 'anonymous' ? [createAuthUserTool()] : []),
-        ...(memoryEnabled ? [createMemorySaveTool({ client: memory, uid })] : []),
-        // connect_workspace is a UI directive — available whenever the user
-        // could next grant or re-grant (i.e. google-linked or already
-        // connected, to allow reconnect).
-        ...(workspaceEnabled &&
-        (ctx.userState === 'google_linked' || ctx.userState === 'workspace_connected')
-          ? [createConnectWorkspaceTool()]
-          : []),
-        // call_workspace binds auth server-side; only registered when
-        // tokens exist (workspace_connected state).
-        ...(workspaceEnabled && workspaceTokensStore && ctx.userState === 'workspace_connected'
-          ? [
-              createCallWorkspaceTool({
-                store: workspaceTokensStore,
-                uid,
-                log: (event) => {
-                  // eslint-disable-next-line no-console
-                  console.log(JSON.stringify({ msg: 'tool.call_workspace', ...event }));
-                },
-              }),
-            ]
-          : []),
-      ]),
+      agent: createRootAgent(
+        ctx,
+        [
+          createUpdateUserProfileTool({ store: profileStore, uid }),
+          createLogGoalUpdateTool({ store: goalUpdatesStore, uid }),
+          createAskSingleChoiceTool(),
+          createAskMultipleChoiceTool(),
+          // auth_user only matters when the user is anonymous. Gate by state
+          // so a signed-in user's agent doesn't even see the tool.
+          ...(ctx.userState === 'anonymous' ? [createAuthUserTool()] : []),
+          ...(memoryEnabled ? [createMemorySaveTool({ client: memory, uid })] : []),
+          // connect_workspace is a UI directive — available whenever the user
+          // could next grant or re-grant (i.e. google-linked or already
+          // connected, to allow reconnect).
+          ...(workspaceEnabled &&
+          (ctx.userState === 'google_linked' || ctx.userState === 'workspace_connected')
+            ? [createConnectWorkspaceTool()]
+            : []),
+          // call_workspace binds auth server-side; only registered when
+          // tokens exist (workspace_connected state).
+          ...(workspaceEnabled && workspaceTokensStore && ctx.userState === 'workspace_connected'
+            ? [
+                createCallWorkspaceTool({
+                  store: workspaceTokensStore,
+                  uid,
+                  log: (event) => {
+                    // eslint-disable-next-line no-console
+                    console.log(JSON.stringify({ msg: 'tool.call_workspace', ...event }));
+                  },
+                }),
+              ]
+            : []),
+          // upgrade_to_pro is a UI directive available only when the
+          // UsageStateMachine says so (free user past PRO_NUDGE_AFTER turns).
+          ...(usagePolicy.upgradeToolAvailable ? [createUpgradeToProTool()] : []),
+        ],
+        // Model is driven by tier — anonymous heavy users get Flash Lite.
+        { model: usagePolicy.model },
+      ),
       sessionService,
     }) as unknown as RunnerLike;
 
@@ -702,6 +765,7 @@ async function main(): Promise<void> {
     goalUpdatesStore,
     workspaceTokensStore,
     workspaceOAuthClient,
+    userMetaStore,
   });
 
   const port = Number(process.env.PORT ?? 8080);
