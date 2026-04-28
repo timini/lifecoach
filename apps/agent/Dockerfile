@@ -58,6 +58,14 @@ RUN useradd --system --uid 10001 --gid 0 --shell /sbin/nologin lifecoach
 COPY --from=build --chown=lifecoach:0 /app /app
 COPY --from=gws /usr/local/bin/gws /usr/local/bin/gws
 USER 10001
-ENV PORT=8080
+# `gws` writes its Google Discovery API cache under $XDG_CACHE_HOME (falling
+# back to $HOME/.cache). Our non-root user has no writable home on Cloud
+# Run's read-only rootfs, so without these the CLI fails with
+# `error[discovery]: Permission denied (os error 13)` before any API call.
+# /tmp is tmpfs and guaranteed writable.
+ENV HOME=/tmp \
+    XDG_CACHE_HOME=/tmp/.cache \
+    XDG_CONFIG_HOME=/tmp/.config \
+    PORT=8080
 EXPOSE 8080
 CMD ["node", "apps/agent/dist/server.js"]
