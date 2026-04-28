@@ -67,6 +67,9 @@ export function ChatWindow() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
+  // 0 = first attempt in flight (or idle). 1+ = currently retrying after
+  // a network blip. Drives the "retrying…" indicator copy.
+  const [retryAttempt, setRetryAttempt] = useState(0);
   const [user, setUser] = useState<User | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
   const [location, setLocation] = useState<BrowserLocation | null>(null);
@@ -190,7 +193,10 @@ export function ChatWindow() {
     // update it in place instead of racing to create it.
     setMessages((prev) => [...prev, { id: assistantId, role: 'assistant', elements: [] }]);
 
-    try {
+    // One round-trip: POST → consume SSE → apply ops. Throws on network
+    // errors before headers, on fetch rejection, and on stream read
+    // errors. The retry loop below decides whether to retry or give up.
+    const attemptOnce = async (): Promise<void> => {
       const idToken = await user.getIdToken();
       const res = await fetch('/api/chat', {
         method: 'POST',
@@ -214,31 +220,76 @@ export function ChatWindow() {
         for (const block of raw.split(/\n\n+/)) {
           applyOps(assistantId, parseSseBlock(block));
         }
-      } else {
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        for (;;) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          // Split on blank-line SSE separators; keep trailing partial.
-          const blocks = buffer.split(/\n\n/);
-          buffer = blocks.pop() ?? '';
-          for (const block of blocks) {
-            applyOps(assistantId, parseSseBlock(block));
-          }
-        }
-        // Flush any remaining buffered block.
-        if (buffer.trim()) applyOps(assistantId, parseSseBlock(buffer));
+        return;
       }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const blocks = buffer.split(/\n\n/);
+        buffer = blocks.pop() ?? '';
+        for (const block of blocks) {
+          applyOps(assistantId, parseSseBlock(block));
+        }
+      }
+      if (buffer.trim()) applyOps(assistantId, parseSseBlock(buffer));
+    };
 
-      // SSE finished cleanly. If the assistant message has no visible
-      // content, the model returned an empty turn — or the SSE stream
-      // ran clean but the agent's reply was lost in transit. Try
-      // re-fetching from Firestore-backed history once: if the agent
-      // actually persisted a reply, swap it in. Only fall back to a
-      // friendly placeholder if history is also empty for this turn.
+    // Retry loop. A "Failed to fetch" is almost always a transient
+    // pre-connection blip (DNS, TLS, brief network drop). Surfacing
+    // that raw error to the user is hostile — silently retry first.
+    // Between attempts: clear the assistant bubble so a partial
+    // first-attempt response doesn't bleed into the retry, and check
+    // history in case the agent did finish persisting a reply despite
+    // the dropped stream.
+    const MAX_RETRIES = 2;
+    let succeeded = false;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      if (attempt > 0) {
+        setRetryAttempt(attempt);
+        // Exponential-ish backoff: 600ms, 1200ms, ...
+        await new Promise((r) => setTimeout(r, 600 * attempt));
+        // Reset the assistant bubble for a clean retry.
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId && m.role === 'assistant' ? { ...m, elements: [] } : m,
+          ),
+        );
+      }
+      try {
+        await attemptOnce();
+        succeeded = true;
+        break;
+      } catch {
+        // Did the agent already finish on a previous attempt? If
+        // history has a user message matching ours followed by an
+        // assistant turn, that transcript wins — no further retries.
+        const rehydrated = await fetchAndApplyHistory().catch(() => null);
+        const replied = rehydrated?.some(
+          (m, i) =>
+            m.role === 'user' &&
+            m.text === text &&
+            rehydrated.slice(i + 1).some((later) => later.role === 'assistant'),
+        );
+        if (rehydrated && replied) {
+          setMessages(rehydrated);
+          succeeded = true;
+          break;
+        }
+        // Otherwise: keep trying.
+      }
+    }
+    setRetryAttempt(0);
+
+    if (succeeded) {
+      // Stream completed without throwing. If the assistant message
+      // still has no visible content, the model returned an empty turn
+      // (or stream lost the reply on the wire). Try Firestore history
+      // once; only fall back to a friendly placeholder if that's also
+      // empty for this turn.
       const isVisible = (els: AssistantElement[]) =>
         els.some((el) => el.kind !== 'tool-call' || (el.kind === 'tool-call' && el.done && el.ok));
       let currentEmpty = false;
@@ -275,35 +326,28 @@ export function ChatWindow() {
           );
         }
       }
-    } catch (err) {
-      // Stream broke. Most often the agent still completed and saved
-      // events to Firestore — refetch /history and check whether our
-      // user message is in there with at least one assistant turn after
-      // it. If yes, that transcript is the truth; swap it in. If no,
-      // the request never reached the agent, so surface the raw error
-      // so the user can manually retry.
-      const rehydrated = await fetchAndApplyHistory();
-      const ourMessageLanded = rehydrated?.some(
-        (m, i) =>
-          m.role === 'user' &&
-          m.text === text &&
-          rehydrated.slice(i + 1).some((later) => later.role === 'assistant'),
+    } else {
+      // Exhausted retries. Show a friendly, action-oriented message
+      // — never the raw "Failed to fetch" exception.
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantId && m.role === 'assistant'
+            ? {
+                ...m,
+                elements: [
+                  ...m.elements,
+                  {
+                    kind: 'text',
+                    text: "Couldn't reach me just now — give it another go in a moment?",
+                  },
+                ],
+              }
+            : m,
+        ),
       );
-      if (rehydrated && ourMessageLanded) {
-        setMessages(rehydrated);
-      } else {
-        const msg = err instanceof Error ? err.message : String(err);
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantId && m.role === 'assistant'
-              ? { ...m, elements: [...m.elements, { kind: 'text', text: `error: ${msg}` }] }
-              : m,
-          ),
-        );
-      }
-    } finally {
-      setBusy(false);
     }
+
+    setBusy(false);
   }
 
   /**
@@ -559,7 +603,9 @@ export function ChatWindow() {
         );
       })}
       {busy && lastAssistantHasNoContent(messages) && (
-        <div className="text-sm italic text-muted-foreground">thinking…</div>
+        <div className="text-sm italic text-muted-foreground">
+          {retryAttempt > 0 ? `retrying… (${retryAttempt})` : 'thinking…'}
+        </div>
       )}
       <div ref={endRef} />
     </ChatShell>
