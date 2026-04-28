@@ -32,25 +32,189 @@ describe('eventsToMessages', () => {
     expect(msgs[0].elements).toEqual([{ kind: 'text', text: 'hey there' }]);
   });
 
-  it('skips tool-call events (internal, user never saw them)', () => {
+  it('emits a tool-call pill for informational tools so they persist in history', () => {
     const msgs = eventsToMessages([
       {
         id: 'e1',
         author: 'lifecoach',
         content: {
           role: 'model',
-          parts: [{ functionCall: { name: 'update_user_profile', args: {} } }],
+          parts: [
+            {
+              functionCall: {
+                id: 'tc-1',
+                name: 'call_workspace',
+                args: { service: 'gmail', resource: 'messages', method: 'list' },
+              },
+            },
+          ],
         },
       },
       {
         id: 'e2',
         author: 'lifecoach',
+        content: {
+          role: 'model',
+          parts: [
+            {
+              functionResponse: {
+                id: 'tc-1',
+                name: 'call_workspace',
+                response: { status: 'ok' },
+              },
+            },
+          ],
+        },
+      },
+      {
+        id: 'e3',
+        author: 'lifecoach',
         content: { role: 'model', parts: [{ text: 'got it' }] },
+      },
+    ]);
+    expect(msgs).toHaveLength(2);
+    if (msgs[0]?.role !== 'assistant') throw new Error();
+    expect(msgs[0].elements).toEqual([
+      {
+        kind: 'tool-call',
+        id: 'tc-1',
+        name: 'call_workspace',
+        label: expect.stringContaining('gmail'),
+        done: true,
+        ok: true,
+      },
+    ]);
+    if (msgs[1]?.role !== 'assistant') throw new Error();
+    expect(msgs[1].elements).toEqual([{ kind: 'text', text: 'got it' }]);
+  });
+
+  it('marks the pill as failed when the matched response carries an error code', () => {
+    const msgs = eventsToMessages([
+      {
+        id: 'e1',
+        author: 'lifecoach',
+        content: {
+          role: 'model',
+          parts: [
+            {
+              functionCall: {
+                id: 'tc-err',
+                name: 'call_workspace',
+                args: { service: 'gmail', resource: 'messages', method: 'list' },
+              },
+            },
+          ],
+        },
+      },
+      {
+        id: 'e2',
+        author: 'lifecoach',
+        content: {
+          role: 'model',
+          parts: [
+            {
+              functionResponse: {
+                id: 'tc-err',
+                name: 'call_workspace',
+                response: { status: 'error', code: 'upstream' },
+              },
+            },
+          ],
+        },
       },
     ]);
     expect(msgs).toHaveLength(1);
     if (msgs[0]?.role !== 'assistant') throw new Error();
-    expect(msgs[0].elements).toEqual([{ kind: 'text', text: 'got it' }]);
+    expect(msgs[0].elements[0]).toMatchObject({ kind: 'tool-call', done: true, ok: false });
+  });
+
+  it('treats scope_required as ok (recoverable, not error-styled)', () => {
+    const msgs = eventsToMessages([
+      {
+        id: 'e1',
+        author: 'lifecoach',
+        content: {
+          role: 'model',
+          parts: [
+            {
+              functionCall: {
+                id: 't1',
+                name: 'call_workspace',
+                args: { service: 'gmail', resource: 'messages', method: 'list' },
+              },
+            },
+          ],
+        },
+      },
+      {
+        id: 'e2',
+        author: 'lifecoach',
+        content: {
+          role: 'model',
+          parts: [
+            {
+              functionResponse: {
+                id: 't1',
+                name: 'call_workspace',
+                response: { status: 'error', code: 'scope_required' },
+              },
+            },
+          ],
+        },
+      },
+    ]);
+    if (msgs[0]?.role !== 'assistant') throw new Error();
+    expect(msgs[0].elements[0]).toMatchObject({ kind: 'tool-call', ok: true });
+  });
+
+  it('drops UI-directive tool calls (their widgets were already user-visible live)', () => {
+    const msgs = eventsToMessages([
+      {
+        id: 'e1',
+        author: 'lifecoach',
+        content: {
+          role: 'model',
+          parts: [
+            {
+              functionCall: {
+                id: 'p1',
+                name: 'ask_single_choice_question',
+                args: { question: 'q', options: ['a', 'b'] },
+              },
+            },
+          ],
+        },
+      },
+      {
+        id: 'e2',
+        author: 'lifecoach',
+        content: {
+          role: 'model',
+          parts: [
+            {
+              functionCall: {
+                id: 'w1',
+                name: 'connect_workspace',
+                args: {},
+              },
+            },
+          ],
+        },
+      },
+      {
+        id: 'e3',
+        author: 'lifecoach',
+        content: {
+          role: 'model',
+          parts: [
+            {
+              functionCall: { id: 'a1', name: 'auth_user', args: { mode: 'google' } },
+            },
+          ],
+        },
+      },
+    ]);
+    expect(msgs).toEqual([]);
   });
 
   it('strips choice-tool responses from history (picker is turn-scoped)', () => {
