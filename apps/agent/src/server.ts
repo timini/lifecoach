@@ -540,8 +540,14 @@ export function createApp(deps: CreateAppDeps): Express {
     };
 
     res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
+    // Disable proxy buffering — Cloud Run's Google Frontend respects this
+    // and won't hold the response back, otherwise our stream arrives as one
+    // batched chunk at the end of the turn instead of incrementally. Also
+    // forbid transformative caches (gzip, brotli) which buffer to compute
+    // their headers.
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders?.();
 
     const runner = deps.runnerFor({ ctx: instructionCtx, uid: effectiveUserId, usagePolicy });

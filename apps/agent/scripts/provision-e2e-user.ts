@@ -20,7 +20,7 @@
  *   - `gcloud` CLI on PATH (used for Secret Manager mutations).
  */
 
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { parseArgs } from 'node:util';
 import { initializeApp } from 'firebase-admin/app';
@@ -50,11 +50,20 @@ function generatePassword(): string {
   return randomBytes(32).toString('hex');
 }
 
-function gcloud(args: string[], project: string): string {
-  return execSync(['gcloud', ...args, `--project=${project}`].join(' '), {
-    stdio: ['ignore', 'pipe', 'inherit'],
+/**
+ * Invoke `gcloud` directly via execFileSync (no shell). Avoids needing to
+ * escape parens in flag values like `--format=value(name)`, and keeps the
+ * password out of the shell's argv when piped via stdin.
+ */
+function gcloud(args: string[], project: string, opts?: { input?: string }): string {
+  return execFileSync('gcloud', [...args, `--project=${project}`], {
+    stdio:
+      opts?.input !== undefined ? ['pipe', 'inherit', 'inherit'] : ['ignore', 'pipe', 'inherit'],
     encoding: 'utf8',
-  }).trim();
+    input: opts?.input,
+  })
+    .toString()
+    .trim();
 }
 
 function ensureSecretExists(project: string): void {
@@ -70,9 +79,8 @@ function ensureSecretExists(project: string): void {
 
 function addSecretVersion(project: string, password: string): void {
   // Pipe the password via stdin to avoid leaving it in argv / process list.
-  execSync(`gcloud secrets versions add ${SECRET_NAME} --data-file=- --project=${project}`, {
+  gcloud(['secrets', 'versions', 'add', SECRET_NAME, '--data-file=-'], project, {
     input: password,
-    stdio: ['pipe', 'inherit', 'inherit'],
   });
 }
 

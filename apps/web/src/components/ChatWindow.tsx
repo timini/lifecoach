@@ -24,6 +24,7 @@ import {
   completeEmailSignInLink,
   ensureSignedIn,
   linkWithGoogle,
+  onAuthChange,
   sendEmailSignInLink,
   signOutCurrent,
 } from '../lib/firebase';
@@ -34,7 +35,7 @@ import {
 } from '../lib/geolocation';
 import { ensureSessionIdForUid } from '../lib/sessionId';
 import { type AssistantElement, type AssistantOp, parseSseBlock } from '../lib/sse';
-import { connectWorkspace } from '../lib/workspace';
+import { connectWorkspace, fetchWorkspaceStatus } from '../lib/workspace';
 
 interface UserMessage {
   id: string;
@@ -72,6 +73,12 @@ export function ChatWindow() {
   // already short-circuit on `!user`, so no /history call fires before this.
   const [sessionId, setSessionId] = useState<string>('');
 
+  // Workspace connection state lives in Firestore (server-side), not in the
+  // Firebase user object — so we have to fetch it post-sign-in. Drives the
+  // workspace_connected state in UserStateMachine, which decides whether
+  // the AccountMenu shows the "Connect Workspace" affordance.
+  const [workspaceConnected, setWorkspaceConnected] = useState(false);
+
   useEffect(() => {
     // Resume location silently if the browser already granted permission in
     // a prior visit. Avoids re-prompting on every page refresh.
@@ -107,6 +114,16 @@ export function ChatWindow() {
     })();
   }, []);
 
+  // Permanent auth-state subscription — keeps `user` in sync when auth
+  // changes outside our handlers (e.g. the e2e window hook calls
+  // signInWithEmailAndPassword, or a future SDK upgrade emits a refresh).
+  // Cheap because Firebase de-dupes identical user emissions.
+  useEffect(() => {
+    return onAuthChange((u) => {
+      setUser(u);
+    });
+  }, []);
+
   // Resolve the sessionId for the currently-signed-in uid. Runs after every
   // user change (anon → google upgrade keeps the same uid; sign-out → fresh
   // anon flips to a new uid → new sessionId). Empty string until user is set.
@@ -116,6 +133,29 @@ export function ChatWindow() {
       return;
     }
     setSessionId(ensureSessionIdForUid(user.uid));
+  }, [user]);
+
+  // Fetch workspace connection status whenever the user changes. Anonymous
+  // users can't have workspace tokens, so skip the round-trip. Failures are
+  // swallowed — if we can't tell, default to "not connected" which renders
+  // the (harmless) Connect button rather than a broken Connected indicator.
+  useEffect(() => {
+    if (!user || user.isAnonymous) {
+      setWorkspaceConnected(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const status = await fetchWorkspaceStatus(user);
+        if (!cancelled) setWorkspaceConnected(status.connected);
+      } catch {
+        if (!cancelled) setWorkspaceConnected(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
   /**
@@ -414,7 +454,10 @@ export function ChatWindow() {
   async function handleConnectWorkspace() {
     if (!user) return;
     try {
-      await connectWorkspace(user);
+      const status = await connectWorkspace(user);
+      // Flip local state so the AccountMenu hides the Connect button on
+      // the very next render, without waiting for a status round-trip.
+      setWorkspaceConnected(status.connected);
       // Nudge the agent's next turn so the LLM sees the state flip and
       // can fulfil the original request.
       void sendText('Connected — try that again please.');
@@ -512,6 +555,7 @@ export function ChatWindow() {
     isAnonymous: user.isAnonymous,
     emailVerified: user.emailVerified,
     providerData: user.providerData,
+    workspaceScopesGranted: workspaceConnected,
   });
   const userState = stateMachine.current();
   const affordances = stateMachine
@@ -578,6 +622,15 @@ export function ChatWindow() {
 
   return (
     <ChatShell header={header} footer={footer}>
+      {/* Stable test seam — Playwright waits on these to know the React
+          state has caught up with whatever auth flip just happened. */}
+      <div
+        data-testid="chat-window-state"
+        data-uid={user.uid}
+        data-session-id={sessionId}
+        data-busy={busy ? 'true' : 'false'}
+        hidden
+      />
       {messages.length === 0 && (
         <div className="text-sm text-muted-foreground">
           Say hi to get started. The coach is warming up.

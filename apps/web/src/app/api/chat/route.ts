@@ -49,7 +49,11 @@ export async function POST(request: Request): Promise<Response> {
     status: 200,
     headers: {
       'content-type': upstream.headers.get('content-type') ?? 'text/event-stream',
-      'cache-control': 'no-cache',
+      // `no-transform` blocks intermediate gzip/brotli that would have to
+      // buffer the whole stream before sending. `X-Accel-Buffering: no`
+      // tells Cloud Run / Google Frontend to flush as bytes arrive.
+      'cache-control': 'no-cache, no-transform',
+      'x-accel-buffering': 'no',
     },
   });
 }

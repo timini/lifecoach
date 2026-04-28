@@ -27,3 +27,8 @@ infra/**/backend.hcl
 .firebase
 firebase-debug.log
 firestore-debug.log
+
+# Playwright e2e artefacts
+apps/web/test-results
+apps/web/playwright-report
+apps/web/.last-run.json
