@@ -9,9 +9,9 @@
  * treated as ok — same convention as live streaming in `parseSseBlock`.
  *
  * UI-directive tools (`ask_*_choice_question`, `auth_user`,
- * `connect_workspace`) are dropped — their widget was already user-
- * visible during the live turn; replaying a frozen badge for them adds
- * noise without information.
+ * `connect_workspace`, `upgrade_to_pro`) are dropped — their widget was
+ * already user-visible during the live turn; replaying a frozen badge
+ * for them adds noise without information.
  *
  * Pure functionResponse-only events are also dropped: they enrich the
  * matching call's status and don't render their own bubble.

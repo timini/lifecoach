@@ -17,6 +17,7 @@ export type AssistantElement =
   | { kind: 'choice'; single: boolean; question: string; options: string[] }
   | { kind: 'auth'; mode: 'google' | 'email'; email?: string }
   | { kind: 'workspace' }
+  | { kind: 'upgrade' }
   | {
       kind: 'tool-call';
       id: string;
@@ -121,6 +122,17 @@ export function parseSseAssistant(raw: string): AssistantElement[] {
           pendingText = '';
         }
         out.push({ kind: 'workspace' });
+      }
+
+      // Pro upgrade prompt — UI directive. Like connect_workspace, the LLM
+      // never sees billing values; the response payload only signals that
+      // the upgrade card should render.
+      if (resp?.status === 'upgrade_prompted' && fr.name === 'upgrade_to_pro') {
+        if (pendingText.trim()) {
+          out.push({ kind: 'text', text: pendingText });
+          pendingText = '';
+        }
+        out.push({ kind: 'upgrade' });
       }
     }
   }
@@ -269,6 +281,11 @@ export function parseSseBlock(block: string): AssistantOp[] {
     if (resp?.status === 'oauth_prompted' && fr.name === 'connect_workspace') {
       out.push({ op: 'push', element: { kind: 'workspace' } });
     }
+
+    // Pro upgrade prompt.
+    if (resp?.status === 'upgrade_prompted' && fr.name === 'upgrade_to_pro') {
+      out.push({ op: 'push', element: { kind: 'upgrade' } });
+    }
   }
 
   return out;
@@ -324,6 +341,8 @@ export function labelForToolCall(name: string, args: unknown): string {
       return 'offering sign-in';
     case 'connect_workspace':
       return 'offering workspace connect';
+    case 'upgrade_to_pro':
+      return 'offering pro upgrade';
     case 'memory_save':
       return 'saving memory';
     case 'memory_search':

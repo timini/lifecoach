@@ -20,6 +20,26 @@ describe('buildInstruction', () => {
     expect(s).toMatch(/2026-04-21/);
   });
 
+  it('renders TIME pre-converted to the user timezone (no UTC→local math for the agent)', () => {
+    // 2026-04-21T09:00:00Z → 7:00 PM Melbourne (AEST, UTC+10).
+    const s = buildInstruction(BASE);
+    expect(s).toMatch(/now_local:.*7:00\s*PM/);
+    expect(s).toMatch(/Australia\/Melbourne/);
+    // UTC stays alongside as a sanity reference.
+    expect(s).toMatch(/now_utc: 2026-04-21T09:00:00\.000Z/);
+  });
+
+  it('anchors the agent against inventing/echoing a stale time', () => {
+    // The block must explicitly forbid guessing or echoing an earlier
+    // turn's time, AND tell the model to compare against now_local before
+    // claiming an event is "starting now". This is the safeguard against
+    // Flash hallucinating "It's 12:51 PM" when the prompt says 12:40.
+    const s = buildInstruction(BASE);
+    expect(s).toMatch(/single source of truth/i);
+    expect(s).toMatch(/never (infer|guess)/i);
+    expect(s).toMatch(/starting now/i);
+  });
+
   it('includes the state-specific directive', () => {
     const s = buildInstruction(BASE);
     expect(s).toMatch(/anonymous/i);
@@ -138,6 +158,33 @@ describe('buildInstruction', () => {
     expect(s).toMatch(/partner_name: null/);
     // The "what you don't know" guidance must be present
     expect(s).toMatch(/null means you don't know yet/);
+  });
+});
+
+describe('buildInstruction — nudgeMode', () => {
+  it('renders no nudge block when nudgeMode is unset', () => {
+    const s = buildInstruction(BASE);
+    expect(s).not.toMatch(/SIGNUP_NUDGE/);
+    expect(s).not.toMatch(/PRO_NUDGE/);
+  });
+
+  it('renders only the signup directive for nudgeMode=signup', () => {
+    const s = buildInstruction({ ...BASE, nudgeMode: 'signup' });
+    expect(s).toMatch(/SIGNUP_NUDGE/);
+    expect(s).not.toMatch(/PRO_NUDGE/);
+    // Some hint that the nudge is about creating an account / remembering
+    expect(s).toMatch(/account|remember/i);
+    // No "upgrade" wording in signup mode
+    expect(s).not.toMatch(/upgrade_to_pro/);
+  });
+
+  it('renders only the pro directive for nudgeMode=pro and references the tool', () => {
+    const s = buildInstruction({ ...BASE, nudgeMode: 'pro' });
+    expect(s).toMatch(/PRO_NUDGE/);
+    expect(s).not.toMatch(/SIGNUP_NUDGE/);
+    expect(s).toMatch(/upgrade_to_pro/);
+    // Cadence guidance — tells the LLM not to spam
+    expect(s).toMatch(/once per session|don't pitch/i);
   });
 });
 
