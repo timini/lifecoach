@@ -447,11 +447,14 @@ export function createApp(deps: CreateAppDeps): Express {
       let choiceShown = false;
       // Tools that render an interactive UI element and should end the
       // agent's turn once fired — prevents the model from writing prose
-      // before or after the widget.
+      // before or after the widget AND closes the SSE promptly so the
+      // browser can act on the widget without busy=true blocking the
+      // synthetic follow-up message.
       const turnEndingToolNames = new Set([
         'ask_single_choice_question',
         'ask_multiple_choice_question',
         'auth_user',
+        'connect_workspace',
       ]);
       for await (const event of runner.runAsync({
         userId: effectiveUserId,
@@ -470,7 +473,9 @@ export function createApp(deps: CreateAppDeps): Express {
           if (resp.id) pendingById.delete(resp.id);
           if (
             turnEndingToolNames.has(name) &&
-            (respObj?.status === 'shown' || respObj?.status === 'auth_prompted')
+            (respObj?.status === 'shown' ||
+              respObj?.status === 'auth_prompted' ||
+              respObj?.status === 'oauth_prompted')
           ) {
             choiceShown = true;
           }

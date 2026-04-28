@@ -5,6 +5,7 @@ import {
   type CallWorkspaceResult,
   type ExecFileLike,
   MAX_STDOUT_BYTES,
+  classifyError,
   createCallWorkspaceTool,
 } from './callWorkspace.js';
 
@@ -198,10 +199,10 @@ describe('call_workspace — params JSON parsing', () => {
 });
 
 describe('call_workspace — upstream / invalid_args', () => {
-  it('maps non-auth exit codes to upstream with sanitised stderr', async () => {
+  it('falls back to upstream and redacts tokens when stderr matches no specific code', async () => {
     const fakeExec = vi.fn<ExecFileLike>(async () => ({
       stdout: '',
-      stderr: 'ya29.maybe-a-leaked-token-in-error\nquota exceeded',
+      stderr: 'ya29.maybe-a-leaked-token-in-error\nunexpected internal failure',
       code: 4,
     }));
     const tool = createCallWorkspaceTool({
@@ -236,6 +237,123 @@ describe('call_workspace — upstream / invalid_args', () => {
     });
     expect(r).toMatchObject({ status: 'error', code: 'invalid_args' });
     expect(fakeExec).not.toHaveBeenCalled();
+  });
+});
+
+describe('classifyError — fine-grained error codes', () => {
+  function asJsonError(httpCode: number, reason: string, message = '') {
+    return JSON.stringify({ error: { code: httpCode, reason, message } });
+  }
+
+  it('maps 401 / unauthorized → scope_required', () => {
+    expect(classifyError(asJsonError(401, 'unauthenticated', 'invalid_grant'), '', 1)).toBe(
+      'scope_required',
+    );
+    expect(classifyError('', 'error: 401 Unauthorized', 1)).toBe('scope_required');
+    expect(classifyError('', 'invalid_grant: token expired', 1)).toBe('scope_required');
+  });
+
+  it('maps 403 with scope-flavoured wording → scope_required, plain 403 → forbidden', () => {
+    expect(
+      classifyError(asJsonError(403, 'forbidden', 'insufficient authentication scopes'), '', 1),
+    ).toBe('scope_required');
+    expect(
+      classifyError(asJsonError(403, 'forbidden', 'caller has no access to event'), '', 1),
+    ).toBe('forbidden');
+  });
+
+  it('maps TLS / connection / DNS errors → network', () => {
+    const stderr =
+      'error[discovery]: error sending request for url (...): client error (Connect): invalid peer certificate: UnknownIssuer';
+    expect(classifyError(asJsonError(500, 'discoveryError', stderr), stderr, 4)).toBe('network');
+    expect(classifyError('', 'error[discovery]: Permission denied (os error 13)', 4)).toBe(
+      'network',
+    );
+    expect(classifyError('', 'tcp connect timed out', 4)).toBe('network');
+  });
+
+  it('maps 429 / quota / rate limit → rate_limited', () => {
+    expect(classifyError(asJsonError(429, 'rateLimitExceeded', 'Rate Limit Exceeded'), '', 1)).toBe(
+      'rate_limited',
+    );
+    expect(classifyError('', 'quota exceeded for service', 1)).toBe('rate_limited');
+  });
+
+  it('maps 404 → not_found', () => {
+    expect(classifyError(asJsonError(404, 'notFound', 'Event not found'), '', 1)).toBe('not_found');
+    expect(classifyError('', 'error: 404 Not Found', 1)).toBe('not_found');
+  });
+
+  it('maps 400 → bad_request', () => {
+    expect(
+      classifyError(asJsonError(400, 'badRequest', 'Invalid value at request.timeMin'), '', 1),
+    ).toBe('bad_request');
+  });
+
+  it('falls back to scope_required for gws exit codes 2 and 3', () => {
+    expect(classifyError('', '', 2)).toBe('scope_required');
+    expect(classifyError('', '', 3)).toBe('scope_required');
+  });
+
+  it('falls back to upstream for everything else', () => {
+    expect(classifyError('', '', 1)).toBe('upstream');
+    expect(classifyError(asJsonError(500, 'backendError', 'oh no'), '', 1)).toBe('upstream');
+  });
+});
+
+describe('call_workspace — fine-grained error mapping in the tool', () => {
+  it('classifies a TLS discovery failure as network (not scope_required)', async () => {
+    const fakeExec = vi.fn<ExecFileLike>(async () => ({
+      stdout:
+        '{"error":{"code":500,"reason":"discoveryError","message":"client error (Connect): invalid peer certificate"}}',
+      stderr: 'error[discovery]: invalid peer certificate: UnknownIssuer',
+      code: 4,
+    }));
+    const store = fakeStore();
+    const tool = createCallWorkspaceTool({ store, uid: 'u', execFile: fakeExec });
+    const r = await exec(tool, { service: 'gmail', resource: 'messages', method: 'list' });
+    expect(r).toMatchObject({ status: 'error', code: 'network' });
+    // Critical: a transient network error must NOT delete the user's tokens.
+    expect(store.delete).not.toHaveBeenCalled();
+  });
+
+  it('classifies a 429 response as rate_limited and preserves tokens', async () => {
+    const fakeExec = vi.fn<ExecFileLike>(async () => ({
+      stdout: '{"error":{"code":429,"reason":"rateLimitExceeded","message":"Rate Limit Exceeded"}}',
+      stderr: '',
+      code: 4,
+    }));
+    const store = fakeStore();
+    const tool = createCallWorkspaceTool({ store, uid: 'u', execFile: fakeExec });
+    const r = await exec(tool, { service: 'gmail', resource: 'messages', method: 'list' });
+    expect(r).toMatchObject({ status: 'error', code: 'rate_limited' });
+    expect(store.delete).not.toHaveBeenCalled();
+  });
+
+  it('classifies a 401 response as scope_required and deletes tokens', async () => {
+    const fakeExec = vi.fn<ExecFileLike>(async () => ({
+      stdout: '{"error":{"code":401,"reason":"unauthenticated","message":"invalid_grant"}}',
+      stderr: '',
+      code: 4,
+    }));
+    const store = fakeStore();
+    const tool = createCallWorkspaceTool({ store, uid: 'u-x', execFile: fakeExec });
+    const r = await exec(tool, { service: 'gmail', resource: 'messages', method: 'list' });
+    expect(r).toMatchObject({ status: 'error', code: 'scope_required' });
+    expect(store.delete).toHaveBeenCalledWith('u-x');
+  });
+
+  it('classifies a 404 response as not_found and preserves tokens', async () => {
+    const fakeExec = vi.fn<ExecFileLike>(async () => ({
+      stdout: '{"error":{"code":404,"reason":"notFound","message":"Event not found"}}',
+      stderr: '',
+      code: 4,
+    }));
+    const store = fakeStore();
+    const tool = createCallWorkspaceTool({ store, uid: 'u', execFile: fakeExec });
+    const r = await exec(tool, { service: 'calendar', resource: 'events', method: 'get' });
+    expect(r).toMatchObject({ status: 'error', code: 'not_found' });
+    expect(store.delete).not.toHaveBeenCalled();
   });
 });
 

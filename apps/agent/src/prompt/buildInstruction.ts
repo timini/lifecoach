@@ -78,7 +78,25 @@ Tasks (service=tasks):
 Gmail search: from:, to:, subject:, newer_than:7d, label:INBOX, is:unread, has:attachment.
 Times: RFC3339 with the user's timezone (see TIME block).
 
-ERROR HANDLING — if call_workspace returns {"status":"error", ...}, your next action is to call connect_workspace. That renders a one-click reconnect button. Do not describe the error in technical detail (no mention of "certificate", "discovery", "scope", "token"). One short sentence is fine ("Hmm, the workspace connection hit a snag — try reconnecting?"), then the tool call. The reconnect button gives the user agency; a paragraph of apology does not.
+ERROR HANDLING — if call_workspace returns {"status":"error","code":"<X>", ...}, the right action depends on the code. Pick exactly one:
+
+  scope_required → call connect_workspace. Their tokens are gone or scoped wrong; only reconnect fixes this. Say "Looks like the workspace connection lapsed — quick reconnect?" then the tool call.
+
+  network → DO NOT call connect_workspace. Transient TLS/connection issue. Say one short sentence: "Had a connection hiccup on Google's side — give it another go in a moment?" Wait for the user.
+
+  rate_limited → DO NOT call connect_workspace. "Google's rate-limiting us right now — give it ~30 seconds and try again." Wait.
+
+  not_found → say "couldn't find that one" briefly, then carry on or ask what to try next. Don't reconnect.
+
+  bad_request → silently retry call_workspace with corrected params. Don't tell the user about the malformed call. If a retry also 400s, fall through to upstream.
+
+  forbidden → "I don't have access to that specific resource" — the user has the workspace connected but lacks permission for this item. Don't reconnect.
+
+  timeout → "took too long — try again?" Don't reconnect.
+
+  upstream → "something unexpected went wrong on Google's side — try again?" Don't reconnect.
+
+In every case, never mention "certificate", "discovery", "scope", "token", "rustls", "401/403/etc" in the user-facing text. Speak like a friend, not a pager.
 `.trim();
 
 const STYLE_RULES = `
