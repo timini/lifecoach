@@ -11,9 +11,14 @@ pre-commit:
     test:
       glob: "*.{ts,tsx}"
       run: pnpm turbo run test -- --run --changed HEAD
+    # Mirrors `just guard-no-ip-geolocation` — scans code + package
+    # manifests only, so docs/configs can reference the rule by name
+    # without false positives.
     no-ip-geolocation:
+      glob: "{apps,packages}/**/src/**/*.{ts,tsx},{apps,packages}/*/package.json"
       run: |
-        if git diff --cached --name-only | xargs -I{} grep -l -E "(x-forwarded-for|geoip|geolite|ipinfo|ipapi|ip-api)" {} 2>/dev/null; then
+        if [ -z "{staged_files}" ]; then exit 0; fi
+        if echo {staged_files} | tr ' ' '\n' | xargs grep -l -I -E "(x-forwarded-for|cf-connecting-ip|geoip-lite|@maxmind|ipinfo|ip-api\.com|ipapi\.co|node-geoip)" 2>/dev/null; then
           echo "ERROR: IP-based geolocation is forbidden. Use navigator.geolocation only." >&2
           exit 1
         fi
