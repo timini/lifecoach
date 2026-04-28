@@ -83,6 +83,64 @@ describe('call_workspace — happy path', () => {
     }
   });
 
+  it('routes a top-level requestBody to --json (so arrays round-trip correctly)', async () => {
+    // Regression: gws --params stringifies arrays ("removeLabelIds":["INBOX"]
+    // becomes the literal string "[\"INBOX\"]"), causing Gmail to reject
+    // them with "Invalid label". Body fields must go through --json.
+    const fakeExec = vi.fn<ExecFileLike>(async () => ({
+      stdout: '{}',
+      stderr: '',
+      code: 0,
+    }));
+    const tool = createCallWorkspaceTool({
+      store: fakeStore(),
+      uid: 'u',
+      execFile: fakeExec,
+    });
+    await exec(tool, {
+      service: 'gmail',
+      resource: 'users.messages',
+      method: 'modify',
+      params: JSON.stringify({
+        userId: 'me',
+        id: 'msg-1',
+        requestBody: { addLabelIds: [], removeLabelIds: ['INBOX'] },
+      }),
+    });
+    const argv = fakeExec.mock.calls[0]?.[1] as string[];
+    expect(argv).toEqual([
+      'gmail',
+      'users',
+      'messages',
+      'modify',
+      '--params',
+      JSON.stringify({ userId: 'me', id: 'msg-1' }),
+      '--json',
+      JSON.stringify({ addLabelIds: [], removeLabelIds: ['INBOX'] }),
+    ]);
+  });
+
+  it('omits --json when there is no requestBody (read-only calls)', async () => {
+    const fakeExec = vi.fn<ExecFileLike>(async () => ({
+      stdout: '{}',
+      stderr: '',
+      code: 0,
+    }));
+    const tool = createCallWorkspaceTool({
+      store: fakeStore(),
+      uid: 'u',
+      execFile: fakeExec,
+    });
+    await exec(tool, {
+      service: 'gmail',
+      resource: 'users.messages',
+      method: 'list',
+      params: JSON.stringify({ q: 'is:unread' }),
+    });
+    const argv = fakeExec.mock.calls[0]?.[1] as string[];
+    expect(argv).not.toContain('--json');
+  });
+
   it('passes a single-segment resource through unchanged (e.g. calendar.events)', async () => {
     const fakeExec = vi.fn<ExecFileLike>(async () => ({
       stdout: '{}',

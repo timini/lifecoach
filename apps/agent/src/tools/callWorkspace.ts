@@ -369,17 +369,28 @@ export function createCallWorkspaceTool(deps: CreateCallWorkspaceToolDeps): Func
         throw err;
       }
 
-      const paramsJson = JSON.stringify(args.params);
       // gws follows the real Google Discovery API hierarchy:
-      //   gws <service> <resource>[ <sub-resource>...] <method> --params <JSON>
+      //   gws <service> <resource>[ <sub-resource>...] <method> --params <JSON> [--json <BODY>]
       // For Gmail messages this is `gws gmail users messages list` (not just
       // `gmail messages list`). We let the LLM pass `resource` as a dotted
       // path (e.g. "users.messages") and split it into separate argv pieces.
-      // gws does NOT have a `--json` flag for output — output is already
-      // JSON by default. The `--json` flag in gws is for the request body
-      // on POST/PATCH/PUT, which we'll plumb through if/when needed.
+      //
+      // Body splitting: gws's `--params` is for path/query parameters and
+      // does NOT round-trip arrays correctly (it stringifies them, e.g.
+      // `removeLabelIds: ["INBOX"]` becomes the literal "[\"INBOX\"]").
+      // Body fields belong in `--json`. We let the LLM pass body fields
+      // under a top-level `requestBody` key (matches the Google Discovery
+      // convention used in the cheat-sheet) and route them automatically.
+      const { requestBody, ...queryParams } = args.params as {
+        requestBody?: unknown;
+        [k: string]: unknown;
+      };
+      const paramsJson = JSON.stringify(queryParams);
       const resourcePath = args.resource.split('.').filter(Boolean);
       const argv = [args.service, ...resourcePath, args.method, '--params', paramsJson];
+      if (requestBody !== undefined) {
+        argv.push('--json', JSON.stringify(requestBody));
+      }
 
       const res = await exec(gwsPath, argv, {
         env: { ...process.env, GOOGLE_WORKSPACE_CLI_TOKEN: accessToken },
