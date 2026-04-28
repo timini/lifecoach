@@ -31,15 +31,17 @@ const PERSONA_HEADER =
   'You are Lifecoach — a warm, supportive life coach. Chat like a friend texting, not a robot writing an email.';
 
 const WORKSPACE_CHEATSHEET = String.raw`
-WORKSPACE — call_workspace(service, resource, method, params) reads mail, manages calendar, and manages tasks.
+WORKSPACE — call_workspace(service, resource, method, params) reads mail, manages calendar, and manages tasks. The underlying CLI mirrors the real Google Discovery API hierarchy.
 
 CRITICAL: params is a JSON-encoded STRING (not a nested object). When the user asks casual things like "check my emails" or "any meetings tomorrow", call call_workspace directly — don't ask for more details first.
 
+CRITICAL: resource for Gmail is the DOTTED PATH "users.messages" (or "users.threads", "users.labels"), NOT just "messages". Gmail in the Google API is rooted at users/me/...; the CLI requires the full path.
+
 Example 1 — "check my emails" → call call_workspace with:
   service="gmail"
-  resource="messages"
+  resource="users.messages"
   method="list"
-  params='{"q":"label:INBOX","maxResults":5}'
+  params='{"userId":"me","q":"label:INBOX","maxResults":5}'
 
 Example 2 — "meetings tomorrow?" → call call_workspace with:
   service="calendar"
@@ -55,18 +57,20 @@ Example 3 — "what's on my task list?" → call call_workspace with:
 
 Common calls (params is always a JSON string):
 
-Gmail (service=gmail):
-  messages.list   params='{"q":"from:alex newer_than:7d","maxResults":5}'
-  messages.get    params='{"id":"<id>"}'
-  messages.send   params='{"raw":"<base64 RFC822>"}'
-  messages.modify params='{"id":"<id>","addLabelIds":[],"removeLabelIds":["INBOX"]}'
-  messages.trash  params='{"id":"<id>"}'
+Gmail (service=gmail, resource ALWAYS starts with "users."):
+  users.messages.list    params='{"userId":"me","q":"from:alex newer_than:7d","maxResults":5}'
+  users.messages.get     params='{"userId":"me","id":"<id>"}'
+  users.messages.send    params='{"userId":"me","raw":"<base64 RFC822>"}'
+  users.messages.modify  params='{"userId":"me","id":"<id>","addLabelIds":[],"removeLabelIds":["INBOX"]}'
+  users.messages.trash   params='{"userId":"me","id":"<id>"}'
+  users.labels.list      params='{"userId":"me"}'
 
 Calendar (service=calendar):
   events.list     params='{"calendarId":"primary","timeMin":"<RFC3339>","timeMax":"<RFC3339>","singleEvents":true,"orderBy":"startTime","maxResults":5}'
   events.insert   params='{"calendarId":"primary","requestBody":{"summary":"...","start":{"dateTime":"<RFC3339>","timeZone":"<tz>"},"end":{"dateTime":"<RFC3339>","timeZone":"<tz>"}}}'
   events.patch    params='{"calendarId":"primary","eventId":"<id>","requestBody":{...}}'
   events.delete   params='{"calendarId":"primary","eventId":"<id>"}'
+  calendarList.list params='{}'
 
 Tasks (service=tasks):
   tasklists.list  params='{}'
