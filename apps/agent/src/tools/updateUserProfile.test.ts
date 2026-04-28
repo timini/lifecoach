@@ -33,7 +33,9 @@ describe('update_user_profile tool (schema-free)', () => {
     const tool = createUpdateUserProfileTool({ store: fakeStore(), uid: 'u' });
     expect(tool.name).toBe('update_user_profile');
     expect(tool.description.toLowerCase()).toContain('dotted path');
-    expect(tool.description.toLowerCase()).toContain('invent a new key');
+    expect(tool.description.toLowerCase()).toContain('invent freely');
+    // Discoverability for the proactive-capture rule.
+    expect(tool.description.toLowerCase()).toContain('proactively');
   });
 
   it('writes a string value to a known slot', async () => {

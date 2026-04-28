@@ -15,6 +15,18 @@ describe('buildInstruction', () => {
     expect(s).toMatch(/warm, supportive life coach/i);
   });
 
+  it('always includes the INFO_CAPTURE directive (proactive fact-capture rules)', () => {
+    const s = buildInstruction(BASE);
+    expect(s).toMatch(/INFO_CAPTURE/);
+    // Spot-check that the directive enumerates the categories that were
+    // previously missed (names of family members in particular).
+    expect(s).toMatch(/Names of people in their life/i);
+    expect(s).toMatch(/update_user_profile/);
+    expect(s).toMatch(/memory_save/);
+    // And demonstrates the right behaviour through at least one example.
+    expect(s).toMatch(/Wren/);
+  });
+
   it('always includes the current date/time', () => {
     const s = buildInstruction(BASE);
     expect(s).toMatch(/2026-04-21/);

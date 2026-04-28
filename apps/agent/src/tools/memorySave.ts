@@ -28,11 +28,20 @@ export function createMemorySaveTool(deps: {
   return new FunctionTool<any>({
     name: 'memory_save',
     description:
-      'Save a long-term memory about the user. Use after a meaningful exchange ' +
-      'where you learned something durable (life circumstance, preference, ' +
-      'ongoing project). NEVER announce that you are saving. Keep the text ' +
-      'concise, third-person, and self-contained so a future session can use it ' +
-      'standalone.',
+      'Save a long-term narrative memory — the kind of context that does NOT fit ' +
+      'a single profile slot but matters for future conversations. Call PROACTIVELY ' +
+      'when you learn: ' +
+      '(a) relational context about people in their life ("Wren is doing well at ' +
+      'violin and enjoys it", "co-founder Alex is going through a divorce"); ' +
+      '(b) ongoing projects, training plans, or goals with detail too rich for ' +
+      'a path ("training for half-marathon, calf strain in April, comfortable at 6.5k"); ' +
+      '(c) life circumstances, health context, work situation that affects coaching; ' +
+      "(d) recurring people you've met before resurfacing in conversation. " +
+      'Often pairs with update_user_profile (one captures the slot, the other the ' +
+      'narrative) — call both when both apply. Write in third-person, self-contained ' +
+      'so a future session reads it standalone ("Tim\'s daughter Wren, age 8, plays ' +
+      'violin and enjoys it"). NEVER announce ("let me remember that") — save ' +
+      'silently and continue the conversation.',
     parameters,
     execute: async (input: unknown) => {
       const { text } = input as { text: string };
