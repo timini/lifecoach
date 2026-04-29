@@ -478,7 +478,7 @@ export function ChatWindow() {
                 elements: [
                   {
                     kind: 'text',
-                    text: 'Hmm, I missed that — could you say it again?',
+                    text: 'That dropped on the way — say it again?',
                   },
                 ],
               };
@@ -498,7 +498,7 @@ export function ChatWindow() {
                   ...m.elements,
                   {
                     kind: 'text',
-                    text: "Couldn't reach me just now — give it another go in a moment?",
+                    text: 'The line went quiet — give it another breath and try again?',
                   },
                 ],
               }
@@ -583,7 +583,7 @@ export function ChatWindow() {
         {
           id: messageId(),
           role: 'assistant',
-          elements: [{ kind: 'text', text: `workspace connect failed: ${msg}` }],
+          elements: [{ kind: 'text', text: `Workspace connect didn't land: ${msg}` }],
         },
       ]);
     }
@@ -595,7 +595,7 @@ export function ChatWindow() {
       {
         id: messageId(),
         role: 'assistant',
-        elements: [{ kind: 'text', text: "Thanks — we'll be in touch when Pro is ready." }],
+        elements: [{ kind: 'text', text: "Noted — we'll reach out when Pro opens up." }],
       },
     ]);
   }
@@ -606,7 +606,7 @@ export function ChatWindow() {
       setUser(upgraded);
       // Let the agent know it worked; its next turn's ID token will show
       // google.com as the sign_in_provider and flip UserStateMachine.
-      void sendText("I've just signed in with Google.");
+      void sendText('Signed in with Google now.');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setMessages((prev) => [
@@ -614,7 +614,7 @@ export function ChatWindow() {
         {
           id: messageId(),
           role: 'assistant',
-          elements: [{ kind: 'text', text: `sign-in error: ${msg}` }],
+          elements: [{ kind: 'text', text: `Sign-in didn't go through: ${msg}` }],
         },
       ]);
     }
@@ -632,7 +632,7 @@ export function ChatWindow() {
           elements: [
             {
               kind: 'text',
-              text: `Email sent to ${email} — check your inbox and click the link to finish.`,
+              text: `Sent a link to ${email} — open it from your inbox and we're set.`,
             },
           ],
         },
@@ -644,7 +644,7 @@ export function ChatWindow() {
         {
           id: messageId(),
           role: 'assistant',
-          elements: [{ kind: 'text', text: `email-link error: ${msg}` }],
+          elements: [{ kind: 'text', text: `Email link didn't go through: ${msg}` }],
         },
       ]);
     }
@@ -661,7 +661,7 @@ export function ChatWindow() {
   if (!user) {
     return (
       <main className="mx-auto max-w-[720px] px-4 py-6 text-sm text-muted-foreground">
-        Signing you in…
+        A moment — settling in.
       </main>
     );
   }

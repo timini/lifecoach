@@ -19,10 +19,10 @@ export function UpgradePrompt({ onInterest, disabled, className }: UpgradePrompt
         className,
       )}
     >
-      <div className="text-sm font-semibold">Lifecoach Pro</div>
+      <div className="text-sm font-semibold">Lifecoach Pro — deeper presence</div>
       <div className="text-xs text-muted-foreground">
-        Faster replies, deeper analysis, no daily nudges. Pro launches soon — tap below and we'll
-        email you when it's ready.
+        Faster replies, fuller memory, room for longer reflections. Pro is opening soon — tap and
+        we'll let you know when it's ready.
       </div>
       <Button
         type="button"
@@ -31,7 +31,7 @@ export function UpgradePrompt({ onInterest, disabled, className }: UpgradePrompt
         disabled={disabled}
         className="self-start"
       >
-        I'm interested
+        Keep me posted
       </Button>
     </div>
   );

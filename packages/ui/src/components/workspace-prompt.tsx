@@ -19,10 +19,10 @@ export function WorkspacePrompt({ onConnect, disabled, className }: WorkspacePro
         className,
       )}
     >
-      <div className="text-sm font-semibold">Connect Google Workspace</div>
+      <div className="text-sm font-semibold">Bring your calendar and inbox into the room</div>
       <div className="text-xs text-muted-foreground">
-        Grant access to Gmail, Calendar, and Tasks so I can help with email triage, calendar
-        management, and your task list. You can revoke any time in Settings.
+        Connect Google Workspace and I can help with mail, your week's schedule, and what's on your
+        task list. You can disconnect any time from Settings.
       </div>
       <Button
         type="button"

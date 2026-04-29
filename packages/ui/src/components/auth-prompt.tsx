@@ -38,9 +38,9 @@ export function AuthPrompt({
     >
       {mode === 'google' ? (
         <>
-          <div className="text-sm font-semibold">Save your progress with Google</div>
+          <div className="text-sm font-semibold">Carry our conversation across devices</div>
           <div className="text-xs text-muted-foreground">
-            Links this chat to your Google account so it follows you across devices.
+            Linking with Google lets this chat travel with you — same thread, any screen.
           </div>
           <Button
             type="button"
@@ -49,14 +49,14 @@ export function AuthPrompt({
             disabled={disabled}
             className="self-start"
           >
-            Sign in with Google
+            Continue with Google
           </Button>
         </>
       ) : (
         <>
-          <div className="text-sm font-semibold">Save your progress via email</div>
+          <div className="text-sm font-semibold">Save your progress with email</div>
           <div className="text-xs text-muted-foreground">
-            We'll send you a magic link. Click it to finish signing in.
+            We'll send a magic link — open it once and you're in.
           </div>
           <form
             className="flex gap-2"
