@@ -161,34 +161,31 @@ export function ChatWindow() {
     setViewMode('live');
   }, [user]);
 
-  // Fetch the sessions list whenever the user (or the current sessionId)
-  // changes — refetching after sessionId changes catches the new session
-  // doc that the agent will write on the kickoff turn. Failures default
-  // to an empty list which just hides the drawer entries.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: sessionId is intentionally listed to force a refetch after the kickoff turn creates the session doc
-  useEffect(() => {
+  const refreshSessions = useCallback(async () => {
     if (!user) {
       setSessions([]);
       return;
     }
-    let cancelled = false;
-    (async () => {
-      try {
-        const idToken = await user.getIdToken();
-        const res = await fetch('/api/sessions', {
-          headers: { authorization: `Bearer ${idToken}` },
-        });
-        if (!res.ok) return;
-        const body = (await res.json()) as { sessions?: SessionItem[] };
-        if (!cancelled) setSessions(body.sessions ?? []);
-      } catch {
-        if (!cancelled) setSessions([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [user, sessionId]);
+    try {
+      const idToken = await user.getIdToken();
+      const res = await fetch('/api/sessions', {
+        headers: { authorization: `Bearer ${idToken}` },
+      });
+      if (!res.ok) return;
+      const body = (await res.json()) as { sessions?: SessionItem[] };
+      setSessions(body.sessions ?? []);
+    } catch {
+      setSessions([]);
+    }
+  }, [user]);
+
+  // Initial fetch + whenever the user changes. The drawer-open handler
+  // also calls refreshSessions to catch the brand-new session doc written
+  // by the kickoff turn — that change isn't visible to a deps-array
+  // subscriber on (user, sessionId) since sessionId stays stable.
+  useEffect(() => {
+    void refreshSessions();
+  }, [refreshSessions]);
 
   // Fetch workspace connection status whenever the user changes. Anonymous
   // users can't have workspace tokens, so skip the round-trip. Failures are
@@ -659,7 +656,12 @@ export function ChatWindow() {
     <>
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <SessionsDrawerTrigger onOpen={() => setDrawerOpen(true)} />
+          <SessionsDrawerTrigger
+            onOpen={() => {
+              setDrawerOpen(true);
+              void refreshSessions();
+            }}
+          />
           <h1 className="text-lg font-semibold">Lifecoach</h1>
         </div>
         <AccountMenu
