@@ -5,6 +5,7 @@ import {
   type AccountMenuAffordance,
   type AccountMenuThemeChoice,
   AuthPrompt,
+  BreathingPulse,
   Bubble,
   Button,
   ChatShell,
@@ -15,6 +16,7 @@ import {
   type SessionItem,
   SessionsDrawer,
   SessionsDrawerTrigger,
+  StarterChips,
   ToolCallBadge,
   UpgradePrompt,
   WorkspacePrompt,
@@ -58,6 +60,15 @@ type Message = UserMessage | AssistantMessage;
 function messageId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
+
+// Soft, vibey first-turn invitations. Visible above the input until the
+// user sends anything; they replace the old "Say hi to get started" copy.
+const STARTER_PROMPTS = [
+  'Help me ground myself today.',
+  "Let's map out a fresh vision for my week.",
+  'Give me space to untangle my thoughts.',
+  'I want to celebrate something small.',
+] as const;
 
 export function ChatWindow() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -713,6 +724,11 @@ export function ChatWindow() {
     </>
   );
 
+  // Show starter chips only on a fresh live session — once a real user
+  // message lands (messages.length > 1), the chips quietly retire.
+  const showChips =
+    viewMode === 'live' && messages.filter((m) => m.role === 'user').length === 0 && !busy;
+
   const footer =
     viewMode === 'past' ? (
       <div className="flex justify-center">
@@ -727,24 +743,29 @@ export function ChatWindow() {
         </Button>
       </div>
     ) : (
-      <form
-        className="flex gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void sendText(input);
-        }}
-      >
-        <Input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Type a message…"
-          disabled={busy}
-          className="flex-1"
-        />
-        <Button type="submit" disabled={busy || !input.trim()} size="lg">
-          Send
-        </Button>
-      </form>
+      <div className="flex flex-col gap-3">
+        {showChips ? (
+          <StarterChips prompts={STARTER_PROMPTS} onSelect={(p) => void sendText(p)} />
+        ) : null}
+        <form
+          className="flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void sendText(input);
+          }}
+        >
+          <Input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="What's on your mind?"
+            disabled={busy}
+            className="flex-1"
+          />
+          <Button type="submit" disabled={busy || !input.trim()} size="lg">
+            Send
+          </Button>
+        </form>
+      </div>
     );
 
   return (
@@ -766,11 +787,6 @@ export function ChatWindow() {
         data-busy={busy ? 'true' : 'false'}
         hidden
       />
-      {messages.length === 0 && (
-        <div className="text-sm text-muted-foreground">
-          Say hi to get started. The coach is warming up.
-        </div>
-      )}
       {messages.map((m) => {
         if (m.role === 'user') {
           return (
@@ -794,9 +810,7 @@ export function ChatWindow() {
         );
       })}
       {busy && lastAssistantHasNoContent(messages) && (
-        <div className="text-sm italic text-muted-foreground">
-          {retryAttempt > 0 ? `retrying… (${retryAttempt})` : 'thinking…'}
-        </div>
+        <BreathingPulse caption={retryAttempt > 0 ? 'still listening…' : undefined} />
       )}
       <div ref={endRef} />
     </ChatShell>

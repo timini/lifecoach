@@ -8,6 +8,7 @@ export {
 } from './components/account-menu';
 export { AuthPrompt, type AuthPromptProps } from './components/auth-prompt';
 export { Avatar, AvatarFallback, AvatarImage } from './components/avatar';
+export { BreathingPulse, type BreathingPulseProps } from './components/breathing-pulse';
 export { Bubble, type BubbleProps } from './components/bubble';
 export { Button, type ButtonProps, buttonVariants } from './components/button';
 export { ChatShell, type ChatShellProps } from './components/chat-shell';
@@ -46,6 +47,7 @@ export {
   type SessionsDrawerProps,
   SessionsDrawerTrigger,
 } from './components/sessions-drawer';
+export { StarterChips, type StarterChipsProps } from './components/starter-chips';
 export { ToolCallBadge, type ToolCallBadgeProps } from './components/tool-call-badge';
 export { UpgradePrompt, type UpgradePromptProps } from './components/upgrade-prompt';
 export { WorkspacePrompt, type WorkspacePromptProps } from './components/workspace-prompt';
