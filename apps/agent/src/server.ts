@@ -548,7 +548,20 @@ export function createApp(deps: CreateAppDeps): Express {
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no');
+    // Disable Nagle's algorithm so res.write() flushes to the socket
+    // immediately instead of coalescing small SSE chunks. Without this
+    // every event is held up to ~40ms before transmission, which on top
+    // of Google Frontend's buffering window makes the stream feel
+    // batched even though we're correctly producing partials.
+    res.socket?.setNoDelay(true);
     res.flushHeaders?.();
+    // Cloud Run's Google Frontend buffers small responses (~4KB threshold)
+    // before forwarding any bytes to the client. A leading SSE comment
+    // padded to 4KB pushes us past that threshold immediately, so
+    // subsequent events flow live instead of arriving as one batched
+    // chunk at the end of the turn. Comments are ignored by EventSource
+    // and our parser (lines that don't start with `data: `).
+    res.write(`: ${' '.repeat(4096)}\n\n`);
 
     const runner = deps.runnerFor({ ctx: instructionCtx, uid: effectiveUserId, usagePolicy });
 
