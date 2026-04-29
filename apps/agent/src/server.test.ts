@@ -124,6 +124,126 @@ describe('POST /chat', () => {
   });
 });
 
+describe('GET /sessions — sidebar listing', () => {
+  it('returns 401 when requireAuth is on and no Bearer is present', async () => {
+    const app = createApp({
+      runnerFor: () => fakeRunner([]),
+      verifyToken: vi.fn(async () => null),
+      requireAuth: true,
+    });
+    const res = await request(app).get('/sessions');
+    expect(res.status).toBe(401);
+  });
+
+  it('returns empty list when there is no Bearer token (anonymous unauth)', async () => {
+    const app = createApp({
+      runnerFor: () => fakeRunner([]),
+      sessionReader: {
+        appName: 'lifecoach',
+        getSession: async () => null,
+        listSessions: async () => ({
+          sessions: [
+            {
+              id: 'x',
+              userId: 'u',
+              appName: 'lifecoach',
+              state: {},
+              events: [],
+              lastUpdateTime: 1,
+            },
+          ],
+        }),
+      },
+    });
+    const res = await request(app).get('/sessions');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ sessions: [] });
+  });
+
+  it('scopes the list to the Bearer-verified uid and sorts by lastUpdateTime desc', async () => {
+    const listSessions = vi.fn(async () => ({
+      sessions: [
+        {
+          id: 'u-2026-04-27',
+          userId: 'u',
+          appName: 'lifecoach',
+          state: {},
+          events: [],
+          lastUpdateTime: 100,
+        },
+        {
+          id: 'u-2026-04-29',
+          userId: 'u',
+          appName: 'lifecoach',
+          state: {},
+          events: [],
+          lastUpdateTime: 300,
+        },
+        {
+          id: 'u-2026-04-28',
+          userId: 'u',
+          appName: 'lifecoach',
+          state: {},
+          events: [],
+          lastUpdateTime: 200,
+        },
+      ],
+    }));
+    const app = createApp({
+      runnerFor: () => fakeRunner([]),
+      verifyToken: vi.fn(async () => ({
+        uid: 'u',
+        firebase: { sign_in_provider: 'password' },
+      })),
+      sessionReader: {
+        appName: 'lifecoach',
+        getSession: async () => null,
+        listSessions,
+      },
+    });
+    const res = await request(app).get('/sessions').set('authorization', 'Bearer fake');
+    expect(res.status).toBe(200);
+    expect(listSessions).toHaveBeenCalledWith({ appName: 'lifecoach', userId: 'u' });
+    expect(res.body.sessions.map((s: { sessionId: string }) => s.sessionId)).toEqual([
+      'u-2026-04-29',
+      'u-2026-04-28',
+      'u-2026-04-27',
+    ]);
+    expect(res.body.sessions[0]).toEqual({ sessionId: 'u-2026-04-29', lastUpdateTime: 300 });
+  });
+
+  it('returns empty list when sessionReader has no listSessions impl', async () => {
+    const app = createApp({
+      runnerFor: () => fakeRunner([]),
+      verifyToken: vi.fn(async () => ({ uid: 'u', firebase: { sign_in_provider: 'password' } })),
+      sessionReader: {
+        appName: 'lifecoach',
+        getSession: async () => null,
+      },
+    });
+    const res = await request(app).get('/sessions').set('authorization', 'Bearer fake');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ sessions: [] });
+  });
+
+  it('swallows storage errors and returns an empty list', async () => {
+    const app = createApp({
+      runnerFor: () => fakeRunner([]),
+      verifyToken: vi.fn(async () => ({ uid: 'u', firebase: { sign_in_provider: 'password' } })),
+      sessionReader: {
+        appName: 'lifecoach',
+        getSession: async () => null,
+        listSessions: async () => {
+          throw new Error('firestore oops');
+        },
+      },
+    });
+    const res = await request(app).get('/sessions').set('authorization', 'Bearer fake');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ sessions: [] });
+  });
+});
+
 describe('Workspace OAuth endpoints — LLM never touches auth plane', () => {
   function fakeTokensStore(initial?: StoredWorkspaceToken): WorkspaceTokensStore & {
     _docs: Map<string, StoredWorkspaceToken>;
