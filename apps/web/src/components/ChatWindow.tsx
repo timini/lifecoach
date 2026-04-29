@@ -118,9 +118,19 @@ export function ChatWindow() {
   // changes outside our handlers (e.g. the e2e window hook calls
   // signInWithEmailAndPassword, or a future SDK upgrade emits a refresh).
   // Cheap because Firebase de-dupes identical user emissions.
+  //
+  // When auth lands on `null` (sign-out via the window hook, externally
+  // revoked session, …) we kick off an anonymous re-sign-in so the user
+  // never sits on an empty "Signing you in…" screen — same behaviour as
+  // handleSignOut, but reachable from any sign-out path.
   useEffect(() => {
     return onAuthChange((u) => {
       setUser(u);
+      if (!u) {
+        ensureSignedIn().catch((err: unknown) => {
+          setAuthError(err instanceof Error ? err.message : String(err));
+        });
+      }
     });
   }, []);
 
@@ -190,6 +200,11 @@ export function ChatWindow() {
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
+    // Clear any stale transcript from a previous uid before the new
+    // history loads — otherwise sign-out → fresh anon would still show
+    // the old user's bubbles until the empty /history response lands
+    // (which it never does for a brand-new anon with no Firestore doc).
+    setMessages([]);
     (async () => {
       const rehydrated = await fetchAndApplyHistory();
       if (cancelled || !rehydrated || rehydrated.length === 0) return;
