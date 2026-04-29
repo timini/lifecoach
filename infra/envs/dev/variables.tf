@@ -59,3 +59,8 @@ variable "firebase_extra_authorized_domains" {
   default     = []
   description = "Extra hostnames (no scheme) allowed for Firebase Auth sign-in popups. Must include the Cloud Run web URL so Google popups work. Stable value; set in terraform.tfvars."
 }
+
+variable "github_repo" {
+  type        = string
+  description = "GitHub repo (OWNER/REPO) allowed to mint deploy credentials via Workload Identity Federation."
+}

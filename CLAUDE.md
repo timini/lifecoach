@@ -74,12 +74,26 @@ Guidance:
 
 90% lines and branches across the monorepo. CI fails below that. Do not add `/* istanbul ignore */` or `v8 ignore` to hide untested code — test it, or delete it.
 
+## Branch and PR workflow
+
+`main` is protected. Never commit directly to it.
+
+Every change starts on a feature branch off main:
+- `feat/<short-name>` — new features.
+- `fix/<short-name>` — bug fixes.
+- `chore/<short-name>` — tooling, refactors, doc tweaks.
+
+Workflow: branch → commit → push → open PR → CI green → merge. Merging to main triggers `.github/workflows/deploy-dev.yml`, which builds the agent + web Docker images, pushes them to Artifact Registry, and runs `terraform apply` in `infra/envs/dev`.
+
+Do not push directly to main. Do not bypass branch protection (`gh api -X PUT … enforce_admins=false` exists for true emergencies, not convenience). If a PR's CI is broken, fix it on the branch — don't merge yellow.
+
 ## Commit and PR discipline
 
 - One logical change per PR. A PR that touches the state machine should not also reformat unrelated files.
 - Tests in the same commit as the code they test.
 - PR title: imperative, under 70 chars. Body explains *why*, not *what* — the diff shows what.
 - Pre-commit hooks (Biome, typecheck, test, no-IP guard) must pass before commit. Do not `--no-verify`.
+- Squash-merge PRs by default — keeps main linear. Rebase if you want to preserve a meaningful series.
 
 ## Directory conventions
 
