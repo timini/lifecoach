@@ -50,8 +50,10 @@ export function parseSseAssistant(raw: string): AssistantElement[] {
     }
     if (!isAgentEvent(parsed)) continue;
 
-    // Collect text from lifecoach events.
-    if (parsed.author === 'lifecoach') {
+    // Collect text from lifecoach events. Skip the streaming-mode final
+    // aggregate (partial=false) since its text duplicates what the
+    // partial deltas already produced — see parseSseBlock for context.
+    if (parsed.author === 'lifecoach' && parsed.partial !== false) {
       for (const part of parsed.content?.parts ?? []) {
         if (typeof part.text === 'string') pendingText += part.text;
       }
@@ -185,7 +187,15 @@ export function parseSseBlock(block: string): AssistantOp[] {
   const parts = parsed.content?.parts ?? [];
 
   // Text chunks from the lifecoach author stream in throughout the turn.
-  if (parsed.author === 'lifecoach') {
+  // In streaming mode (StreamingMode.SSE on the agent) ADK emits both:
+  //   - many `partial: true` events, each carrying a delta chunk, AND
+  //   - one final aggregate event with `partial: false` carrying the
+  //     concatenated full text (and sometimes trailing `emergent_ui:`
+  //     metadata Gemini bakes in)
+  // Appending both doubles the visible reply and surfaces the metadata
+  // line — so we skip text on the final aggregate. Legacy non-streaming
+  // events have `partial === undefined` and still append correctly.
+  if (parsed.author === 'lifecoach' && parsed.partial !== false) {
     for (const part of parts) {
       if (typeof part.text === 'string' && part.text.length > 0) {
         out.push({ op: 'append-text', text: part.text });
@@ -357,6 +367,12 @@ export function labelForToolCall(name: string, args: unknown): string {
 interface AgentEvent {
   author?: string;
   content?: { parts?: Array<AgentPart> };
+  /**
+   * ADK streaming flag. `true` on partial delta events; `false` on the
+   * final aggregate event (text re-emitted in full). `undefined` in
+   * legacy non-streaming mode.
+   */
+  partial?: boolean;
 }
 interface AgentPart {
   text?: string;

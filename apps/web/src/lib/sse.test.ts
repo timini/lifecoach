@@ -34,6 +34,20 @@ describe('parseSseAssistantText', () => {
       'data: {"author":"lifecoach","content":{"parts":[{"text":"hey"}]}}\n\n';
     expect(parseSseAssistantText(raw)).toBe('hey');
   });
+
+  it('skips the streaming-mode final aggregate (partial=false) so text is not doubled', () => {
+    // ADK with StreamingMode.SSE emits N partial=true delta events plus
+    // one partial=false aggregate that re-emits the full text (sometimes
+    // with trailing `emergent_ui:` metadata Gemini bakes in). The parser
+    // must keep the deltas and drop the aggregate, otherwise the user
+    // sees the reply twice.
+    const raw =
+      'data: {"author":"lifecoach","partial":true,"content":{"parts":[{"text":"hi "}]}}\n\n' +
+      'data: {"author":"lifecoach","partial":true,"content":{"parts":[{"text":"there"}]}}\n\n' +
+      'data: {"author":"lifecoach","partial":false,"content":{"parts":[{"text":"hi there emergent_ui: none"}]}}\n\n' +
+      'event: done\ndata: {}\n\n';
+    expect(parseSseAssistantText(raw)).toBe('hi there');
+  });
 });
 
 describe('parseSseAssistant', () => {
@@ -210,6 +224,24 @@ describe('parseSseBlock (streaming reducer)', () => {
     expect(parseSseBlock('')).toEqual([]);
     expect(parseSseBlock('event: done\ndata: {}')).toEqual([]);
     expect(parseSseBlock('data: not-json')).toEqual([]);
+  });
+
+  it('drops text from the streaming-mode final aggregate (partial=false)', () => {
+    // The aggregate event re-emits the full reply (and may carry trailing
+    // `emergent_ui: none` meta). Keeping it would double the visible
+    // text. We still process function-call/response parts on the same
+    // event though — see next test.
+    const ops = parseSseBlock(
+      'data: {"author":"lifecoach","partial":false,"content":{"parts":[{"text":"hello there emergent_ui: none"}]}}',
+    );
+    expect(ops).toEqual([]);
+  });
+
+  it('still appends text from partial=true delta events', () => {
+    const ops = parseSseBlock(
+      'data: {"author":"lifecoach","partial":true,"content":{"parts":[{"text":"hello"}]}}',
+    );
+    expect(ops).toEqual([{ op: 'append-text', text: 'hello' }]);
   });
 });
 
