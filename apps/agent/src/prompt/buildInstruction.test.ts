@@ -493,6 +493,66 @@ describe('buildInstruction — nudgeMode', () => {
   });
 });
 
+describe('buildInstruction — DAY_PHASE', () => {
+  // 2026-04-29 09:00 in Australia/Melbourne is morning (UTC+10).
+  const morningUtc = new Date('2026-04-28T23:00:00Z');
+  // 2026-04-29 12:30 Melbourne (lunch window).
+  const lunchUtc = new Date('2026-04-29T02:30:00Z');
+  // 2026-04-29 19:00 Melbourne (evening).
+  const eveningUtc = new Date('2026-04-29T09:00:00Z');
+  // 2026-04-29 22:30 Melbourne (concluding).
+  const concludingUtc = new Date('2026-04-29T12:30:00Z');
+
+  it('renders morning_greeting when the user has not interacted yet today', () => {
+    const s = buildInstruction({ ...BASE, now: morningUtc, hasInteractedToday: false });
+    expect(s).toMatch(/DAY_PHASE/);
+    expect(s).toMatch(/First contact of the day/);
+    expect(s).not.toMatch(/around lunch time/);
+  });
+
+  it('renders the morning directive once the user has interacted', () => {
+    const s = buildInstruction({ ...BASE, now: morningUtc, hasInteractedToday: true });
+    expect(s).toMatch(/DAY_PHASE/);
+    expect(s).toMatch(/morning and the user is mid-flow/);
+  });
+
+  it('renders the lunch directive when lunch_eaten is missing in profile', () => {
+    const s = buildInstruction({
+      ...BASE,
+      now: lunchUtc,
+      hasInteractedToday: true,
+      userProfile: {},
+    });
+    expect(s).toMatch(/DAY_PHASE/);
+    expect(s).toMatch(/around lunch time/);
+    expect(s).toMatch(/update_user_profile/);
+  });
+
+  it('flips lunch → post_lunch once daily.{today}.lunch_eaten is true', () => {
+    const s = buildInstruction({
+      ...BASE,
+      now: lunchUtc,
+      hasInteractedToday: true,
+      userProfile: { daily: { '2026-04-29': { lunch_eaten: true } } },
+    });
+    expect(s).toMatch(/DAY_PHASE/);
+    expect(s).toMatch(/Past the lunch window/);
+    expect(s).not.toMatch(/around lunch time/);
+  });
+
+  it('renders evening tone in the 17–21 window', () => {
+    const s = buildInstruction({ ...BASE, now: eveningUtc, hasInteractedToday: true });
+    expect(s).toMatch(/DAY_PHASE/);
+    expect(s).toMatch(/Evening tone/);
+  });
+
+  it('renders the concluding tone late in the evening', () => {
+    const s = buildInstruction({ ...BASE, now: concludingUtc, hasInteractedToday: true });
+    expect(s).toMatch(/DAY_PHASE/);
+    expect(s).toMatch(/Late hours/);
+  });
+});
+
 describe('buildInstruction — workspace cheat-sheet gating', () => {
   it('omits the WORKSPACE cheat-sheet when state is not workspace_connected', () => {
     const s = buildInstruction({ ...BASE, userState: 'google_linked' });

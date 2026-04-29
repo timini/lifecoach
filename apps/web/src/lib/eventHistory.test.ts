@@ -270,6 +270,23 @@ describe('eventsToMessages', () => {
     expect(msgs[0]?.id).toMatch(/^h-/);
   });
 
+  it('drops the __session_start__ kickoff sentinel from rehydrated history', () => {
+    const msgs = eventsToMessages([
+      {
+        id: 'k1',
+        author: 'user',
+        content: { role: 'user', parts: [{ text: '__session_start__' }] },
+      },
+      {
+        id: 'a1',
+        author: 'lifecoach',
+        content: { role: 'model', parts: [{ text: 'morning!' }] },
+      },
+    ]);
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]).toMatchObject({ role: 'assistant' });
+  });
+
   it('preserves order and handles a mixed transcript', () => {
     const msgs = eventsToMessages([
       { id: 'u1', author: 'user', content: { role: 'user', parts: [{ text: 'hey' }] } },
