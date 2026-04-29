@@ -129,6 +129,25 @@ async function timed<T>(p: Promise<T>): Promise<[T, number]> {
   return [v, Date.now() - t0];
 }
 
+/**
+ * True when this session already contains at least one *real* user message
+ * — i.e. anything beyond the synthetic `__session_start__` kickoff. Drives
+ * DailyFlowMachine's morning_greeting → morning flip.
+ */
+function sessionHasUserInteraction(session: Session | null | undefined): boolean {
+  if (!session) return false;
+  for (const ev of session.events ?? []) {
+    if (ev.author !== 'user') continue;
+    const parts = ev.content?.parts ?? [];
+    const text = parts
+      .map((p) => (typeof p.text === 'string' ? p.text : ''))
+      .join('')
+      .trim();
+    if (text && text !== '__session_start__') return true;
+  }
+  return false;
+}
+
 interface ChatBody {
   userId?: string;
   sessionId?: string;
@@ -496,6 +515,7 @@ export function createApp(deps: CreateAppDeps): Express {
       [recentGoalUpdates, goalsMs],
       [memories, memoryMs],
       [meta, metaMs],
+      [existingSession],
     ] = await Promise.all([
       timed(
         coord && deps.weather ? deps.weather.get(coord).catch(() => null) : Promise.resolve(null),
@@ -549,6 +569,20 @@ export function createApp(deps: CreateAppDeps): Express {
               .catch(() => ({ chatTurnCount: 0, tier: 'free' as const }))
           : Promise.resolve({ chatTurnCount: 0, tier: 'free' as const }),
       ),
+      timed(
+        // Pre-fetch this session's events so DailyFlowMachine can decide
+        // morning_greeting vs morning. Reused later in the runner branch
+        // when deciding whether to seed a new session doc.
+        deps.sessionReader
+          ? deps.sessionReader
+              .getSession({
+                appName: deps.sessionReader.appName,
+                userId: effectiveUserId,
+                sessionId,
+              })
+              .catch(() => null)
+          : Promise.resolve(null),
+      ),
     ]);
     timings.parallelMs = Date.now() - tParallel0;
     timings.weatherMs = weatherMs;
@@ -570,6 +604,8 @@ export function createApp(deps: CreateAppDeps): Express {
       tier,
     }).policy();
 
+    const hasInteractedToday = sessionHasUserInteraction(existingSession ?? null);
+
     const instructionCtx: InstructionContext = {
       now: now(),
       timezone: timezone ?? null,
@@ -584,6 +620,7 @@ export function createApp(deps: CreateAppDeps): Express {
       nearbyPlaces,
       memories,
       nudgeMode: usagePolicy.nudgeMode,
+      hasInteractedToday,
     };
 
     res.setHeader('Content-Type', 'text/event-stream');
@@ -626,11 +663,16 @@ export function createApp(deps: CreateAppDeps): Express {
 
     try {
       const tSession0 = Date.now();
-      const existing = await runner.sessionService.getSession({
-        appName: runner.appName,
-        userId: effectiveUserId,
-        sessionId,
-      });
+      // Reuse the prefetched session when sessionReader is wired to the
+      // same store (always true in production); only fall back to the
+      // runner's session service when the prefetch was skipped.
+      const existing =
+        existingSession ??
+        (await runner.sessionService.getSession({
+          appName: runner.appName,
+          userId: effectiveUserId,
+          sessionId,
+        }));
       if (!existing) {
         await runner.sessionService.createSession({
           appName: runner.appName,

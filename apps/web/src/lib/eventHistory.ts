@@ -150,6 +150,10 @@ export function eventsToMessages(events: readonly EventLike[]): HistoryMessage[]
         .filter((e): e is { kind: 'text'; text: string } => e.kind === 'text')
         .map((e) => e.text)
         .join('');
+      // First-of-day kickoff sentinel: a hidden user event the web app
+      // sends to wake the agent on a fresh session. Filtered here so the
+      // greeting bubble appears with no preceding user bubble.
+      if (text === '__session_start__') continue;
       if (text) out.push({ id, role: 'user', text });
     } else if (event.author === 'lifecoach') {
       out.push({ id, role: 'assistant', elements });

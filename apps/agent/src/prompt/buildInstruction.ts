@@ -1,5 +1,5 @@
 import { type GoalUpdate, type UserProfile, openUISystemPrompt } from '@lifecoach/shared-types';
-import { type NudgeMode, type UserState, policyFor } from '@lifecoach/user-state';
+import { DailyFlowMachine, type NudgeMode, type UserState, policyFor } from '@lifecoach/user-state';
 import yaml from 'js-yaml';
 import type { AirQuality } from '../context/airQuality.js';
 import type { CalendarDensitySummary } from '../context/calendarDensity.js';
@@ -46,6 +46,12 @@ export interface InstructionContext {
    * when no nudge applies.
    */
   nudgeMode?: NudgeMode;
+  /**
+   * Whether the user has sent any *real* messages on today's session.
+   * Used by DailyFlowMachine to pick `morning_greeting` vs `morning`.
+   * The synthetic `__session_start__` kickoff doesn't count.
+   */
+  hasInteractedToday?: boolean;
 }
 
 const PERSONA_HEADER =
@@ -446,6 +452,41 @@ ${lines}
 If a moment naturally fits one of these, ask the user (single-choice yes/no via ask_single_choice_question) whether they'd like to enable it. On "yes", call update_user_profile with path="practices.<id>.enabled" value="true" and continue normally. Don't pitch unprompted; once per session at most.`;
 }
 
+function formatDayPhase(ctx: InstructionContext): string {
+  const tz = ctx.timezone ?? 'UTC';
+  // Pull the local hour and YYYY-MM-DD from the same Intl pipeline so the
+  // boundaries match what `formatTime` shows the agent and what the web
+  // app uses to mint the per-day sessionId.
+  const localHourStr = new Intl.DateTimeFormat('en-GB', {
+    timeZone: tz,
+    hour: '2-digit',
+    hour12: false,
+  }).format(ctx.now);
+  // 'en-GB' renders 00–23 reliably (en-US returns "24" at midnight).
+  const localHour = Number(localHourStr) % 24;
+  const todayLocal = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(ctx.now);
+
+  const lunchEaten = readLunchEaten(ctx.userProfile, todayLocal);
+  const machine = DailyFlowMachine.from({
+    localHour,
+    hasInteractedToday: ctx.hasInteractedToday === true,
+    lunchEaten,
+  });
+  const { state, directive } = machine.policy();
+  return `DAY_PHASE: ${state}
+${directive}`;
+}
+
+function readLunchEaten(profile: UserProfile | undefined, dateLocal: string): boolean {
+  if (!profile) return false;
+  const daily = (profile as Record<string, unknown>).daily;
+  if (!daily || typeof daily !== 'object') return false;
+  const day = (daily as Record<string, unknown>)[dateLocal];
+  if (!day || typeof day !== 'object') return false;
+  const eaten = (day as Record<string, unknown>).lunch_eaten;
+  return eaten === true;
+}
+
 function formatRecentGoals(ctx: InstructionContext): string {
   if (!ctx.recentGoalUpdates || ctx.recentGoalUpdates.length === 0) return '';
   const lines = ctx.recentGoalUpdates
@@ -477,6 +518,7 @@ export function buildInstruction(ctx: InstructionContext): string {
     // to use, and the cheat-sheet would be noise.
     ctx.userState === 'workspace_connected' ? WORKSPACE_CHEATSHEET : '',
     formatTime(ctx),
+    formatDayPhase(ctx),
     formatLocation(ctx),
     formatWeather(ctx),
     formatAirQuality(ctx),

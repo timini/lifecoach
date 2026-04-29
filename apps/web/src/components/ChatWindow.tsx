@@ -69,6 +69,9 @@ export function ChatWindow() {
   const [location, setLocation] = useState<BrowserLocation | null>(null);
   const [locationRequested, setLocationRequested] = useState(false);
   const endRef = useRef<HTMLDivElement | null>(null);
+  // Tracks sessionIds we've already kicked off in this tab — guards against
+  // double-firing on StrictMode re-runs of the history-load effect.
+  const kickedOffRef = useRef<Set<string>>(new Set());
 
   // SessionId is bound to the firebase uid: returning users (same uid → same
   // sessionId) reload their previous chat; fresh anon users get a fresh one.
@@ -249,13 +252,28 @@ export function ChatWindow() {
     setMessages([]);
     (async () => {
       const rehydrated = await fetchAndApplyHistory();
-      if (cancelled || !rehydrated || rehydrated.length === 0) return;
-      setMessages(rehydrated);
+      if (cancelled) return;
+      if (rehydrated && rehydrated.length > 0) {
+        setMessages(rehydrated);
+        return;
+      }
+      // Empty live session → fire the first-of-day kickoff so the agent
+      // produces its greeting bubble without the user having to type
+      // anything. The sentinel is filtered out of any future rehydration.
+      if (
+        viewMode === 'live' &&
+        sessionId &&
+        !kickedOffRef.current.has(sessionId) &&
+        rehydrated !== null
+      ) {
+        kickedOffRef.current.add(sessionId);
+        void sendText('__session_start__', { hidden: true });
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [user, fetchAndApplyHistory]);
+  }, [user, fetchAndApplyHistory, sessionId, viewMode]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: rescroll on any render tick
   useEffect(() => {
@@ -299,11 +317,14 @@ export function ChatWindow() {
     setViewMode('live');
   }
 
-  async function sendText(text: string) {
+  async function sendText(text: string, opts?: { hidden?: boolean }) {
     if (!text.trim() || busy || !user || !sessionId || viewMode === 'past') return;
-    setInput('');
+    const hidden = opts?.hidden === true;
+    if (!hidden) setInput('');
     setBusy(true);
-    setMessages((prev) => [...prev, { id: messageId(), role: 'user', text }]);
+    if (!hidden) {
+      setMessages((prev) => [...prev, { id: messageId(), role: 'user', text }]);
+    }
 
     const assistantId = messageId();
     // Seed an empty assistant message immediately so streaming ops can
