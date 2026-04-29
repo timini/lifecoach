@@ -197,6 +197,22 @@ module "web" {
   depends_on = [module.agent]
 }
 
+# --- GitHub Actions WIF (deploys via OIDC, no long-lived keys) -----------
+
+module "github_wif" {
+  source       = "../../modules/github-wif"
+  project_id   = var.project_id
+  github_repo  = var.github_repo
+  state_bucket = "${var.project_id}-tfstate"
+
+  cloud_run_service_accounts = [
+    module.agent.service_account_email,
+    module.web.service_account_email,
+  ]
+
+  depends_on = [module.apis, module.agent, module.web]
+}
+
 # --- Outputs ---------------------------------------------------------------
 
 output "project_id" {
@@ -238,4 +254,14 @@ output "firebase_app_id" {
 
 output "google_client_id" {
   value = module.firebase_auth.google_client_id
+}
+
+output "github_wif_provider" {
+  value       = module.github_wif.workload_identity_provider
+  description = "Pass to google-github-actions/auth as workload_identity_provider."
+}
+
+output "github_deployer_sa" {
+  value       = module.github_wif.deployer_email
+  description = "Pass to google-github-actions/auth as service_account."
 }
