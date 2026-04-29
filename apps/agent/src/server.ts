@@ -74,6 +74,13 @@ export interface SessionReader {
     userId: string;
     sessionId: string;
   }): Promise<Session | null | undefined>;
+  /**
+   * Optional — drives the GET /sessions endpoint that powers the sidebar.
+   * Returns metadata-only sessions (no events) sorted by `lastUpdateTime`
+   * descending. Falls back to an empty list if the reader doesn't expose
+   * this (older / test fakes).
+   */
+  listSessions?(params: { appName: string; userId: string }): Promise<{ sessions: Session[] }>;
 }
 
 export interface CreateAppDeps {
@@ -170,6 +177,46 @@ export function createApp(deps: CreateAppDeps): Express {
       .getSession({ appName: reader.appName, userId: effectiveUserId, sessionId })
       .catch(() => null);
     res.status(200).json({ events: session?.events ?? [] });
+  });
+
+  // GET /sessions  →  { sessions: Array<{ sessionId, lastUpdateTime }> }
+  // Metadata-only listing (no events) for the sidebar drawer. Sorted by
+  // lastUpdateTime descending so the most recent appears first. The
+  // Bearer-verified uid scopes the read; the request body is empty.
+  app.get('/sessions', async (req: Request, res: Response) => {
+    let claims: VerifiedClaims | null = null;
+    if (deps.verifyToken) {
+      claims = await verifyRequest(
+        { authorization: req.header('authorization') ?? undefined },
+        deps.verifyToken,
+      );
+    }
+    if (deps.requireAuth && !claims) {
+      res.status(401).json({ error: 'unauthenticated' });
+      return;
+    }
+    const effectiveUserId = claims?.uid;
+    if (!effectiveUserId) {
+      // Without auth there's no uid to scope the listing — return empty.
+      res.status(200).json({ sessions: [] });
+      return;
+    }
+
+    const reader = deps.sessionReader;
+    if (!reader || !reader.listSessions) {
+      res.status(200).json({ sessions: [] });
+      return;
+    }
+    const result = await reader
+      .listSessions({ appName: reader.appName, userId: effectiveUserId })
+      .catch(() => ({ sessions: [] as Session[] }));
+    const sessions = result.sessions
+      .map((s) => ({
+        sessionId: s.id,
+        lastUpdateTime: s.lastUpdateTime ?? 0,
+      }))
+      .sort((a, b) => b.lastUpdateTime - a.lastUpdateTime);
+    res.status(200).json({ sessions });
   });
 
   // GET /profile?userId=...  →  { profile: Record<string, unknown> }
@@ -924,6 +971,7 @@ async function main(): Promise<void> {
     sessionReader: {
       appName: 'lifecoach',
       getSession: (p) => sessionService.getSession(p),
+      listSessions: (p) => sessionService.listSessions(p),
     },
     verifyToken,
     requireAuth: process.env.REQUIRE_AUTH === 'true',
