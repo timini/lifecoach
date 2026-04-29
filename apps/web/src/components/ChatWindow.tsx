@@ -3,6 +3,7 @@
 import {
   AccountMenu,
   type AccountMenuAffordance,
+  type AccountMenuThemeChoice,
   AuthPrompt,
   Bubble,
   Button,
@@ -38,6 +39,7 @@ import {
 } from '../lib/geolocation';
 import { sessionIdForToday } from '../lib/sessionId';
 import { type AssistantElement, type AssistantOp, parseSseBlock } from '../lib/sse';
+import { getThemeChoice, setTheme } from '../lib/theme';
 import { connectWorkspace, fetchWorkspaceStatus } from '../lib/workspace';
 
 interface UserMessage {
@@ -92,6 +94,18 @@ export function ChatWindow() {
   const [viewMode, setViewMode] = useState<'live' | 'past'>('live');
   const [sessions, setSessions] = useState<SessionItem[]>([]);
   const todaySessionId = user ? sessionIdForToday(user.uid) : '';
+
+  // Theme choice mirrors localStorage. The pre-hydration script in
+  // app/layout.tsx already set <html data-theme>; this keeps the menu in
+  // sync after first paint.
+  const [themeChoice, setThemeChoice] = useState<AccountMenuThemeChoice>('system');
+  useEffect(() => {
+    setThemeChoice(getThemeChoice());
+  }, []);
+  const handleThemeChange = useCallback((choice: AccountMenuThemeChoice) => {
+    setTheme(choice);
+    setThemeChoice(choice);
+  }, []);
 
   useEffect(() => {
     // Resume location silently if the browser already granted permission in
@@ -683,6 +697,8 @@ export function ChatWindow() {
             if (user.email) void handleEmailSignIn(user.email);
           }}
           onConnectWorkspace={() => void handleConnectWorkspace()}
+          themeChoice={themeChoice}
+          onThemeChange={handleThemeChange}
         />
       </div>
       <div className="flex items-center justify-end">

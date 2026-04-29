@@ -3,6 +3,7 @@ export {
   type AccountMenuAffordance,
   type AccountMenuProps,
   type AccountMenuState,
+  type AccountMenuThemeChoice,
   type AccountMenuUser,
 } from './components/account-menu';
 export { AuthPrompt, type AuthPromptProps } from './components/auth-prompt';

@@ -1,6 +1,6 @@
 'use client';
 
-import { LogOut, Settings } from 'lucide-react';
+import { LogOut, Monitor, Moon, Settings, Sun } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Avatar, AvatarFallback, AvatarImage } from './avatar';
 import {
@@ -38,6 +38,8 @@ export interface AccountMenuUser {
   isAnonymous: boolean;
 }
 
+export type AccountMenuThemeChoice = 'light' | 'dark' | 'system';
+
 export interface AccountMenuProps {
   user: AccountMenuUser;
   state: AccountMenuState;
@@ -48,6 +50,10 @@ export interface AccountMenuProps {
   onEmailSignIn?: () => void;
   onResendVerification?: () => void;
   onConnectWorkspace?: () => void;
+  /** Currently selected theme. Optional; the menu hides the Theme rows if absent. */
+  themeChoice?: AccountMenuThemeChoice;
+  /** Fired when the user picks a theme. Required if `themeChoice` is set. */
+  onThemeChange?: (choice: AccountMenuThemeChoice) => void;
 }
 
 function stateLabel(state: AccountMenuState): string {
@@ -114,6 +120,8 @@ export function AccountMenu({
   onEmailSignIn,
   onResendVerification,
   onConnectWorkspace,
+  themeChoice,
+  onThemeChange,
 }: AccountMenuProps) {
   const renderedAffordances = affordances
     .map((aff) =>
@@ -164,6 +172,22 @@ export function AccountMenu({
           <>
             <DropdownMenuSeparator />
             {renderedAffordances}
+          </>
+        ) : null}
+        {themeChoice && onThemeChange ? (
+          <>
+            <DropdownMenuSeparator />
+            <ThemeRow
+              choice="light"
+              current={themeChoice}
+              onSelect={() => onThemeChange('light')}
+            />
+            <ThemeRow choice="dark" current={themeChoice} onSelect={() => onThemeChange('dark')} />
+            <ThemeRow
+              choice="system"
+              current={themeChoice}
+              onSelect={() => onThemeChange('system')}
+            />
           </>
         ) : null}
         <DropdownMenuSeparator />
@@ -225,6 +249,31 @@ function renderAffordance(
     case 'workspace_connected_indicator':
       return null;
   }
+}
+
+function ThemeRow({
+  choice,
+  current,
+  onSelect,
+}: {
+  choice: AccountMenuThemeChoice;
+  current: AccountMenuThemeChoice;
+  onSelect: () => void;
+}) {
+  const Icon = choice === 'light' ? Sun : choice === 'dark' ? Moon : Monitor;
+  const label = choice === 'light' ? 'Light' : choice === 'dark' ? 'Dark' : 'System';
+  const active = current === choice;
+  return (
+    <DropdownMenuItem onSelect={onSelect} aria-checked={active}>
+      <Icon className="h-4 w-4" />
+      <span className={cn('flex-1', active ? 'font-medium' : '')}>{label}</span>
+      {active ? (
+        <span aria-hidden className="text-xs text-muted-foreground">
+          •
+        </span>
+      ) : null}
+    </DropdownMenuItem>
+  );
 }
 
 function AffordanceItem({
