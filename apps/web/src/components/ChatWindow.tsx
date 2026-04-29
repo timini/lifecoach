@@ -11,6 +11,9 @@ import {
   Input,
   LocationBadge,
   Markdown,
+  type SessionItem,
+  SessionsDrawer,
+  SessionsDrawerTrigger,
   ToolCallBadge,
   UpgradePrompt,
   WorkspacePrompt,
@@ -79,6 +82,14 @@ export function ChatWindow() {
   // the AccountMenu shows the "Connect Workspace" affordance.
   const [workspaceConnected, setWorkspaceConnected] = useState(false);
 
+  // Sidebar drawer state. `viewMode` distinguishes today's live chat from
+  // browsing a past session (read-only — no input, no kickoff). `sessions`
+  // is the list rendered inside the drawer.
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<'live' | 'past'>('live');
+  const [sessions, setSessions] = useState<SessionItem[]>([]);
+  const todaySessionId = user ? sessionIdForToday(user.uid) : '';
+
   useEffect(() => {
     // Resume location silently if the browser already granted permission in
     // a prior visit. Avoids re-prompting on every page refresh.
@@ -140,10 +151,41 @@ export function ChatWindow() {
   useEffect(() => {
     if (!user) {
       setSessionId('');
+      setViewMode('live');
       return;
     }
     setSessionId(sessionIdForToday(user.uid));
+    setViewMode('live');
   }, [user]);
+
+  // Fetch the sessions list whenever the user (or the current sessionId)
+  // changes — refetching after sessionId changes catches the new session
+  // doc that the agent will write on the kickoff turn. Failures default
+  // to an empty list which just hides the drawer entries.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: sessionId is intentionally listed to force a refetch after the kickoff turn creates the session doc
+  useEffect(() => {
+    if (!user) {
+      setSessions([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const idToken = await user.getIdToken();
+        const res = await fetch('/api/sessions', {
+          headers: { authorization: `Bearer ${idToken}` },
+        });
+        if (!res.ok) return;
+        const body = (await res.json()) as { sessions?: SessionItem[] };
+        if (!cancelled) setSessions(body.sessions ?? []);
+      } catch {
+        if (!cancelled) setSessions([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, sessionId]);
 
   // Fetch workspace connection status whenever the user changes. Anonymous
   // users can't have workspace tokens, so skip the round-trip. Failures are
@@ -242,8 +284,23 @@ export function ChatWindow() {
     setLocation(loc);
   }
 
+  function handleSelectSession(selectedId: string) {
+    if (selectedId === sessionId) return;
+    setMessages([]);
+    setSessionId(selectedId);
+    setViewMode(selectedId === todaySessionId ? 'live' : 'past');
+  }
+
+  function handleBackToToday() {
+    if (!user) return;
+    const todayId = sessionIdForToday(user.uid);
+    setMessages([]);
+    setSessionId(todayId);
+    setViewMode('live');
+  }
+
   async function sendText(text: string) {
-    if (!text.trim() || busy || !user || !sessionId) return;
+    if (!text.trim() || busy || !user || !sessionId || viewMode === 'past') return;
     setInput('');
     setBusy(true);
     setMessages((prev) => [...prev, { id: messageId(), role: 'user', text }]);
@@ -580,7 +637,10 @@ export function ChatWindow() {
   const header = (
     <>
       <div className="flex items-center justify-between gap-2">
-        <h1 className="text-lg font-semibold">Lifecoach</h1>
+        <div className="flex items-center gap-2">
+          <SessionsDrawerTrigger onOpen={() => setDrawerOpen(true)} />
+          <h1 className="text-lg font-semibold">Lifecoach</h1>
+        </div>
         <AccountMenu
           state={userState}
           affordances={affordances}
@@ -614,29 +674,50 @@ export function ChatWindow() {
     </>
   );
 
-  const footer = (
-    <form
-      className="flex gap-2"
-      onSubmit={(e) => {
-        e.preventDefault();
-        void sendText(input);
-      }}
-    >
-      <Input
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        placeholder="Type a message…"
-        disabled={busy}
-        className="flex-1"
-      />
-      <Button type="submit" disabled={busy || !input.trim()} size="lg">
-        Send
-      </Button>
-    </form>
-  );
+  const footer =
+    viewMode === 'past' ? (
+      <div className="flex justify-center">
+        <Button
+          type="button"
+          onClick={handleBackToToday}
+          variant="subtle"
+          size="lg"
+          data-testid="back-to-today"
+        >
+          Back to today
+        </Button>
+      </div>
+    ) : (
+      <form
+        className="flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void sendText(input);
+        }}
+      >
+        <Input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="Type a message…"
+          disabled={busy}
+          className="flex-1"
+        />
+        <Button type="submit" disabled={busy || !input.trim()} size="lg">
+          Send
+        </Button>
+      </form>
+    );
 
   return (
     <ChatShell header={header} footer={footer}>
+      <SessionsDrawer
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+        sessions={sessions}
+        activeSessionId={sessionId}
+        todaySessionId={todaySessionId}
+        onSelect={handleSelectSession}
+      />
       {/* Stable test seam — Playwright waits on these to know the React
           state has caught up with whatever auth flip just happened. */}
       <div
