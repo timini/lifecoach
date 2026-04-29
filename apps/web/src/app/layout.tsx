@@ -27,7 +27,11 @@ const themeBootstrap = `(function(){try{var t=localStorage.getItem('lifecoach.th
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={`${fontSans.variable} ${fontSerif.variable}`}>
+    <html
+      lang="en"
+      className={`${fontSans.variable} ${fontSerif.variable}`}
+      suppressHydrationWarning
+    >
       <head>
         {/* biome-ignore lint/security/noDangerouslySetInnerHtml: required to set data-theme before first paint */}
         <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
