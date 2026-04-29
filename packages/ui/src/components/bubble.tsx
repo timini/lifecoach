@@ -10,6 +10,7 @@ export interface BubbleProps {
 export function Bubble({ from, children, className }: BubbleProps) {
   return (
     <div
+      data-from={from}
       className={cn(
         'max-w-[80%] whitespace-pre-wrap rounded-[var(--radius-bubble)] px-3 py-2 text-[15px] leading-relaxed',
         from === 'user'
