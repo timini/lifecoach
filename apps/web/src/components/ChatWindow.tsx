@@ -33,7 +33,7 @@ import {
   getLocationPermissionState,
   requestBrowserLocation,
 } from '../lib/geolocation';
-import { ensureSessionIdForUid } from '../lib/sessionId';
+import { sessionIdForToday } from '../lib/sessionId';
 import { type AssistantElement, type AssistantOp, parseSseBlock } from '../lib/sse';
 import { connectWorkspace, fetchWorkspaceStatus } from '../lib/workspace';
 
@@ -134,15 +134,15 @@ export function ChatWindow() {
     });
   }, []);
 
-  // Resolve the sessionId for the currently-signed-in uid. Runs after every
-  // user change (anon → google upgrade keeps the same uid; sign-out → fresh
-  // anon flips to a new uid → new sessionId). Empty string until user is set.
+  // Resolve today's sessionId for the currently-signed-in uid. Runs after
+  // every user change. The id is fully derived from (uid, todayDateLocal)
+  // — calling at midnight will roll to a fresh session.
   useEffect(() => {
     if (!user) {
       setSessionId('');
       return;
     }
-    setSessionId(ensureSessionIdForUid(user.uid));
+    setSessionId(sessionIdForToday(user.uid));
   }, [user]);
 
   // Fetch workspace connection status whenever the user changes. Anonymous

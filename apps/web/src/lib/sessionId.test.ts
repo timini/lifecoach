@@ -1,98 +1,59 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ensureSessionIdForUid, getSessionId, setSessionId } from './sessionId';
+import { describe, expect, it } from 'vitest';
+import { dateLocal, sessionIdFor, sessionIdForToday, todayDateLocal } from './sessionId';
 
-/**
- * Vitest defaults to a node environment for this app, so we ship a tiny
- * in-memory `window.localStorage` shim instead of pulling in jsdom for the
- * sake of one helper. crypto.randomUUID is available globally in node 18+.
- */
-class MemoryStorage implements Storage {
-  private map = new Map<string, string>();
-  get length(): number {
-    return this.map.size;
-  }
-  clear(): void {
-    this.map.clear();
-  }
-  getItem(key: string): string | null {
-    return this.map.get(key) ?? null;
-  }
-  key(i: number): string | null {
-    return Array.from(this.map.keys())[i] ?? null;
-  }
-  removeItem(key: string): void {
-    this.map.delete(key);
-  }
-  setItem(key: string, value: string): void {
-    this.map.set(key, value);
-  }
-}
+describe('dateLocal', () => {
+  it('returns YYYY-MM-DD for a known date', () => {
+    // Construct date via local components so the test isn't tz-dependent.
+    const d = new Date(2026, 3, 29); // April 29 2026 in local tz
+    expect(dateLocal(d)).toBe('2026-04-29');
+  });
 
-beforeEach(() => {
-  vi.stubGlobal('window', { localStorage: new MemoryStorage() });
+  it('zero-pads month and day', () => {
+    const d = new Date(2026, 0, 5); // Jan 5
+    expect(dateLocal(d)).toBe('2026-01-05');
+  });
 });
 
-afterEach(() => {
-  vi.unstubAllGlobals();
+describe('todayDateLocal', () => {
+  it('matches dateLocal(new Date())', () => {
+    expect(todayDateLocal()).toBe(dateLocal(new Date()));
+  });
+
+  it('matches the YYYY-MM-DD shape', () => {
+    expect(todayDateLocal()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
 });
 
-describe('sessionId helpers', () => {
-  it('returns null for an unknown uid', () => {
-    expect(getSessionId('alice')).toBeNull();
+describe('sessionIdFor', () => {
+  it('joins uid and date with a dash', () => {
+    expect(sessionIdFor('alice', '2026-04-29')).toBe('alice-2026-04-29');
   });
 
-  it('round-trips a uid → sessionId mapping', () => {
-    setSessionId('alice', 'sess-1');
-    expect(getSessionId('alice')).toBe('sess-1');
+  it('throws on empty uid', () => {
+    expect(() => sessionIdFor('', '2026-04-29')).toThrow(/uid is required/);
   });
 
-  it('keeps separate sessionIds for different uids', () => {
-    setSessionId('alice', 'sess-a');
-    setSessionId('bob', 'sess-b');
-    expect(getSessionId('alice')).toBe('sess-a');
-    expect(getSessionId('bob')).toBe('sess-b');
+  it('throws on a malformed date', () => {
+    expect(() => sessionIdFor('alice', '4/29/2026')).toThrow(/YYYY-MM-DD/);
+    expect(() => sessionIdFor('alice', '2026-4-29')).toThrow(/YYYY-MM-DD/);
+    expect(() => sessionIdFor('alice', '')).toThrow(/YYYY-MM-DD/);
   });
 
-  it('overwrites an existing sessionId for the same uid', () => {
-    setSessionId('alice', 'sess-old');
-    setSessionId('alice', 'sess-new');
-    expect(getSessionId('alice')).toBe('sess-new');
+  it('two callers with the same inputs get the same id', () => {
+    expect(sessionIdFor('alice', '2026-04-29')).toBe(sessionIdFor('alice', '2026-04-29'));
   });
 
-  it('survives a corrupt localStorage value (returns null, recovers on write)', () => {
-    window.localStorage.setItem('lifecoach.sessionIdByUid', 'not-json');
-    expect(getSessionId('alice')).toBeNull();
-    setSessionId('alice', 'sess-1');
-    expect(getSessionId('alice')).toBe('sess-1');
+  it('different days yield different ids', () => {
+    expect(sessionIdFor('alice', '2026-04-29')).not.toBe(sessionIdFor('alice', '2026-04-30'));
   });
 
-  it('survives a non-object JSON value', () => {
-    window.localStorage.setItem('lifecoach.sessionIdByUid', '[1,2,3]');
-    expect(getSessionId('alice')).toBeNull();
+  it('different uids yield different ids', () => {
+    expect(sessionIdFor('alice', '2026-04-29')).not.toBe(sessionIdFor('bob', '2026-04-29'));
   });
+});
 
-  it('ignores empty uid', () => {
-    setSessionId('', 'sess-x');
-    expect(getSessionId('')).toBeNull();
-  });
-
-  describe('ensureSessionIdForUid', () => {
-    it('mints + stores when uid has no entry', () => {
-      const sid = ensureSessionIdForUid('alice');
-      expect(sid).toMatch(/^[0-9a-f-]{36}$/);
-      expect(getSessionId('alice')).toBe(sid);
-    });
-
-    it('returns the existing sessionId on the second call', () => {
-      const a = ensureSessionIdForUid('alice');
-      const b = ensureSessionIdForUid('alice');
-      expect(a).toBe(b);
-    });
-
-    it('mints distinct sessionIds for distinct uids', () => {
-      const a = ensureSessionIdForUid('alice');
-      const b = ensureSessionIdForUid('bob');
-      expect(a).not.toBe(b);
-    });
+describe('sessionIdForToday', () => {
+  it('equals sessionIdFor(uid, todayDateLocal())', () => {
+    expect(sessionIdForToday('alice')).toBe(sessionIdFor('alice', todayDateLocal()));
   });
 });
