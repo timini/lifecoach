@@ -12,7 +12,7 @@ const BASE: InstructionContext = {
 describe('buildInstruction', () => {
   it('always includes the persona block', () => {
     const s = buildInstruction(BASE);
-    expect(s).toMatch(/warm, supportive life coach/i);
+    expect(s).toMatch(/You are Lifecoach/);
   });
 
   it('lists not-yet-enabled practices in AVAILABLE_PRACTICES (so the agent can offer)', () => {
@@ -508,15 +508,13 @@ describe('buildInstruction — DAY_PHASE', () => {
 
   it('renders morning_greeting when the user has not interacted yet today', () => {
     const s = buildInstruction({ ...BASE, now: morningUtc, hasInteractedToday: false });
-    expect(s).toMatch(/DAY_PHASE/);
-    expect(s).toMatch(/First contact of the day/);
-    expect(s).not.toMatch(/around lunch time/);
+    expect(s).toMatch(/DAY_PHASE: morning_greeting/);
+    expect(s).not.toMatch(/DAY_PHASE: lunch\b/);
   });
 
   it('renders the morning directive once the user has interacted', () => {
     const s = buildInstruction({ ...BASE, now: morningUtc, hasInteractedToday: true });
-    expect(s).toMatch(/DAY_PHASE/);
-    expect(s).toMatch(/morning and the user is mid-flow/);
+    expect(s).toMatch(/DAY_PHASE: morning\b/);
   });
 
   it('renders the lunch directive when lunch_eaten is missing in profile', () => {
@@ -526,8 +524,7 @@ describe('buildInstruction — DAY_PHASE', () => {
       hasInteractedToday: true,
       userProfile: {},
     });
-    expect(s).toMatch(/DAY_PHASE/);
-    expect(s).toMatch(/around lunch time/);
+    expect(s).toMatch(/DAY_PHASE: lunch\b/);
     expect(s).toMatch(/update_user_profile/);
   });
 
@@ -538,21 +535,18 @@ describe('buildInstruction — DAY_PHASE', () => {
       hasInteractedToday: true,
       userProfile: { daily: { '2026-04-29': { lunch_eaten: true } } },
     });
-    expect(s).toMatch(/DAY_PHASE/);
-    expect(s).toMatch(/Past the lunch window/);
-    expect(s).not.toMatch(/around lunch time/);
+    expect(s).toMatch(/DAY_PHASE: post_lunch/);
+    expect(s).not.toMatch(/DAY_PHASE: lunch\b/);
   });
 
   it('renders evening tone in the 17–21 window', () => {
     const s = buildInstruction({ ...BASE, now: eveningUtc, hasInteractedToday: true });
-    expect(s).toMatch(/DAY_PHASE/);
-    expect(s).toMatch(/Evening tone/);
+    expect(s).toMatch(/DAY_PHASE: evening/);
   });
 
   it('renders the concluding tone late in the evening', () => {
     const s = buildInstruction({ ...BASE, now: concludingUtc, hasInteractedToday: true });
-    expect(s).toMatch(/DAY_PHASE/);
-    expect(s).toMatch(/Late hours/);
+    expect(s).toMatch(/DAY_PHASE: concluding/);
   });
 });
 

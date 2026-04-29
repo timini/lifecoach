@@ -23,7 +23,7 @@ interface JournalEntry {
 
 function directive(_ctx: PracticeCtx): string {
   return `JOURNALING (practice on):
-If the user describes something meaningful — a moment, a feeling, a turning point — gently offer to capture it as a journal entry ("want me to journal that for you?"). When they say more (or say yes and continue), call journal_entry({ text: "<verbatim or lightly cleaned>", mood: "<one word if obvious, e.g. 'frustrated' / 'proud' / 'tired'>" }). Don't pitch journaling on every casual remark — pick the genuinely reflective moments.`;
+When something real surfaces — a feeling, a turning, a small moment that matters — softly offer to hold it: *"want this written down somewhere?"*. If they say yes (or simply keep talking around it), call journal_entry({ text: "<their own words, lightly cleaned>", mood: "<one word if obvious, e.g. 'tender' / 'tired' / 'lit-up'>" }). Don't pitch on every casual remark — only when the moment has weight. The save is silent.`;
 }
 
 function createJournalEntryTool(deps: PracticeDeps, uid: string): FunctionTool {

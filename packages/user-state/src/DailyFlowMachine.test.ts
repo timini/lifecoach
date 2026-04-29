@@ -100,7 +100,7 @@ describe('DailyFlowMachine.policy', () => {
 
   it('morning_greeting directive forbids tool calls and the session-start echo', () => {
     const policy = policyForDailyFlow('morning_greeting');
-    expect(policy.directive).toMatch(/do not call any tools/i);
+    expect(policy.directive).toMatch(/no tools/i);
     expect(policy.directive).toMatch(/session-start/i);
   });
 

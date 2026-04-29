@@ -27,8 +27,12 @@ export function StarterChips({
   className,
 }: StarterChipsProps) {
   return (
-    <fieldset className={cn('flex flex-wrap gap-2 border-0 p-0', className)}>
-      <legend className="sr-only">Suggested prompts</legend>
+    <div
+      className={cn('flex flex-wrap gap-2', className)}
+      // biome-ignore lint/a11y/useSemanticElements: fieldset+legend renders an unwanted visible label; aria-label on a div is the right fit for an inline pill cluster
+      role="group"
+      aria-label="Suggested prompts"
+    >
       {prompts.map((prompt) => (
         <button
           key={prompt}
@@ -45,6 +49,6 @@ export function StarterChips({
           {prompt}
         </button>
       ))}
-    </fieldset>
+    </div>
   );
 }

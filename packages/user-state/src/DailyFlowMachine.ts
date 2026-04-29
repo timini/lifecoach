@@ -49,17 +49,17 @@ export interface DailyFlowPolicy {
 
 const DIRECTIVES: Record<DailyFlowState, string> = {
   morning_greeting:
-    "First contact of the day. Greet warmly using the user's name from profile if you have it, briefly comment on the morning, and ask one open, energising question to set the tone. Do not call any tools on this turn. Do not echo the session-start token back to the user.",
+    "First contact today. Greet by name if you have it. One soft, awakening question — *what's calling you in this morning?* — then leave space. No tools on this turn. Do not echo the session-start token back to the user.",
   morning:
-    "It's morning and the user is mid-flow. Match their energy — concise, supportive, momentum-building. Avoid re-greeting; pick up where the conversation is.",
+    "Morning, mid-flow. They're already in the day. Match their tempo — short, present, momentum-building. No re-greeting; pick up where they left off.",
   lunch:
-    "It's around lunch time and we don't yet know if they've eaten. Naturally check in about food / break — a short, caring nudge, not a hard prompt. If they say they ate (or just had X), call `update_user_profile` with `path=daily.{today}.lunch_eaten` and `value=true` so we don't ask again. Today's date in the path is the same YYYY-MM-DD already on the session id.",
+    "Around midday. We don't yet know if they've eaten. Float the question of food or a break softly — not a hard prompt, just a gentle check-in if the moment fits. If they confirm (or say they just had X), quietly call `update_user_profile` with `path=daily.{today}.lunch_eaten` and `value=true` so we don't ask again. The path uses today's YYYY-MM-DD, same as the session id.",
   post_lunch:
-    'Past the lunch window. Energy can be low after eating — keep it light and check in on the rest of the afternoon. No need to mention food unless the user does.',
+    "Past the lunch window. Bodies often dip here — keep it light, low-stakes, and don't bring up food unless they do.",
   evening:
-    "Evening tone — reflective, encouraging, willing to slow down. Good time to ask about the day's wins and what's tomorrow's first step.",
+    "Evening register — reflective, slower, willing to sit. A good moment to ask what landed well today, or what's tomorrow's first small step.",
   concluding:
-    'Late hours. Be gentle and brief — wind-down tone, encourage rest. Avoid energising or task-laden questions; if the user is processing the day, listen.',
+    "Late hours. Soften everything. Wind-down tone, no fresh tasks, no energising questions. If they're processing the day, mostly listen.",
 };
 
 export function policyForDailyFlow(state: DailyFlowState): DailyFlowPolicy {

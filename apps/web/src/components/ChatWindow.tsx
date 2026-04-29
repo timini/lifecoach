@@ -678,17 +678,24 @@ export function ChatWindow() {
     .uiAffordances.map((a) => a.kind) as AccountMenuAffordance[];
 
   const header = (
-    <>
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <SessionsDrawerTrigger
-            onOpen={() => {
-              setDrawerOpen(true);
-              void refreshSessions();
-            }}
-          />
-          <h1 className="text-lg font-semibold">Lifecoach</h1>
-        </div>
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center gap-2">
+        <SessionsDrawerTrigger
+          onOpen={() => {
+            setDrawerOpen(true);
+            void refreshSessions();
+          }}
+        />
+        <h1 className="text-xl font-medium tracking-tight">Lifecoach</h1>
+      </div>
+      <div className="flex items-center gap-2">
+        <LocationBadge
+          shared={location !== null}
+          requested={locationRequested}
+          onShare={() => {
+            void shareLocation();
+          }}
+        />
         <AccountMenu
           state={userState}
           affordances={affordances}
@@ -712,22 +719,13 @@ export function ChatWindow() {
           onThemeChange={handleThemeChange}
         />
       </div>
-      <div className="flex items-center justify-end">
-        <LocationBadge
-          shared={location !== null}
-          requested={locationRequested}
-          onShare={() => {
-            void shareLocation();
-          }}
-        />
-      </div>
-    </>
+    </div>
   );
 
-  // Show starter chips only on a fresh live session — once a real user
-  // message lands (messages.length > 1), the chips quietly retire.
-  const showChips =
-    viewMode === 'live' && messages.filter((m) => m.role === 'user').length === 0 && !busy;
+  // Empty-session welcome: centered greeting + starter chips fill the chat
+  // area so the user lands on something inviting instead of a yawning gap
+  // while the kickoff turn is in flight.
+  const isEmpty = viewMode === 'live' && messages.length === 0;
 
   const footer =
     viewMode === 'past' ? (
@@ -743,29 +741,24 @@ export function ChatWindow() {
         </Button>
       </div>
     ) : (
-      <div className="flex flex-col gap-3">
-        {showChips ? (
-          <StarterChips prompts={STARTER_PROMPTS} onSelect={(p) => void sendText(p)} />
-        ) : null}
-        <form
-          className="flex gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void sendText(input);
-          }}
-        >
-          <Input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="What's on your mind?"
-            disabled={busy}
-            className="flex-1"
-          />
-          <Button type="submit" disabled={busy || !input.trim()} size="lg">
-            Send
-          </Button>
-        </form>
-      </div>
+      <form
+        className="flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void sendText(input);
+        }}
+      >
+        <Input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="What's on your mind?"
+          disabled={busy}
+          className="flex-1"
+        />
+        <Button type="submit" disabled={busy || !input.trim()} size="lg">
+          Send
+        </Button>
+      </form>
     );
 
   return (
@@ -787,6 +780,15 @@ export function ChatWindow() {
         data-busy={busy ? 'true' : 'false'}
         hidden
       />
+      {isEmpty && !busy ? (
+        <div className="my-auto flex flex-col items-center gap-6 py-10 text-center">
+          <p className="max-w-sm font-serif text-2xl leading-relaxed text-foreground/80">
+            Take a breath.{' '}
+            <span className="italic text-foreground/60">What's here for you today?</span>
+          </p>
+          <StarterChips prompts={STARTER_PROMPTS} onSelect={(p) => void sendText(p)} />
+        </div>
+      ) : null}
       {messages.map((m) => {
         if (m.role === 'user') {
           return (

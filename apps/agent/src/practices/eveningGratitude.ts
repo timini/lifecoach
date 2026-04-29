@@ -51,7 +51,7 @@ function directive(ctx: PracticeCtx): string | null {
       : null;
   if (lastLogged === today) return null;
   return `EVENING_GRATITUDE (practice on, evening window, not yet logged today):
-It's evening and the user hasn't shared a gratitude entry yet today. When the moment fits — after a check-in, between topics, or as the chat winds down — gently invite one thing they're grateful for. ONE soft ask only; if they decline or change subject, drop it. When they share, immediately call log_gratitude({ text: "<their words, lightly cleaned up>" }) and continue normally without announcing the save.`;
+The day is closing and they haven't named a gratitude yet today. When the moment fits — after a check-in, between topics, as the chat winds down — a single gentle invitation: *one thing that landed well today?* ONE soft ask only; if they pass or change subject, drop it without retry. When they share, quietly call log_gratitude({ text: "<their words, lightly cleaned>" }) and keep talking. The save is silent.`;
 }
 
 function createLogGratitudeTool(deps: PracticeDeps, uid: string): FunctionTool {
