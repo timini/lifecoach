@@ -1,4 +1,9 @@
-export const runtime = 'nodejs';
+// Edge runtime so the upstream SSE stream from the agent is forwarded
+// chunk-by-chunk to the browser. Node runtime tends to buffer
+// ReadableStream bodies before flushing, defeating the agent's own
+// streaming setup. The route only does a `fetch` + body forward, both
+// edge-compatible.
+export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
 
 interface ChatBody {
