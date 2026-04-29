@@ -2,15 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { labelForToolCall, parseSseAssistant, parseSseAssistantText, parseSseBlock } from './sse';
 
 describe('parseSseAssistantText', () => {
-  it('returns the last assistant text from an SSE stream with one event', () => {
-    const raw = 'data: {"author":"lifecoach","content":{"parts":[{"text":"hello"}]}}\n\n';
+  it('returns the last assistant text from a single delta event', () => {
+    const raw =
+      'data: {"author":"lifecoach","partial":true,"content":{"parts":[{"text":"hello"}]}}\n\n';
     expect(parseSseAssistantText(raw)).toBe('hello');
   });
 
-  it('concatenates text parts across multiple events', () => {
+  it('concatenates text parts across multiple delta events', () => {
     const raw =
-      'data: {"author":"lifecoach","content":{"parts":[{"text":"hi "}]}}\n\n' +
-      'data: {"author":"lifecoach","content":{"parts":[{"text":"there"}]}}\n\n' +
+      'data: {"author":"lifecoach","partial":true,"content":{"parts":[{"text":"hi "}]}}\n\n' +
+      'data: {"author":"lifecoach","partial":true,"content":{"parts":[{"text":"there"}]}}\n\n' +
       'event: done\ndata: {}\n\n';
     expect(parseSseAssistantText(raw)).toBe('hi there');
   });
@@ -19,7 +20,7 @@ describe('parseSseAssistantText', () => {
     const raw =
       ': comment\n' +
       'event: done\ndata: {}\n\n' +
-      'data: {"author":"lifecoach","content":{"parts":[{"text":"ok"}]}}\n\n';
+      'data: {"author":"lifecoach","partial":true,"content":{"parts":[{"text":"ok"}]}}\n\n';
     expect(parseSseAssistantText(raw)).toBe('ok');
   });
 
@@ -30,21 +31,22 @@ describe('parseSseAssistantText', () => {
 
   it('ignores events from non-lifecoach authors (e.g., user echo)', () => {
     const raw =
-      'data: {"author":"user","content":{"parts":[{"text":"hi"}]}}\n\n' +
-      'data: {"author":"lifecoach","content":{"parts":[{"text":"hey"}]}}\n\n';
+      'data: {"author":"user","partial":true,"content":{"parts":[{"text":"hi"}]}}\n\n' +
+      'data: {"author":"lifecoach","partial":true,"content":{"parts":[{"text":"hey"}]}}\n\n';
     expect(parseSseAssistantText(raw)).toBe('hey');
   });
 
-  it('skips the streaming-mode final aggregate (partial=false) so text is not doubled', () => {
-    // ADK with StreamingMode.SSE emits N partial=true delta events plus
-    // one partial=false aggregate that re-emits the full text (sometimes
-    // with trailing `emergent_ui:` metadata Gemini bakes in). The parser
-    // must keep the deltas and drop the aggregate, otherwise the user
-    // sees the reply twice.
+  it('skips the trailing aggregate (partial undefined) so text is not doubled', () => {
+    // ADK in StreamingMode.SSE emits N partial=true delta events plus a
+    // trailing event with `partial` UNDEFINED (not false) that re-carries
+    // the full concatenated text — sometimes with trailing
+    // `emergent_ui:` metadata Gemini bakes in. The parser must keep the
+    // deltas and drop the aggregate, otherwise the user sees the reply
+    // twice with metadata leak.
     const raw =
       'data: {"author":"lifecoach","partial":true,"content":{"parts":[{"text":"hi "}]}}\n\n' +
       'data: {"author":"lifecoach","partial":true,"content":{"parts":[{"text":"there"}]}}\n\n' +
-      'data: {"author":"lifecoach","partial":false,"content":{"parts":[{"text":"hi there emergent_ui: none"}]}}\n\n' +
+      'data: {"author":"lifecoach","content":{"parts":[{"text":"hi there emergent_ui: none"}]}}\n\n' +
       'event: done\ndata: {}\n\n';
     expect(parseSseAssistantText(raw)).toBe('hi there');
   });
@@ -116,6 +118,7 @@ describe('parseSseAssistant', () => {
   it('interleaves text then choice in emission order', () => {
     const text = {
       author: 'lifecoach',
+      partial: true,
       content: { parts: [{ text: 'quick question:' }] },
     };
     const choice = {
@@ -149,9 +152,9 @@ describe('parseSseBlock (streaming reducer)', () => {
     return `data: ${JSON.stringify(event)}\n\n`;
   }
 
-  it('emits append-text ops for lifecoach text chunks', () => {
+  it('emits append-text ops for partial lifecoach text deltas', () => {
     const ops = parseSseBlock(
-      blockFor({ author: 'lifecoach', content: { parts: [{ text: 'hello ' }] } }),
+      blockFor({ author: 'lifecoach', partial: true, content: { parts: [{ text: 'hello ' }] } }),
     );
     expect(ops).toEqual([{ op: 'append-text', text: 'hello ' }]);
   });
@@ -226,13 +229,22 @@ describe('parseSseBlock (streaming reducer)', () => {
     expect(parseSseBlock('data: not-json')).toEqual([]);
   });
 
-  it('drops text from the streaming-mode final aggregate (partial=false)', () => {
-    // The aggregate event re-emits the full reply (and may carry trailing
-    // `emergent_ui: none` meta). Keeping it would double the visible
-    // text. We still process function-call/response parts on the same
-    // event though — see next test.
+  it('drops text from the trailing aggregate event (partial undefined)', () => {
+    // ADK emits a trailing lifecoach event after the partial=true
+    // deltas with `partial` left UNDEFINED that re-carries the full
+    // text (and may carry trailing `emergent_ui: none` meta from
+    // Gemini). Keeping it would double the visible text.
     const ops = parseSseBlock(
-      'data: {"author":"lifecoach","partial":false,"content":{"parts":[{"text":"hello there emergent_ui: none"}]}}',
+      'data: {"author":"lifecoach","content":{"parts":[{"text":"hello there emergent_ui: none"}]}}',
+    );
+    expect(ops).toEqual([]);
+  });
+
+  it('also drops text when partial is explicitly false', () => {
+    // Defensive: ADK may flag the aggregate as partial:false in some
+    // builds. Either way, only partial:true is allowed to append text.
+    const ops = parseSseBlock(
+      'data: {"author":"lifecoach","partial":false,"content":{"parts":[{"text":"hello"}]}}',
     );
     expect(ops).toEqual([]);
   });
