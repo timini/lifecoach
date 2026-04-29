@@ -50,10 +50,9 @@ export function parseSseAssistant(raw: string): AssistantElement[] {
     }
     if (!isAgentEvent(parsed)) continue;
 
-    // Collect text from lifecoach events. Skip the streaming-mode final
-    // aggregate (partial=false) since its text duplicates what the
-    // partial deltas already produced — see parseSseBlock for context.
-    if (parsed.author === 'lifecoach' && parsed.partial !== false) {
+    // Collect text from lifecoach delta events only. ADK emits a trailing
+    // partial=undefined aggregate that duplicates the deltas; skip it.
+    if (parsed.author === 'lifecoach' && parsed.partial === true) {
       for (const part of parsed.content?.parts ?? []) {
         if (typeof part.text === 'string') pendingText += part.text;
       }
@@ -187,15 +186,16 @@ export function parseSseBlock(block: string): AssistantOp[] {
   const parts = parsed.content?.parts ?? [];
 
   // Text chunks from the lifecoach author stream in throughout the turn.
-  // In streaming mode (StreamingMode.SSE on the agent) ADK emits both:
+  // In streaming mode (StreamingMode.SSE on the agent) ADK emits:
   //   - many `partial: true` events, each carrying a delta chunk, AND
-  //   - one final aggregate event with `partial: false` carrying the
-  //     concatenated full text (and sometimes trailing `emergent_ui:`
-  //     metadata Gemini bakes in)
-  // Appending both doubles the visible reply and surfaces the metadata
-  // line — so we skip text on the final aggregate. Legacy non-streaming
-  // events have `partial === undefined` and still append correctly.
-  if (parsed.author === 'lifecoach' && parsed.partial !== false) {
+  //   - one trailing event with `partial` left UNDEFINED (not false)
+  //     that re-carries the concatenated full text (and sometimes
+  //     trailing `emergent_ui:` metadata Gemini bakes in).
+  // Appending both doubles the visible reply. We rely on the deltas
+  // exclusively — only append text when partial===true. The trailing
+  // aggregate is dropped along with any non-streaming legacy events
+  // (we don't run in non-streaming mode anymore).
+  if (parsed.author === 'lifecoach' && parsed.partial === true) {
     for (const part of parts) {
       if (typeof part.text === 'string' && part.text.length > 0) {
         out.push({ op: 'append-text', text: part.text });
