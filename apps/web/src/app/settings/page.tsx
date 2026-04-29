@@ -325,7 +325,7 @@ export default function SettingsPage() {
                     placeholder="you@example.com"
                     value={emailDraft}
                     onChange={(e) => setEmailDraft(e.target.value)}
-                    className="h-9 rounded-[var(--radius-control)] border border-border bg-background px-2 text-sm"
+                    className="h-9 rounded-full border border-border bg-background px-2 text-sm"
                   />
                   <Button
                     size="sm"
@@ -442,7 +442,7 @@ export default function SettingsPage() {
 
       {activeTab === 'account' ? (
         <section className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-center gap-3 rounded-[var(--radius-control)] border border-destructive/40 bg-destructive/10 p-3">
+          <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-destructive/40 bg-destructive/10 p-3">
             <div className="flex-1 text-xs text-muted-foreground">
               Sign out returns to a fresh guest chat. Your data stays on the server.
             </div>
@@ -450,7 +450,7 @@ export default function SettingsPage() {
               Sign out
             </Button>
           </div>
-          <div className="flex flex-wrap items-center gap-3 rounded-[var(--radius-control)] border border-border bg-muted/30 p-3 opacity-60">
+          <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-muted/30 p-3 opacity-60">
             <div className="flex-1 text-xs text-muted-foreground">
               Delete all my data — coming in Phase 11.
             </div>

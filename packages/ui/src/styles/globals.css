@@ -15,11 +15,11 @@
   --color-foreground: #2a2826;
   --color-muted: #ede5d6;
   --color-muted-foreground: #6b6660;
-  --color-border: rgba(42, 40, 38, 0.08);
-  --color-accent: #88a98a;
+  --color-border: rgba(42, 40, 38, 0.12);
+  --color-accent: #4f6f55;
   --color-accent-foreground: #ffffff;
-  --color-success: #8aa97a;
-  --color-destructive: #c47a6c;
+  --color-success: #6a8a5a;
+  --color-destructive: #b96458;
 
   /* Three soft pastel stops drifted by body::before for the "living" feel. */
   --color-mesh-1: #e8d8c4;

@@ -1,6 +1,8 @@
 'use client';
 
 import { Menu, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { cn } from '../lib/utils';
 
 export interface SessionItem {
@@ -42,25 +44,40 @@ export function SessionsDrawer({
 }: SessionsDrawerProps) {
   const groups = groupSessions(sessions, todaySessionId);
 
-  return (
+  // Portal to <body> so the drawer never gets trapped inside an ancestor
+  // that has backdrop-filter / transform / filter (any of which break
+  // position: fixed for descendants).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Only render when open AND mounted (post-hydration). Skipping render
+  // entirely when closed sidesteps stuck-open bugs from translate-x-full
+  // on a non-fixed element.
+  if (!open || !mounted || typeof document === 'undefined') return null;
+
+  return createPortal(
     <>
-      {/* Backdrop — click to close. Only mounted while open so it doesn't
-          intercept pointer events on the chat. */}
-      {open ? (
-        <button
-          type="button"
-          aria-label="Close sessions drawer"
-          onClick={() => onOpenChange(false)}
-          className="fixed inset-0 z-30 bg-foreground/20 backdrop-blur-[1px]"
-        />
-      ) : null}
+      <button
+        type="button"
+        aria-label="Close sessions drawer"
+        onClick={() => onOpenChange(false)}
+        style={{ position: 'fixed', inset: 0, zIndex: 30 }}
+        className="bg-foreground/20 backdrop-blur-[1px]"
+      />
 
       <aside
-        aria-hidden={!open}
-        className={cn(
-          'fixed inset-y-0 left-0 z-40 flex w-72 max-w-[85vw] flex-col border-r border-border bg-background shadow-xl transition-transform duration-200 ease-out',
-          open ? 'translate-x-0' : '-translate-x-full',
-        )}
+        style={{
+          position: 'fixed',
+          top: 0,
+          bottom: 0,
+          left: 0,
+          zIndex: 40,
+          width: '18rem',
+          maxWidth: '85vw',
+        }}
+        className={cn('flex flex-col border-r border-border bg-background shadow-2xl')}
       >
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <h2 className="text-sm font-semibold">Previous chats</h2>
@@ -120,7 +137,8 @@ export function SessionsDrawer({
           )}
         </nav>
       </aside>
-    </>
+    </>,
+    document.body,
   );
 }
 
