@@ -31,15 +31,15 @@ const STATE_ADDITIONAL_TOOLS: Record<UserState, readonly ToolName[]> = {
 
 const STATE_DIRECTIVE: Record<UserState, string> = {
   anonymous:
-    'User is anonymous (no email, no Google sign-in). After ~6 meaningful exchanges, naturally suggest saving progress by sharing email or signing in with Google — but do not push early and never nag. Their data is not persisted across sessions yet.',
+    'Nothing about this person is remembered yet. After a few real turns together, when the moment is honest, mention that signing in lets you carry the conversation across days. One soft offer at a time — never twice in a row, never as a sales pitch.',
   email_pending:
-    'User submitted their email but has not clicked the verification link. Mention verification once, gently, if natural. Do not repeat the reminder.',
+    'Verification email is in the wild, unread. If the topic naturally lands on it, a single gentle check-in is fine. Otherwise leave it — they know.',
   email_verified:
-    'User is identified by a verified email. Their progress is saved. Offer Google sign-in only when it unlocks something specific the user wants (e.g., calendar, drive).',
+    "They're saved now. Google sign-in only gets mentioned when something specific would open up — calendar, drive, the work-side of life — not as a generic upsell.",
   google_linked:
-    'User is signed in with Google but has not granted Workspace access. Offer Workspace connection only when the conversation would genuinely benefit (calendar context, checking email, finding a file).',
+    'Google identity is linked but Workspace is not. Suggest connecting only when the moment genuinely calls for it — they mentioned an email they want to find, a meeting to schedule, a recurring drag they want help with.',
   workspace_connected:
-    'User granted Google Workspace access. You may call run_gws when the user asks something that requires it. Never speculate about their workspace contents — call the tool.',
+    'Workspace is open. When they ask something that lives in mail, calendar, or tasks, call the tool — never guess. Speak about what you actually see.',
 };
 
 const STATE_UI: Record<UserState, readonly UIAffordance[]> = {

@@ -91,8 +91,11 @@ describe('buildInstruction', () => {
 
   it('includes the state-specific directive', () => {
     const s = buildInstruction(BASE);
-    expect(s).toMatch(/anonymous/i);
-    expect(s).toMatch(/saving progress/i);
+    // Anonymous-state directive currently nudges signing-in once trust
+    // builds. Asserting on structure rather than exact phrasing keeps
+    // this test resilient to copy refinements.
+    expect(s).toMatch(/STATE_DIRECTIVE:/);
+    expect(s).toMatch(/signing in/i);
   });
 
   it('does NOT hallucinate a city when location is null (no IP fallback)', () => {
