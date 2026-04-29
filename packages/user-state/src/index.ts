@@ -1,3 +1,10 @@
+export {
+  DailyFlowMachine,
+  type DailyFlowInput,
+  type DailyFlowPolicy,
+  type DailyFlowState,
+  policyForDailyFlow,
+} from './DailyFlowMachine.js';
 export { CORE_TOOLS, policyFor } from './policies.js';
 export type {
   FirebaseUserLike,
