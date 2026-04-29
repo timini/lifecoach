@@ -68,7 +68,7 @@ export function SessionsDrawer({
             type="button"
             aria-label="Close"
             onClick={() => onOpenChange(false)}
-            className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
           >
             <X className="h-4 w-4" />
           </button>
@@ -98,7 +98,7 @@ export function SessionsDrawer({
                             onOpenChange(false);
                           }}
                           className={cn(
-                            'flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors',
+                            'flex w-full items-center justify-between gap-2 rounded-full px-2 py-1.5 text-left text-sm transition-colors',
                             isActive
                               ? 'bg-accent/15 text-foreground'
                               : 'hover:bg-muted text-muted-foreground hover:text-foreground',
@@ -138,7 +138,7 @@ export function SessionsDrawerTrigger({
       aria-label="Open sessions"
       onClick={onOpen}
       className={cn(
-        'inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground',
+        'inline-flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground',
         className,
       )}
     >

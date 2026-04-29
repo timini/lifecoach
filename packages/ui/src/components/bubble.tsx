@@ -12,10 +12,10 @@ export function Bubble({ from, children, className }: BubbleProps) {
     <div
       data-from={from}
       className={cn(
-        'max-w-[80%] whitespace-pre-wrap rounded-[var(--radius-bubble)] px-3 py-2 text-[15px] leading-relaxed',
+        'max-w-[80%] whitespace-pre-wrap px-4 py-3 text-[15px] leading-relaxed',
         from === 'user'
-          ? 'self-end bg-accent text-accent-foreground'
-          : 'self-start bg-muted text-foreground',
+          ? 'self-end rounded-[24px] rounded-tr-[6px] bg-accent text-accent-foreground shadow-sm'
+          : 'self-start rounded-[24px] rounded-tl-[6px] border border-foreground/5 bg-background/40 text-foreground backdrop-blur-md',
         className,
       )}
     >

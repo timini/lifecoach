@@ -15,7 +15,7 @@ export function UpgradePrompt({ onInterest, disabled, className }: UpgradePrompt
   return (
     <div
       className={cn(
-        'flex max-w-[90%] flex-col gap-3 self-start rounded-[var(--radius-bubble)] border border-border bg-muted p-3',
+        'flex max-w-[90%] flex-col gap-3 self-start rounded-2xl border border-border bg-background/40 p-4 backdrop-blur-md',
         className,
       )}
     >

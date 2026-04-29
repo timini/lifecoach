@@ -43,7 +43,7 @@ function relative(isoTimestamp: string, now: Date = new Date()): string {
 export function GoalLog({ entries }: GoalLogProps) {
   if (entries.length === 0) {
     return (
-      <div className="rounded-[var(--radius-control)] border border-dashed border-border p-4 text-xs text-muted-foreground">
+      <div className="rounded-2xl border border-dashed border-border p-4 text-xs text-muted-foreground">
         No goal updates yet. Tell the coach what you're working on.
       </div>
     );
@@ -54,7 +54,7 @@ export function GoalLog({ entries }: GoalLogProps) {
       {sorted.map((e) => (
         <li
           key={`${e.timestamp}-${e.goal}`}
-          className="flex items-start gap-3 rounded-[var(--radius-control)] border border-border bg-muted/40 p-3"
+          className="flex items-start gap-3 rounded-2xl border border-border bg-muted/40 p-3"
         >
           <div className="flex flex-1 flex-col gap-1">
             <div className="flex flex-wrap items-center gap-2">

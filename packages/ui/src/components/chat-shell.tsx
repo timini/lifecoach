@@ -16,11 +16,11 @@ export function ChatShell({ header, footer, children, className }: ChatShellProp
         className,
       )}
     >
-      <header className="sticky top-0 z-20 -mx-4 -mt-6 flex flex-col gap-1 border-b border-border bg-background/95 px-4 pt-6 pb-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+      <header className="sticky top-0 z-20 -mx-4 -mt-6 flex flex-col gap-1 bg-background/70 px-4 pt-6 pb-3 backdrop-blur-md supports-[backdrop-filter]:bg-background/50">
         {header}
       </header>
       <section className="flex flex-1 flex-col gap-3 overflow-y-auto py-1">{children}</section>
-      <footer>{footer}</footer>
+      <footer className="mt-auto py-3">{footer}</footer>
     </main>
   );
 }

@@ -205,7 +205,7 @@ function KeyedRow({
     );
   }
   return (
-    <div className="rounded-[var(--radius-control)] border border-border bg-muted/20 p-2">
+    <div className="rounded-2xl border border-border bg-muted/20 p-2">
       <div className="flex w-full items-center gap-1">
         <button
           type="button"
