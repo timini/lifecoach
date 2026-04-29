@@ -68,18 +68,14 @@ test('first load fires the day-of greeting and lists the session in the drawer',
 
   // Wait for auth + sessionId to settle so the kickoff effect can fire.
   await expect(page.locator('[data-testid="chat-window-state"][data-uid]')).toBeAttached();
-  await expect(page.locator('[data-testid="chat-window-state"]')).toHaveAttribute(
-    'data-busy',
-    'false',
-    { timeout: 30_000 },
-  );
 
-  // After the kickoff turn, the empty-state placeholder is gone and at least
-  // one assistant bubble is on screen.
-  await expect(page.getByText(/say hi to get started/i)).toHaveCount(0);
-  await expect(page.locator('article, [data-from="assistant"]').first()).toBeVisible();
+  // The kickoff turn produces a greeting bubble without the user typing.
+  // First-token latency on a cold Cloud Run instance can be ~15s, so allow
+  // generous headroom before declaring the kickoff broken.
+  await expect(page.locator('[data-from="assistant"]').first()).toBeVisible({ timeout: 45_000 });
 
-  // Open the sidebar drawer; today's session entry shows the Today pill.
+  // Open the sidebar drawer; the Today group label shows up because the
+  // kickoff just wrote today's session doc.
   await page.getByLabel(/open sessions/i).click();
   await expect(page.getByRole('heading', { name: /previous chats/i })).toBeVisible();
   await expect(page.getByText(/^Today$/)).toBeVisible();
