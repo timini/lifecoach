@@ -41,7 +41,7 @@ export function createUpdateUserProfileTool(deps: {
       'Persist a structured fact about the user (or someone in their life) to their ' +
       'profile YAML. Call this PROACTIVELY the FIRST time you hear any of: ' +
       '(a) a name of someone in their life — partner, child, sibling, parent, close ' +
-      'friend, regular colleague (e.g. "Wren\'s parents\' evening" → save Wren); ' +
+      'friend, regular colleague (e.g. "Maya\'s parents\' evening" → save Maya); ' +
       "(b) the user's own identity facts — name, city/postcode, occupation, key " +
       'health context (injuries, conditions); ' +
       "(c) interests, hobbies, regular sports — theirs OR a family member's; " +

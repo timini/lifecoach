@@ -283,7 +283,7 @@ describe('labelForToolCall', () => {
   });
 
   it('has friendly labels for the other common tools', () => {
-    expect(labelForToolCall('update_user_profile', { path: 'name', value: 'Tim' })).toContain(
+    expect(labelForToolCall('update_user_profile', { path: 'name', value: 'Alex' })).toContain(
       'remembering',
     );
     expect(labelForToolCall('log_goal_update', { goal: 'half marathon' })).toContain('goal');

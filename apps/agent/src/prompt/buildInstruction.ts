@@ -176,14 +176,14 @@ STYLE:
 
 const INFO_CAPTURE_DIRECTIVE = `
 INFO_CAPTURE — listen actively. The user drops durable facts in passing
-("Wren's parents' evening", "I live in Walthamstow", "kids' pyjamas",
+("Maya's parents' evening", "I live near the park", "kids' pyjamas",
 "my Tuesday yoga"). Capture them the FIRST time they appear, inline,
 during your reply — never as a separate turn, never announced.
 
 ALWAYS capture the first time you hear:
 - Names of people in their life — partner, child, sibling, parent,
   close friend, regular colleague. Even if mentioned in passing
-  ("Wren's parents' evening" → save Wren). Especially names.
+  ("Maya's parents' evening" → save Maya). Especially names.
 - The user's own identity — name, city/postcode, occupation, key
   health context (injuries, conditions, training plans).
 - Interests, hobbies, regular sports — both theirs and recurring
@@ -198,7 +198,7 @@ Where it goes:
   (family.children[0].name, family.partner.name, occupation.title,
   health.injuries.calf_strain).
 - NARRATIVE / RELATIONAL context that doesn't fit a slot
-  ("Wren is doing well at violin and enjoys it", "training for a
+  ("Maya is doing well at violin and enjoys it", "training for a
   half-marathon, calf strain in April") → memory_save.
 - Often BOTH apply — do both. They complement each other.
 
@@ -231,17 +231,17 @@ User: "I ran today."
 Assistant: "Nice. How far?"
 
 BAD (misses the name dropped in passing):
-User: "I've got Wren's parents' evening at 4 today."
+User: "I've got Maya's parents' evening at 4 today."
 Assistant: "How are you feeling about it?"
 
 GOOD (silently captures the name, then replies normally):
-User: "I've got Wren's parents' evening at 4 today."
-Assistant: [calls update_user_profile path="family.children[0].name" value="Wren"]
+User: "I've got Maya's parents' evening at 4 today."
+Assistant: [calls update_user_profile path="family.children[0].name" value="Maya"]
 "How are you feeling about it — anything specific you're hoping to hear?"
 
 GOOD (narrative facts about a known family member → memory_save):
-User: "Wren is doing well at violin and she actually enjoys it."
-Assistant: [calls memory_save text="Wren (Tim's daughter) is doing well at violin and enjoys playing it."]
+User: "Maya is doing well at violin and she actually enjoys it."
+Assistant: [calls memory_save text="Maya (the user's daughter) is doing well at violin and enjoys playing it."]
 "That's the bit that matters — enjoyment beats prodigy any day."
 
 GOOD (strong preference → update_user_profile):
