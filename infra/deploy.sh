@@ -45,6 +45,17 @@ fi
 
 log() { printf '\033[1;34m[deploy]\033[0m %s\n' "$*"; }
 
+ensure_terraform_init() {
+  # Idempotent — `terraform init` is a no-op if `.terraform/` already
+  # matches the backend config. CI starts from a fresh checkout so this
+  # is the first thing that has to run; locally, it just confirms.
+  log "Ensuring terraform init"
+  (
+    cd "${ENV_DIR}"
+    terraform init -input=false -backend-config=backend.hcl
+  )
+}
+
 ensure_prereq_infra() {
   # The web build needs Firebase config values as build args; Terraform must
   # have already created the Firebase project and web app before we build.
@@ -119,6 +130,7 @@ apply_terraform() {
 }
 
 main() {
+  ensure_terraform_init
   ensure_prereq_infra
   docker_auth
   if [[ "${WHICH}" == "agent" || "${WHICH}" == "both" ]]; then
