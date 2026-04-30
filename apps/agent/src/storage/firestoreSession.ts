@@ -27,6 +27,7 @@ import {
   type ListSessionsResponse,
   type Session,
 } from '@google/adk';
+import { injectRecoveryEvents } from '../chat/emptyTurnGuard.js';
 
 export interface FirestoreDocRef {
   get(): Promise<{ exists: boolean; data(): unknown }>;
@@ -97,6 +98,11 @@ class FirestoreSessionService extends BaseSessionService {
       const after = req.config.afterTimestamp;
       events = events.filter((e) => (e.timestamp ?? 0) > after);
     }
+    // Repair sessions poisoned by the Gemini empty-text-after-tool quirk:
+    // splice synthetic recovery events into any gap where a tool result
+    // wasn't followed by model text. In-memory only — Firestore is the
+    // source of truth and stays unmodified.
+    events = injectRecoveryEvents(events);
     return { ...stored, events };
   }
 

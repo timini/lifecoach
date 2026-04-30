@@ -15,6 +15,7 @@ import {
   claimsToFirebaseUserLike,
   verifyRequest,
 } from './auth.js';
+import { makeRecoveryEvent, pickRecoveryText } from './chat/emptyTurnGuard.js';
 import type { AirQualityClient } from './context/airQuality.js';
 import type { CalendarDensityClient } from './context/calendarDensity.js';
 import type { HolidaysClient } from './context/holidays.js';
@@ -46,6 +47,12 @@ export interface RunnerLike {
       userId: string;
       sessionId: string;
     }): Promise<Session | null>;
+    /**
+     * Optional — used by the empty-turn guard to persist a synthetic
+     * recovery event when the model returns tool calls without text.
+     * Optional so existing test fakes don't have to implement it.
+     */
+    appendEvent?(params: { session: Session; event: Event }): Promise<Event>;
   };
   runAsync(params: {
     userId: string;
@@ -665,16 +672,18 @@ export function createApp(deps: CreateAppDeps): Express {
       const tSession0 = Date.now();
       // Reuse the prefetched session when sessionReader is wired to the
       // same store (always true in production); only fall back to the
-      // runner's session service when the prefetch was skipped.
-      const existing =
+      // runner's session service when the prefetch was skipped. Keep the
+      // reference so the empty-turn guard can persist a recovery event
+      // via appendEvent (needs the live session object).
+      let runnerSession =
         existingSession ??
         (await runner.sessionService.getSession({
           appName: runner.appName,
           userId: effectiveUserId,
           sessionId,
         }));
-      if (!existing) {
-        await runner.sessionService.createSession({
+      if (!runnerSession) {
+        runnerSession = await runner.sessionService.createSession({
           appName: runner.appName,
           userId: effectiveUserId,
           sessionId,
@@ -753,6 +762,46 @@ export function createApp(deps: CreateAppDeps): Express {
       timings.streamMs = Date.now() - tStream0;
       timings.ttfbMs = firstEventMs ?? -1;
       timings.ttftMs = firstTextMs ?? -1;
+
+      // Empty-turn guard: Gemini occasionally returns tool calls and no
+      // follow-up text. Without recovery the user sees silence, AND the
+      // empty model turn lands in history and poisons subsequent turns.
+      // Emit a synthetic text reply so (a) the user gets something
+      // useful, (b) future turns see a text-bearing model event in
+      // history.
+      if (firstTextMs === null && toolInvocations.length > 0 && !choiceShown) {
+        const recovery = pickRecoveryText(toolInvocations);
+        // SSE side: send as a partial-style delta so the web parser
+        // (parseSseAssistantText looks for `partial === true` text deltas)
+        // appends it to the visible bubble.
+        res.write(
+          `data: ${JSON.stringify({
+            author: 'lifecoach',
+            partial: true,
+            content: { role: 'model', parts: [{ text: recovery }] },
+          })}\n\n`,
+        );
+        // Persistence side: full Event object so it lands in session
+        // history exactly like a normal model reply.
+        const synthEvent = makeRecoveryEvent(recovery, `recovery-${sessionId}-${Date.now()}`);
+        if (runner.sessionService.appendEvent) {
+          await runner.sessionService
+            .appendEvent({ session: runnerSession, event: synthEvent })
+            .catch(() => {
+              /* persistence is best-effort; user already saw the text */
+            });
+        }
+        // eslint-disable-next-line no-console
+        console.log(
+          JSON.stringify({
+            msg: 'chat.empty_after_tool_recovery',
+            uid: effectiveUserId,
+            sessionId,
+            tools: toolInvocations.map((t) => t.name),
+          }),
+        );
+      }
+
       res.write('event: done\ndata: {}\n\n');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
