@@ -92,6 +92,11 @@ export function ChatWindow() {
   const [viewMode, setViewMode] = useState<'live' | 'past'>('live');
   const [sessions, setSessions] = useState<SessionItem[]>([]);
   const todaySessionId = user ? sessionIdForToday(user.uid) : '';
+  const starterPrompts = [
+    'I need help grounding myself today.',
+    "Let's map out a fresh vision for my week.",
+    'Give me a space to untangle my thoughts.',
+  ] as const;
 
   useEffect(() => {
     // Resume location silently if the browser already granted permission in
@@ -662,7 +667,7 @@ export function ChatWindow() {
               void refreshSessions();
             }}
           />
-          <h1 className="text-lg font-semibold">Lifecoach</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Lifecoach</h1>
         </div>
         <AccountMenu
           state={userState}
@@ -712,7 +717,7 @@ export function ChatWindow() {
       </div>
     ) : (
       <form
-        className="flex gap-2"
+        className="mx-auto flex w-full max-w-[720px] gap-2 rounded-full border border-border/60 bg-background/85 p-2 shadow-sm backdrop-blur-md"
         onSubmit={(e) => {
           e.preventDefault();
           void sendText(input);
@@ -721,11 +726,16 @@ export function ChatWindow() {
         <Input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Type a message…"
+          placeholder="Take a breath — what feels present right now?"
           disabled={busy}
           className="flex-1"
         />
-        <Button type="submit" disabled={busy || !input.trim()} size="lg">
+        <Button
+          type="submit"
+          disabled={busy || !input.trim()}
+          size="lg"
+          className="rounded-full px-6"
+        >
           Send
         </Button>
       </form>
@@ -751,8 +761,23 @@ export function ChatWindow() {
         hidden
       />
       {messages.length === 0 && (
-        <div className="text-sm text-muted-foreground">
-          Say hi to get started. The coach is warming up.
+        <div className="space-y-3">
+          <div className="text-sm text-muted-foreground">
+            Settle in and say hey. I'm here to help you find a little more clarity today.
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {starterPrompts.map((prompt) => (
+              <button
+                key={prompt}
+                type="button"
+                onClick={() => void sendText(prompt)}
+                disabled={busy || viewMode === 'past'}
+                className="rounded-full border border-border/70 bg-background/75 px-4 py-2 text-sm text-foreground shadow-sm transition hover:border-accent hover:text-accent disabled:opacity-50"
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
         </div>
       )}
       {messages.map((m) => {
@@ -778,8 +803,8 @@ export function ChatWindow() {
         );
       })}
       {busy && lastAssistantHasNoContent(messages) && (
-        <div className="text-sm italic text-muted-foreground">
-          {retryAttempt > 0 ? `retrying… (${retryAttempt})` : 'thinking…'}
+        <div className="breathing-pulse text-sm italic text-muted-foreground">
+          {retryAttempt > 0 ? `reconnecting gently… (${retryAttempt})` : 'listening'}
         </div>
       )}
       <div ref={endRef} />
