@@ -62,15 +62,15 @@ describe('createUserProfileStore (schema-free)', () => {
   it('round-trips a whole doc via write + read', async () => {
     const bucket = memoryBucket();
     const store = createUserProfileStore({ bucket });
-    await store.write('uid-1', { name: 'Tim', pets: { name: 'Loki' } });
+    await store.write('uid-1', { name: 'Alex', pets: { name: 'Cosmo' } });
     const r = await store.read('uid-1');
-    expect(r).toEqual({ name: 'Tim', pets: { name: 'Loki' } });
+    expect(r).toEqual({ name: 'Alex', pets: { name: 'Cosmo' } });
   });
 
   it('updatePath writes any path the coach invents — no allowlist', async () => {
     const store = createUserProfileStore({ bucket: memoryBucket() });
-    const after = await store.updatePath('uid-1', 'volunteering', 'refuge on weekends');
-    expect(after.volunteering).toBe('refuge on weekends');
+    const after = await store.updatePath('uid-1', 'volunteering', 'community garden weekends');
+    expect(after.volunteering).toBe('community garden weekends');
   });
 
   it('updatePath handles brand-new nested paths (pet.species)', async () => {
@@ -81,11 +81,11 @@ describe('createUserProfileStore (schema-free)', () => {
 
   it('preserves existing keys when updating a different path', async () => {
     const store = createUserProfileStore({ bucket: memoryBucket() });
-    await store.write('uid-1', { name: 'Tim' });
-    await store.updatePath('uid-1', 'pets.name', 'Loki');
+    await store.write('uid-1', { name: 'Alex' });
+    await store.updatePath('uid-1', 'pets.name', 'Cosmo');
     const r = await store.read('uid-1');
-    expect(r.name).toBe('Tim');
-    expect((r.pets as Record<string, unknown>).name).toBe('Loki');
+    expect(r.name).toBe('Alex');
+    expect((r.pets as Record<string, unknown>).name).toBe('Cosmo');
   });
 
   it('rejects an empty path', async () => {
@@ -119,7 +119,7 @@ describe('createUserProfileStore (schema-free)', () => {
       }),
     };
     const store = createUserProfileStore({ bucket });
-    await store.updatePath('u', 'name', 'Tim');
+    await store.updatePath('u', 'name', 'Alex');
     expect(save).toHaveBeenCalled();
     expect(save.mock.calls[0]?.[1]).toMatchObject({ contentType: 'application/yaml' });
   });
