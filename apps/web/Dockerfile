@@ -39,7 +39,7 @@ ENV NEXT_PUBLIC_FIREBASE_API_KEY=${NEXT_PUBLIC_FIREBASE_API_KEY} \
     NEXT_PUBLIC_FIREBASE_APP_ID=${NEXT_PUBLIC_FIREBASE_APP_ID} \
     NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID=${NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID}
 
-RUN pnpm --filter @lifecoach/web build
+RUN pnpm --filter @lifecoach/web... build
 
 # ----- runtime -----
 # Uses the standalone Next.js output to keep the image small.
