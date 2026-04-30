@@ -712,7 +712,7 @@ export function ChatWindow() {
       </div>
     ) : (
       <form
-        className="flex gap-2"
+        className="sticky bottom-2 flex gap-2 rounded-full border border-border/70 bg-background/70 p-2 shadow-sm backdrop-blur-md"
         onSubmit={(e) => {
           e.preventDefault();
           void sendText(input);
@@ -721,11 +721,11 @@ export function ChatWindow() {
         <Input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Type a message…"
+          placeholder="Take a breath — what’s on your heart right now?"
           disabled={busy}
           className="flex-1"
         />
-        <Button type="submit" disabled={busy || !input.trim()} size="lg">
+        <Button type="submit" disabled={busy || !input.trim()} size="lg" className="rounded-full">
           Send
         </Button>
       </form>
@@ -752,7 +752,7 @@ export function ChatWindow() {
       />
       {messages.length === 0 && (
         <div className="text-sm text-muted-foreground">
-          Say hi to get started. The coach is warming up.
+          Step in gently — I’m here to hold space with you.
         </div>
       )}
       {messages.map((m) => {
@@ -778,8 +778,14 @@ export function ChatWindow() {
         );
       })}
       {busy && lastAssistantHasNoContent(messages) && (
-        <div className="text-sm italic text-muted-foreground">
-          {retryAttempt > 0 ? `retrying… (${retryAttempt})` : 'thinking…'}
+        <div className="inline-flex w-fit items-center gap-2 rounded-full border border-border/70 bg-background/60 px-3 py-2 text-sm italic text-muted-foreground backdrop-blur-md">
+          <span
+            className="inline-block h-2.5 w-2.5 rounded-full bg-accent"
+            style={{ animation: 'breathe-pulse 1.8s ease-in-out infinite' }}
+          />
+          {retryAttempt > 0
+            ? `finding the thread again… (${retryAttempt})`
+            : 'breathing into your reply…'}
         </div>
       )}
       <div ref={endRef} />

@@ -6,18 +6,20 @@
  * and stay in lockstep with runtime values via the CSS vars below.
  */
 @theme {
-  --color-background: #0f1419;
-  --color-foreground: #e8e8e8;
-  --color-muted: #1e293b;
-  --color-muted-foreground: #94a3b8;
-  --color-border: #334155;
-  --color-accent: #2563eb;
-  --color-accent-foreground: #ffffff;
-  --color-success: #4ade80;
-  --color-destructive: #f87171;
+  --color-background: #f7f2e9;
+  --color-foreground: #2f392f;
+  --color-muted: #f4efe5;
+  --color-muted-foreground: #6f796f;
+  --color-border: #d9d2c4;
+  --color-accent: #8ea686;
+  --color-accent-foreground: #1f2a1f;
+  --color-success: #7da08a;
+  --color-destructive: #c68375;
 
-  --radius-bubble: 12px;
-  --radius-control: 8px;
+  --radius-bubble: 24px;
+  --radius-control: 9999px;
+
+  --font-family-serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", serif;
 
   --font-family-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, ui-sans-serif,
     system-ui, sans-serif;
@@ -33,10 +35,59 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-family-sans);
+    min-height: 100%;
+    background-image:
+      radial-gradient(circle at 10% 15%, rgb(203 182 160 / 28%), transparent 48%),
+      radial-gradient(circle at 78% 5%, rgb(152 176 141 / 32%), transparent 45%),
+      radial-gradient(circle at 85% 78%, rgb(207 185 165 / 30%), transparent 52%),
+      linear-gradient(160deg, #f8f4eb 0%, #f5f0e5 55%, #f7f3eb 100%);
+    background-attachment: fixed;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: -20%;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(circle at 20% 30%, rgb(144 170 132 / 20%), transparent 45%),
+      radial-gradient(circle at 70% 70%, rgb(198 161 140 / 18%), transparent 40%);
+    filter: blur(28px);
+    animation: mesh-drift 22s ease-in-out infinite alternate;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-family-serif);
+    letter-spacing: -0.01em;
   }
 
   *:focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
+  }
+}
+
+@keyframes mesh-drift {
+  0% {
+    transform: translate3d(-2%, -2%, 0) scale(1);
+  }
+  100% {
+    transform: translate3d(3%, 2%, 0) scale(1.05);
+  }
+}
+
+@keyframes breathe-pulse {
+  0%,
+  100% {
+    opacity: 0.38;
+    transform: scale(0.94);
+  }
+  50% {
+    opacity: 0.95;
+    transform: scale(1);
   }
 }
