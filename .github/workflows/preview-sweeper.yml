@@ -1,0 +1,115 @@
+name: Preview sweeper
+
+on:
+  schedule:
+    - cron: '0 5 * * *' # daily 05:00 UTC
+  workflow_dispatch:
+
+# Don't run two sweeps concurrently — they'd race on the same state slots.
+concurrency:
+  group: preview-sweeper
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      CLOUDSDK_CORE_PROJECT: lifecoach-dev-zvb6d
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.x
+          terraform_wrapper: false
+
+      - name: Restore terraform.tfvars
+        run: |
+          if [[ -z "${TFVARS_DEV}" ]]; then
+            echo "::error::TFVARS_DEV secret is not set."
+            exit 1
+          fi
+          printf '%s' "${TFVARS_DEV}" > infra/envs/dev/terraform.tfvars
+        env:
+          TFVARS_DEV: ${{ secrets.TFVARS_DEV }}
+
+      - name: Write backend.hcl
+        run: |
+          cat > infra/envs/dev/backend.hcl <<EOF
+          bucket = "${CLOUDSDK_CORE_PROJECT}-tfstate"
+          prefix = "terraform/state"
+          EOF
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOY_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Sweep orphaned previews
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # List Cloud Run services matching the preview naming pattern, in
+          # both regions we might use. (us-central1 today; widening here is
+          # cheap if we ever add a region.)
+          REGION="us-central1"
+          mapfile -t services < <(
+            gcloud run services list \
+              --region "${REGION}" \
+              --project "${CLOUDSDK_CORE_PROJECT}" \
+              --format='value(metadata.name)' \
+              | grep -E '^lifecoach-(agent|web)-pr-[0-9]+$' || true
+          )
+          if [[ "${#services[@]}" -eq 0 ]]; then
+            echo "No preview services found — nothing to sweep."
+            exit 0
+          fi
+
+          # Collect distinct PR numbers from service names.
+          declare -A pr_seen
+          for svc in "${services[@]}"; do
+            n="${svc##*-pr-}"
+            pr_seen[$n]=1
+          done
+
+          orphan_prs=()
+          for n in "${!pr_seen[@]}"; do
+            state=$(gh pr view "${n}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --json state \
+              --jq .state 2>/dev/null || echo "MISSING")
+            case "${state}" in
+              CLOSED|MERGED|MISSING)
+                orphan_prs+=("${n}")
+                ;;
+              OPEN|*)
+                # Open PR — its preview is legitimate, leave it.
+                ;;
+            esac
+          done
+
+          if [[ "${#orphan_prs[@]}" -eq 0 ]]; then
+            echo "All preview services belong to open PRs — nothing to sweep."
+            exit 0
+          fi
+
+          echo "Sweeping orphan PR previews: ${orphan_prs[*]}"
+          for n in "${orphan_prs[@]}"; do
+            echo "::group::Tearing down PR #${n}"
+            PR_NUMBER="${n}" infra/preview-teardown.sh || {
+              echo "::warning::teardown for PR #${n} failed; will retry tomorrow"
+              continue
+            }
+            echo "::endgroup::"
+          done

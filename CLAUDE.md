@@ -87,6 +87,18 @@ Workflow: branch → commit → push → open PR → CI green → merge. Merging
 
 Do not push directly to main. Do not bypass branch protection (`gh api -X PUT … enforce_admins=false` exists for true emergencies, not convenience). If a PR's CI is broken, fix it on the branch — don't merge yellow.
 
+### Review apps (per-PR previews)
+
+Opening a PR triggers `.github/workflows/pr-preview-deploy.yml`, which deploys a per-PR Cloud Run pair (`lifecoach-agent-pr-<n>`, `lifecoach-web-pr-<n>`) inside the dev project, runs Playwright against the deployed web URL, and comments the URLs + e2e result on the PR. Subsequent pushes to the same PR roll the preview to the new image (the previous run gets cancelled by the `preview-pr-<n>` concurrency group).
+
+Closing the PR (merge or abandon) triggers `.github/workflows/pr-preview-teardown.yml`, which runs `terraform destroy` on the per-PR state slot. A daily sweeper (`preview-sweeper.yml`) catches anything the close hook missed.
+
+Previews share dev's Firestore, mem0, GCS user bucket, Secret Manager secrets, and runtime SAs — all of those are owned by `infra/envs/dev`. The preview env (`infra/envs/preview/`) only owns the two per-PR Cloud Run services and one terraform state file under `gs://<dev-tfstate-bucket>/previews/<pr_number>/`. This keeps preview spin-up to a few minutes and idle cost ~$0.
+
+Per invariant #5, `infra/envs/preview/` is Terraform-managed. Don't edit a per-PR Cloud Run service in the GCP console — push a new commit and let the workflow re-apply.
+
+Local commands: `just deploy-preview <n>`, `just teardown-preview <n>`, `just e2e-preview <n>`.
+
 ## Commit and PR discipline
 
 - One logical change per PR. A PR that touches the state machine should not also reformat unrelated files.

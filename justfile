@@ -108,6 +108,38 @@ deploy-agent env="dev":
 deploy-web env="dev":
     infra/deploy.sh {{env}} web
 
+# --- Review apps (per-PR previews) -----------------------------------------
+
+# Spin up (or update) the per-PR Cloud Run pair locally — same script CI runs.
+deploy-preview pr:
+    #!/usr/bin/env bash
+    set -eu
+    PR_NUMBER="{{pr}}" \
+    GIT_SHA="$(git rev-parse HEAD)" \
+    infra/preview-deploy.sh
+
+# Tear down a PR's preview pair.
+teardown-preview pr:
+    #!/usr/bin/env bash
+    set -eu
+    PR_NUMBER="{{pr}}" infra/preview-teardown.sh
+
+# Run the e2e suite against an existing PR's preview URL.
+e2e-preview pr:
+    #!/usr/bin/env bash
+    set -eu
+    project=$(cd infra/envs/dev && terraform output -raw project_id)
+    base_url=$(cd infra/envs/preview && \
+      terraform init -input=false -reconfigure \
+        -backend-config="bucket=${project}-tfstate" \
+        -backend-config="prefix=previews/{{pr}}" >/dev/null && \
+      terraform output -raw web_url)
+    password=$(gcloud secrets versions access latest --secret=E2E_TEST_PASSWORD --project="$project")
+    E2E_BASE_URL="$base_url" \
+    E2E_TEST_EMAIL="e2e-test@lifecoach.invalid" \
+    E2E_TEST_PASSWORD="$password" \
+    pnpm --filter @lifecoach/web exec playwright test
+
 # --- Ops -------------------------------------------------------------------
 
 seed-user uid:
