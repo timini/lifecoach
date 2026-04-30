@@ -56,6 +56,16 @@ jobs:
         env:
           TFVARS_DEV: ${{ secrets.TFVARS_DEV }}
 
+      # backend.hcl is gitignored too — contents are non-secret (state bucket
+      # name + prefix), so just write it inline using the project we already
+      # have in env. Avoids a second repo secret.
+      - name: Write backend.hcl
+        run: |
+          cat > infra/envs/dev/backend.hcl <<EOF
+          bucket = "${CLOUDSDK_CORE_PROJECT}-tfstate"
+          prefix = "terraform/state"
+          EOF
+
       - id: auth
         uses: google-github-actions/auth@v2
         with:
