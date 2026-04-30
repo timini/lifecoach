@@ -145,4 +145,51 @@ describe('FirestoreSessionService', () => {
     await svc.deleteSession({ appName: 'lifecoach', userId: 'u', sessionId: 's' });
     expect(fs._docs.has('apps/lifecoach/users/u/sessions/s')).toBe(false);
   });
+
+  it('getSession splices recovery events into history poisoned by the empty-after-tool quirk', async () => {
+    const fs = mkFirestore();
+    const svc = createFirestoreSessionService({ firestore: fs });
+    // Construct a poisoned session: user → fc → fr → next user (no model
+    // text in between). Write directly via raw doc.set to avoid going
+    // through appendEvent (which validates and would reject).
+    const path = 'apps/lifecoach/users/u/sessions/s1';
+    fs._docs.set(path, {
+      id: 's1',
+      appName: 'lifecoach',
+      userId: 'u',
+      state: {},
+      events: [
+        { author: 'user', content: { role: 'user', parts: [{ text: 'search' }] } },
+        {
+          author: 'lifecoach',
+          content: { role: 'model', parts: [{ functionCall: { name: 'call_workspace' } }] },
+        },
+        {
+          author: 'user',
+          content: {
+            role: 'user',
+            parts: [{ functionResponse: { name: 'call_workspace', response: { status: 'ok' } } }],
+          },
+        },
+        { author: 'user', content: { role: 'user', parts: [{ text: 'any luck?' }] } },
+      ],
+      lastUpdateTime: 0,
+    });
+
+    const session = await svc.getSession({
+      appName: 'lifecoach',
+      userId: 'u',
+      sessionId: 's1',
+    });
+    expect(session?.events).toHaveLength(5);
+    // Recovery event was spliced just before the second user message.
+    const recovered = session?.events?.[3];
+    expect(recovered?.author).toBe('lifecoach');
+    expect(recovered?.content?.role).toBe('model');
+    expect((recovered?.content?.parts as Array<{ text?: string }>)?.[0]?.text).toBeTruthy();
+
+    // Firestore doc itself was NOT mutated — the splice is in-memory only.
+    const doc = fs._docs.get(path) as { events: unknown[] };
+    expect(doc.events).toHaveLength(4);
+  });
 });

@@ -97,6 +97,137 @@ describe('POST /chat', () => {
     expect(res.text).toContain('boom');
   });
 
+  it('emits a synthetic recovery text + persists when the model calls a tool but never streams text', async () => {
+    // Simulate Gemini's empty-after-tool-call bug: model emits a
+    // functionCall, framework supplies a functionResponse, model emits
+    // nothing else. The guard should kick in.
+    const events: Partial<Event>[] = [
+      {
+        author: 'lifecoach',
+        content: {
+          role: 'model',
+          parts: [
+            { functionCall: { id: 'fc-1', name: 'call_workspace', args: { service: 'gmail' } } },
+          ],
+        },
+      },
+      {
+        author: 'user',
+        content: {
+          role: 'user',
+          parts: [
+            {
+              functionResponse: {
+                id: 'fc-1',
+                name: 'call_workspace',
+                response: { status: 'ok' },
+              },
+            },
+          ],
+        },
+      },
+    ];
+
+    const appendEvent = vi.fn().mockResolvedValue(undefined);
+    const session = {
+      id: 's',
+      userId: 'u',
+      appName: 'test',
+      events: [],
+      state: {},
+      lastUpdateTime: 0,
+    };
+    const app = createApp({
+      runnerFor: () => ({
+        appName: 'test',
+        sessionService: {
+          async createSession() {
+            return session;
+          },
+          async getSession() {
+            return null;
+          },
+          appendEvent,
+        },
+        async *runAsync() {
+          for (const e of events) yield e as Event;
+        },
+      }),
+    });
+
+    const res = await request(app)
+      .post('/chat')
+      .send({ userId: 'u', sessionId: 's', message: 'search emails' });
+
+    expect(res.status).toBe(200);
+    // SSE stream contains the recovery text as a partial delta.
+    expect(res.text).toContain('"partial":true');
+    expect(res.text).toContain('All set');
+
+    // Recovery event was persisted via appendEvent.
+    expect(appendEvent).toHaveBeenCalledOnce();
+    const args = appendEvent.mock.calls[0]?.[0] as {
+      session: typeof session;
+      event: Event;
+    };
+    expect(args.session).toBe(session);
+    const parts = args.event.content?.parts as Array<{ text?: string }> | undefined;
+    expect(parts?.[0]?.text).toContain('All set');
+  });
+
+  it('does NOT emit recovery text when the model streamed text alongside the tool call', async () => {
+    const events: Partial<Event>[] = [
+      {
+        author: 'lifecoach',
+        content: {
+          role: 'model',
+          parts: [
+            { functionCall: { id: 'fc-1', name: 'call_workspace', args: {} } },
+            { text: 'Looking now…' },
+          ],
+        },
+      },
+      {
+        author: 'user',
+        content: {
+          role: 'user',
+          parts: [
+            {
+              functionResponse: { id: 'fc-1', name: 'call_workspace', response: { status: 'ok' } },
+            },
+          ],
+        },
+      },
+    ];
+    const appendEvent = vi.fn().mockResolvedValue(undefined);
+    const app = createApp({
+      runnerFor: () => ({
+        appName: 'test',
+        sessionService: {
+          async createSession() {
+            return {
+              id: 's',
+              userId: 'u',
+              appName: 'test',
+              events: [],
+              state: {},
+              lastUpdateTime: 0,
+            };
+          },
+          async getSession() {
+            return null;
+          },
+          appendEvent,
+        },
+        async *runAsync() {
+          for (const e of events) yield e as Event;
+        },
+      }),
+    });
+    await request(app).post('/chat').send({ userId: 'u', sessionId: 's', message: 'hi' });
+    expect(appendEvent).not.toHaveBeenCalled();
+  });
+
   it('does not fetch weather when location is absent', async () => {
     const weather = { get: vi.fn() };
     const app = createApp({ runnerFor: (_params: unknown) => fakeRunner([]), weather });
