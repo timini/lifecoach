@@ -1,0 +1,71 @@
+name: Deploy dev
+
+on:
+  push:
+    branches: [main]
+
+# Never cancel a deploy mid-Terraform-apply — that can leave the state lock
+# held and the project in a half-applied state. Queue serially instead.
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      contents: read
+      # Required for google-github-actions/auth to mint a federated token.
+      id-token: write
+
+    env:
+      CLOUDSDK_CORE_PROJECT: lifecoach-dev-zvb6d
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.3
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - uses: extractions/setup-just@v2
+        with:
+          just-version: '1.36.0'
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.x
+          terraform_wrapper: false
+
+      # Re-create the gitignored tfvars from a single repo secret.
+      # See README for the one-time setup: `gh secret set TFVARS_DEV < infra/envs/dev/terraform.tfvars`.
+      - name: Restore terraform.tfvars
+        run: |
+          if [[ -z "${TFVARS_DEV}" ]]; then
+            echo "::error::TFVARS_DEV secret is not set. Run: gh secret set TFVARS_DEV < infra/envs/dev/terraform.tfvars"
+            exit 1
+          fi
+          printf '%s' "${TFVARS_DEV}" > infra/envs/dev/terraform.tfvars
+        env:
+          TFVARS_DEV: ${{ secrets.TFVARS_DEV }}
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOY_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Deploy
+        run: just deploy dev
