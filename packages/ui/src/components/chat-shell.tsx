@@ -12,11 +12,11 @@ export function ChatShell({ header, footer, children, className }: ChatShellProp
   return (
     <main
       className={cn(
-        'mx-auto flex min-h-[100dvh] max-w-[720px] flex-col gap-4 px-4 py-6',
+        'mx-auto flex min-h-[100dvh] max-w-[760px] flex-col gap-4 px-4 py-8',
         className,
       )}
     >
-      <header className="sticky top-0 z-20 -mx-4 -mt-6 flex flex-col gap-1 border-b border-border bg-background/95 px-4 pt-6 pb-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+      <header className="sticky top-2 z-20 flex flex-col gap-1 rounded-2xl border border-border/70 bg-background/70 px-4 py-3 shadow-sm backdrop-blur-md">
         {header}
       </header>
       <section className="flex flex-1 flex-col gap-3 overflow-y-auto py-1">{children}</section>

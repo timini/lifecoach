@@ -53,6 +53,12 @@ interface AssistantMessage {
 }
 type Message = UserMessage | AssistantMessage;
 
+const STARTER_PROMPTS = [
+  'I need help grounding myself today.',
+  "Let's map out a fresh vision for my week.",
+  'Give me a space to untangle my thoughts.',
+];
+
 function messageId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -662,7 +668,7 @@ export function ChatWindow() {
               void refreshSessions();
             }}
           />
-          <h1 className="text-lg font-semibold">Lifecoach</h1>
+          <h1 className="text-xl font-semibold tracking-tight">Lifecoach</h1>
         </div>
         <AccountMenu
           state={userState}
@@ -712,7 +718,7 @@ export function ChatWindow() {
       </div>
     ) : (
       <form
-        className="flex gap-2"
+        className="flex items-center gap-2 rounded-full border border-border/70 bg-background/65 p-2 shadow-sm backdrop-blur-md"
         onSubmit={(e) => {
           e.preventDefault();
           void sendText(input);
@@ -725,7 +731,12 @@ export function ChatWindow() {
           disabled={busy}
           className="flex-1"
         />
-        <Button type="submit" disabled={busy || !input.trim()} size="lg">
+        <Button
+          type="submit"
+          disabled={busy || !input.trim()}
+          size="lg"
+          className="rounded-full px-6"
+        >
           Send
         </Button>
       </form>
@@ -751,8 +762,26 @@ export function ChatWindow() {
         hidden
       />
       {messages.length === 0 && (
-        <div className="text-sm text-muted-foreground">
-          Say hi to get started. The coach is warming up.
+        <div className="space-y-3">
+          <div className="rounded-2xl border border-white/45 bg-background/45 px-4 py-3 text-sm leading-7 text-muted-foreground backdrop-blur-sm">
+            Start where you are — share what you need support with right now.
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {STARTER_PROMPTS.map((prompt) => (
+              <Button
+                key={prompt}
+                type="button"
+                variant="subtle"
+                className="rounded-full border-white/50 bg-background/50 px-4 py-2 text-sm"
+                onClick={() => {
+                  if (busy || viewMode === 'past') return;
+                  void sendText(prompt);
+                }}
+              >
+                {prompt}
+              </Button>
+            ))}
+          </div>
         </div>
       )}
       {messages.map((m) => {
@@ -778,7 +807,7 @@ export function ChatWindow() {
         );
       })}
       {busy && lastAssistantHasNoContent(messages) && (
-        <div className="text-sm italic text-muted-foreground">
+        <div className="breathing-pulse text-sm italic text-muted-foreground">
           {retryAttempt > 0 ? `retrying… (${retryAttempt})` : 'thinking…'}
         </div>
       )}

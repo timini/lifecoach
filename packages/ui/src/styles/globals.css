@@ -6,21 +6,22 @@
  * and stay in lockstep with runtime values via the CSS vars below.
  */
 @theme {
-  --color-background: #0f1419;
-  --color-foreground: #e8e8e8;
-  --color-muted: #1e293b;
-  --color-muted-foreground: #94a3b8;
-  --color-border: #334155;
-  --color-accent: #2563eb;
-  --color-accent-foreground: #ffffff;
-  --color-success: #4ade80;
-  --color-destructive: #f87171;
+  --color-background: #f7f3ec;
+  --color-foreground: #2f3d34;
+  --color-muted: #f1ece4;
+  --color-muted-foreground: #6f786e;
+  --color-border: #d8d2c8;
+  --color-accent: #7f9b84;
+  --color-accent-foreground: #fefcf8;
+  --color-success: #739f82;
+  --color-destructive: #c68472;
 
-  --radius-bubble: 12px;
-  --radius-control: 8px;
+  --radius-bubble: 22px;
+  --radius-control: 9999px;
 
-  --font-family-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, ui-sans-serif,
+  --font-family-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, ui-sans-serif,
     system-ui, sans-serif;
+  --font-family-serif: "Fraunces", "Iowan Old Style", "Times New Roman", ui-serif, serif;
 }
 
 /*
@@ -30,13 +31,55 @@
 @layer base {
   html,
   body {
-    background-color: var(--color-background);
+    background:
+      radial-gradient(circle at 10% 20%, rgb(176 198 173 / 42%), transparent 42%),
+      radial-gradient(circle at 85% 15%, rgb(206 154 136 / 28%), transparent 40%),
+      radial-gradient(circle at 72% 75%, rgb(164 186 166 / 24%), transparent 48%),
+      var(--color-background);
+    background-size: 130% 130%;
+    animation: meshDrift 24s ease-in-out infinite alternate;
     color: var(--color-foreground);
     font-family: var(--font-family-sans);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-family-serif);
+    letter-spacing: -0.01em;
   }
 
   *:focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
   }
+}
+
+@keyframes meshDrift {
+  0% {
+    background-position: 0% 0%, 100% 0%, 30% 90%, 0% 0%;
+  }
+  100% {
+    background-position: 10% 8%, 90% 10%, 45% 80%, 0% 0%;
+  }
+}
+
+@keyframes breathPulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.98);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.breathing-pulse {
+  animation: breathPulse 2.8s ease-in-out infinite;
+  transform-origin: left center;
 }
