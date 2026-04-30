@@ -34,14 +34,14 @@ describe('createMem0MemoryClient', () => {
     const fetcher = mkFetcher({
       '/v1/memories/search': async () =>
         okJson([
-          { memory: 'User has two kids — Wren and Silvie.', score: 0.92 },
+          { memory: 'User has two kids — Maya and Theo.', score: 0.92 },
           { memory: 'Trains for a half-marathon.', score: 0.71 },
         ]),
     });
     const m = createMem0MemoryClient({ apiKey: 'k', fetcher });
     const results = await m.search('u1', 'kids', 5);
     expect(results).toEqual([
-      { text: 'User has two kids — Wren and Silvie.' },
+      { text: 'User has two kids — Maya and Theo.' },
       { text: 'Trains for a half-marathon.' },
     ]);
     const call = (fetcher as ReturnType<typeof vi.fn>).mock.calls[0];

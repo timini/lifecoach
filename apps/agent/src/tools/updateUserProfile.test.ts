@@ -41,17 +41,17 @@ describe('update_user_profile tool (schema-free)', () => {
   it('writes a string value to a known slot', async () => {
     const store = fakeStore();
     const tool = createUpdateUserProfileTool({ store, uid: 'u' });
-    const res = await exec(tool, { path: 'name', value: 'Tim' });
-    expect(res).toMatchObject({ status: 'ok', updated_path: 'name', new_value: 'Tim' });
-    expect(store._calls).toEqual([{ path: 'name', value: 'Tim' }]);
+    const res = await exec(tool, { path: 'name', value: 'Alex' });
+    expect(res).toMatchObject({ status: 'ok', updated_path: 'name', new_value: 'Alex' });
+    expect(store._calls).toEqual([{ path: 'name', value: 'Alex' }]);
   });
 
   it('writes an invented top-level key (volunteering)', async () => {
     const store = fakeStore();
     const tool = createUpdateUserProfileTool({ store, uid: 'u' });
-    const res = await exec(tool, { path: 'volunteering', value: 'refuge on weekends' });
+    const res = await exec(tool, { path: 'volunteering', value: 'community garden weekends' });
     expect(res).toMatchObject({ status: 'ok' });
-    expect(store._calls).toEqual([{ path: 'volunteering', value: 'refuge on weekends' }]);
+    expect(store._calls).toEqual([{ path: 'volunteering', value: 'community garden weekends' }]);
   });
 
   it('writes a deeply nested invented key (pets.species)', async () => {
@@ -102,7 +102,7 @@ describe('update_user_profile tool (schema-free)', () => {
       updatePath: vi.fn().mockRejectedValue(new Error('boom')),
     };
     const tool = createUpdateUserProfileTool({ store, uid: 'u' });
-    const res = await exec(tool, { path: 'name', value: 'Tim' });
+    const res = await exec(tool, { path: 'name', value: 'Alex' });
     expect(res).toMatchObject({ status: 'error', message: 'boom' });
   });
 });
