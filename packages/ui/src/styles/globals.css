@@ -1,42 +1,79 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap');
 
-/*
- * Lifecoach design tokens. Tailwind v4 is CSS-first — no tailwind.config.js.
- * `@theme` declarations generate utility classes (bg-background, text-foreground, …)
- * and stay in lockstep with runtime values via the CSS vars below.
- */
 @theme {
-  --color-background: #0f1419;
-  --color-foreground: #e8e8e8;
-  --color-muted: #1e293b;
-  --color-muted-foreground: #94a3b8;
-  --color-border: #334155;
-  --color-accent: #2563eb;
-  --color-accent-foreground: #ffffff;
-  --color-success: #4ade80;
-  --color-destructive: #f87171;
+  --color-background: #f4efe6;
+  --color-foreground: #2f3b34;
+  --color-muted: #ece4d7;
+  --color-muted-foreground: #6c756d;
+  --color-border: #d9ccba;
+  --color-accent: #7b9a86;
+  --color-accent-foreground: #f8f5ef;
+  --color-success: #7fa57f;
+  --color-destructive: #c67b63;
 
-  --radius-bubble: 12px;
-  --radius-control: 8px;
+  --radius-bubble: 22px;
+  --radius-control: 9999px;
 
-  --font-family-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, ui-sans-serif,
+  --font-family-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, ui-sans-serif,
     system-ui, sans-serif;
+  --font-family-serif: 'Fraunces', 'Iowan Old Style', Georgia, ui-serif, serif;
 }
 
-/*
- * Hide the browser's default focus ring on buttons that use Radix; Radix
- * handles focus-visible correctly. Keep the ring for keyboard users only.
- */
 @layer base {
   html,
   body {
+    min-height: 100%;
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-family-sans);
+    line-height: 1.7;
+  }
+
+  body {
+    background-image:
+      radial-gradient(circle at 15% 15%, rgb(152 175 152 / 18%), transparent 45%),
+      radial-gradient(circle at 80% 8%, rgb(207 166 142 / 16%), transparent 42%),
+      radial-gradient(circle at 65% 78%, rgb(165 191 168 / 14%), transparent 46%);
+    background-attachment: fixed;
+    animation: meshDrift 36s ease-in-out infinite alternate;
   }
 
   *:focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
   }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-family-serif);
+    letter-spacing: -0.01em;
+  }
+}
+
+@keyframes meshDrift {
+  0% {
+    background-position: 0% 0%, 100% 0%, 50% 100%;
+  }
+  100% {
+    background-position: 8% 10%, 90% 7%, 43% 88%;
+  }
+}
+
+@keyframes breathingPulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.95);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.05);
+  }
+}
+
+.breathing-pulse {
+  animation: breathingPulse 2.6s ease-in-out infinite;
 }
