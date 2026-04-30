@@ -14,8 +14,8 @@ export function Bubble({ from, children, className }: BubbleProps) {
       className={cn(
         'max-w-[80%] whitespace-pre-wrap rounded-[var(--radius-bubble)] px-3 py-2 text-[15px] leading-relaxed',
         from === 'user'
-          ? 'self-end bg-accent text-accent-foreground'
-          : 'self-start bg-muted text-foreground',
+          ? 'self-end rounded-tr-md bg-accent/95 px-4 py-2.5 text-accent-foreground shadow-sm'
+          : 'self-start max-w-[88%] bg-white/35 px-4 py-2.5 text-foreground backdrop-blur-md',
         className,
       )}
     >

@@ -712,7 +712,7 @@ export function ChatWindow() {
       </div>
     ) : (
       <form
-        className="flex gap-2"
+        className="rounded-full border border-border/70 bg-background/80 p-2 shadow-sm backdrop-blur-md"
         onSubmit={(e) => {
           e.preventDefault();
           void sendText(input);
@@ -721,9 +721,9 @@ export function ChatWindow() {
         <Input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Type a message…"
+          placeholder="Take a breath — what feels present right now?"
           disabled={busy}
-          className="flex-1"
+          className="flex-1 border-0 bg-transparent shadow-none focus-visible:border-transparent"
         />
         <Button type="submit" disabled={busy || !input.trim()} size="lg">
           Send
@@ -752,7 +752,8 @@ export function ChatWindow() {
       />
       {messages.length === 0 && (
         <div className="text-sm text-muted-foreground">
-          Say hi to get started. The coach is warming up.
+          Welcome in. We can start gently — • I need help grounding myself today. • Let's map out a
+          fresh vision for my week. • Give me a space to untangle my thoughts.
         </div>
       )}
       {messages.map((m) => {
@@ -778,8 +779,11 @@ export function ChatWindow() {
         );
       })}
       {busy && lastAssistantHasNoContent(messages) && (
-        <div className="text-sm italic text-muted-foreground">
-          {retryAttempt > 0 ? `retrying… (${retryAttempt})` : 'thinking…'}
+        <div className="flex items-center gap-2 text-sm italic text-muted-foreground animate-breathe">
+          <span className="inline-block h-2.5 w-2.5 rounded-full bg-accent/70" />
+          {retryAttempt > 0
+            ? `reconnecting to the flow… (${retryAttempt})`
+            : 'breathing into your response…'}
         </div>
       )}
       <div ref={endRef} />
