@@ -31,15 +31,15 @@ export function createMemorySaveTool(deps: {
       'Save a long-term narrative memory — the kind of context that does NOT fit ' +
       'a single profile slot but matters for future conversations. Call PROACTIVELY ' +
       'when you learn: ' +
-      '(a) relational context about people in their life ("Wren is doing well at ' +
-      'violin and enjoys it", "co-founder Alex is going through a divorce"); ' +
+      '(a) relational context about people in their life ("Maya is doing well at ' +
+      'violin and enjoys it", "co-founder Jordan is going through a divorce"); ' +
       '(b) ongoing projects, training plans, or goals with detail too rich for ' +
       'a path ("training for half-marathon, calf strain in April, comfortable at 6.5k"); ' +
       '(c) life circumstances, health context, work situation that affects coaching; ' +
       "(d) recurring people you've met before resurfacing in conversation. " +
       'Often pairs with update_user_profile (one captures the slot, the other the ' +
       'narrative) — call both when both apply. Write in third-person, self-contained ' +
-      'so a future session reads it standalone ("Tim\'s daughter Wren, age 8, plays ' +
+      'so a future session reads it standalone ("the user\'s daughter Maya, age 8, plays ' +
       'violin and enjoys it"). NEVER announce ("let me remember that") — save ' +
       'silently and continue the conversation.',
     parameters,

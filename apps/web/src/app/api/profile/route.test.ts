@@ -21,7 +21,7 @@ describe('GET /api/profile', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ profile: { name: 'Tim' } }), {
+        new Response(JSON.stringify({ profile: { name: 'Alex' } }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
         }),
@@ -34,7 +34,7 @@ describe('GET /api/profile', () => {
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as { profile: { name: string } };
-    expect(body.profile.name).toBe('Tim');
+    expect(body.profile.name).toBe('Alex');
   });
 
   it('returns 502 when agent errors', async () => {
@@ -49,7 +49,7 @@ describe('PATCH /api/profile', () => {
     const res = await PATCH(
       new Request('http://localhost/api/profile', {
         method: 'PATCH',
-        body: JSON.stringify({ profile: { name: 'Tim' } }),
+        body: JSON.stringify({ profile: { name: 'Alex' } }),
       }),
     );
     expect(res.status).toBe(401);
@@ -67,7 +67,7 @@ describe('PATCH /api/profile', () => {
       new Request('http://localhost/api/profile', {
         method: 'PATCH',
         headers: { authorization: 'Bearer tok', 'content-type': 'application/json' },
-        body: JSON.stringify({ profile: { name: 'Tim' } }),
+        body: JSON.stringify({ profile: { name: 'Alex' } }),
       }),
     );
     expect(res.status).toBe(200);

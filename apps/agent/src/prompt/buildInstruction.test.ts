@@ -61,7 +61,7 @@ describe('buildInstruction', () => {
     expect(s).toMatch(/update_user_profile/);
     expect(s).toMatch(/memory_save/);
     // And demonstrates the right behaviour through at least one example.
-    expect(s).toMatch(/Wren/);
+    expect(s).toMatch(/Maya/);
   });
 
   it('always includes the current date/time', () => {
@@ -431,13 +431,13 @@ describe('buildInstruction', () => {
     const s = buildInstruction({
       ...BASE,
       userProfile: {
-        name: 'Tim',
+        name: 'Alex',
         age: null,
         location: { address: null },
         family: {
           relationship_status: null,
           partner_name: null,
-          children: 'Two kids, ages 8 and 4. Named Wren and Silvie.',
+          children: 'Two kids, ages 8 and 4. Named Maya and Theo.',
           living_situation: null,
         },
         occupation: { title: null, industry: null, work_style: null, satisfaction: null },
@@ -457,8 +457,8 @@ describe('buildInstruction', () => {
       },
     });
     expect(s).toMatch(/USER_PROFILE/);
-    expect(s).toMatch(/name: Tim/);
-    expect(s).toMatch(/Wren and Silvie/);
+    expect(s).toMatch(/name: Alex/);
+    expect(s).toMatch(/Maya and Theo/);
     expect(s).toMatch(/partner_name: null/);
     // The "what you don't know" guidance must be present
     expect(s).toMatch(/null means you don't know yet/);

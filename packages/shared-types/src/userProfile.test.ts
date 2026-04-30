@@ -22,21 +22,21 @@ describe('UserProfileSchema (schema-free)', () => {
 
   it('accepts arbitrary top-level keys invented by the coach', () => {
     const parsed = UserProfileSchema.parse({
-      name: 'Tim',
-      pets: { name: 'Loki', species: 'dog' },
-      morning_routine: ['coffee', 'walk', 'journal'],
-      volunteering: 'refuge on weekends',
+      name: 'Alex',
+      pets: { name: 'Cosmo', species: 'dog' },
+      morning_routine: ['stretch', 'shower', 'breakfast'],
+      volunteering: 'community garden weekends',
     });
     expect(parsed).toMatchObject({
-      pets: { name: 'Loki', species: 'dog' },
-      morning_routine: ['coffee', 'walk', 'journal'],
+      pets: { name: 'Cosmo', species: 'dog' },
+      morning_routine: ['stretch', 'shower', 'breakfast'],
     });
   });
 
   it('accepts deeply nested shapes without constraint', () => {
     const input = {
       relationships: {
-        partner: { name: 'Sam', years_together: 4, notes: ['thoughtful'] },
+        partner: { name: 'Jordan', years_together: 4, notes: ['thoughtful'] },
         friends: ['A', 'B'],
       },
     };
