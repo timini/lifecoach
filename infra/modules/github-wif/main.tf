@@ -108,6 +108,9 @@ locals {
     "roles/iam.serviceAccountAdmin",
     # Terraform manages the user data bucket + its IAM.
     "roles/storage.admin",
+    # Terraform refreshes (and could update) the WIF pool + provider it
+    # runs through. Without read perms on the pool, plan fails on a 403.
+    "roles/iam.workloadIdentityPoolAdmin",
   ])
 }
 
