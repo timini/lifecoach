@@ -137,8 +137,8 @@ export function AccountMenu({
           <AvatarFallback>{initials(user)}</AvatarFallback>
         </Avatar>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-64">
-        <div className="flex items-center gap-3 px-2 py-2">
+      <DropdownMenuContent align="end" className="w-72">
+        <div className="flex items-center gap-3 py-0">
           <Avatar className="h-10 w-10">
             {user.photoURL ? <AvatarImage src={user.photoURL} alt="" /> : null}
             <AvatarFallback>{initials(user)}</AvatarFallback>
@@ -150,7 +150,7 @@ export function AccountMenu({
             </span>
           </div>
         </div>
-        <div className="px-2 pb-2">
+        <div className="pb-1">
           <span
             className={cn(
               'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide',
@@ -167,11 +167,11 @@ export function AccountMenu({
           </>
         ) : null}
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={onOpenSettings}>
+        <DropdownMenuItem className="px-0" onSelect={onOpenSettings}>
           <Settings className="h-4 w-4" />
           Settings
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={onSignOut}>
+        <DropdownMenuItem className="px-0" onSelect={onSignOut}>
           <LogOut className="h-4 w-4" />
           Sign out
         </DropdownMenuItem>
@@ -239,7 +239,7 @@ function AffordanceItem({
   onSelect?: () => void;
 }) {
   return (
-    <DropdownMenuItem disabled={disabled} onSelect={() => onSelect?.()}>
+    <DropdownMenuItem className="px-0" disabled={disabled} onSelect={() => onSelect?.()}>
       <div className="flex flex-col">
         <span>{label}</span>
         {subLabel ? <span className="text-[10px] text-muted-foreground">{subLabel}</span> : null}

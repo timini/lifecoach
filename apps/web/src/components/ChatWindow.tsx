@@ -685,7 +685,7 @@ export function ChatWindow() {
           onConnectWorkspace={() => void handleConnectWorkspace()}
         />
       </div>
-      <div className="flex items-center justify-end">
+      <div className="hidden items-center justify-end">
         <LocationBadge
           shared={location !== null}
           requested={locationRequested}
@@ -718,7 +718,7 @@ export function ChatWindow() {
       </div>
     ) : (
       <form
-        className="rounded-full border border-border/70 bg-background/70 p-1.5 shadow-sm backdrop-blur-md flex gap-2"
+        className="fixed inset-x-0 bottom-0 z-40 mx-auto flex w-full max-w-[760px] gap-2 border-t border-border/70 bg-background/85 px-4 py-3 shadow-[0_-8px_24px_rgba(43,58,50,0.10)] backdrop-blur-md"
         onSubmit={(e) => {
           e.preventDefault();
           void sendText(input);
@@ -731,9 +731,21 @@ export function ChatWindow() {
           disabled={busy}
           className="flex-1"
         />
-        <Button type="submit" disabled={busy || !input.trim()} size="lg" className="rounded-full">
+        <Button
+          type="submit"
+          disabled={busy || !input.trim()}
+          size="lg"
+          className={input.trim() ? 'bg-accent text-accent-foreground hover:opacity-100' : ''}
+        >
           Send
         </Button>
+        <LocationBadge
+          shared={location !== null}
+          requested={locationRequested}
+          onShare={() => {
+            void shareLocation();
+          }}
+        />
       </form>
     );
 

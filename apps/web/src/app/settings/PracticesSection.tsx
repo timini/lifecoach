@@ -49,16 +49,25 @@ export function PracticesSection({ profile, onChange }: Props) {
                 <span className="text-sm font-medium">{p.label}</span>
                 <span className="text-xs text-muted-foreground">{p.description}</span>
               </div>
-              <label className="flex shrink-0 cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+              <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
                 <span>{enabled ? 'On' : 'Off'}</span>
-                <input
-                  type="checkbox"
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={enabled}
                   aria-label={`Toggle ${p.label}`}
-                  checked={enabled}
-                  onChange={(e) => toggle(p.id, e.target.checked)}
-                  className="h-4 w-4 cursor-pointer accent-accent"
-                />
-              </label>
+                  onClick={() => toggle(p.id, !enabled)}
+                  className={`relative h-6 w-11 rounded-full transition-colors ${
+                    enabled ? 'bg-accent' : 'bg-border'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
+                      enabled ? 'translate-x-5' : 'translate-x-0.5'
+                    }`}
+                  />
+                </button>
+              </div>
             </li>
           );
         })}

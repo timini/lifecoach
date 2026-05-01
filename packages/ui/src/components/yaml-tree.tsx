@@ -205,7 +205,7 @@ function KeyedRow({
     );
   }
   return (
-    <div className="rounded-[var(--radius-control)] border border-border bg-muted/20 p-2">
+    <div className="bg-muted/10 p-1">
       <div className="flex w-full items-center gap-1">
         <button
           type="button"
@@ -262,11 +262,11 @@ function LeafRow({
         }}
         className={cn(
           'w-full truncate rounded-sm border border-transparent px-2 py-1 text-left text-sm',
-          value === null ? 'text-muted-foreground italic' : 'text-foreground',
+          value === null ? 'text-muted-foreground' : 'text-foreground',
           !readOnly && 'hover:border-border hover:bg-muted/40',
         )}
       >
-        {value === null ? '(empty — click to edit)' : formatLeafValue(value)}
+        {value === null ? '—' : formatLeafValue(value)}
       </button>
     );
   }
