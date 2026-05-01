@@ -14,9 +14,12 @@ import {
 } from '@lifecoach/ui';
 import { UserStateMachine } from '@lifecoach/user-state';
 import type { User } from 'firebase/auth';
+import { useLocale, useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
+import { LanguagePicker } from '../../components/LanguagePicker';
+import { isLocale } from '../../i18n/routing';
 import {
   ensureSignedIn,
   linkWithGoogle,
@@ -43,6 +46,9 @@ type GoalsState =
 
 export default function SettingsPage() {
   const router = useRouter();
+  const t = useTranslations('settings');
+  const rawLocale = useLocale();
+  const locale = isLocale(rawLocale) ? rawLocale : 'en';
   const [user, setUser] = useState<User | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
   const [profileState, setProfileState] = useState<ProfileState>({ status: 'loading' });
@@ -236,14 +242,12 @@ export default function SettingsPage() {
   const header = (
     <>
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">Your settings</h1>
+        <h1 className="text-lg font-semibold">{t('title')}</h1>
         <Link href="/" className="text-xs text-muted-foreground hover:text-foreground">
-          ← Back to chat
+          ← {t('back')}
         </Link>
       </div>
-      <p className="text-xs text-foreground/75">
-        Connections, profile the coach has built, and your goal log.
-      </p>
+      <p className="text-xs text-foreground/75">{t('subtitle')}</p>
     </>
   );
 
@@ -259,11 +263,11 @@ export default function SettingsPage() {
   const hasEmail = Boolean(user.email);
 
   const tabs: Array<{ id: typeof activeTab; label: string }> = [
-    { id: 'connections', label: 'Connections' },
-    { id: 'practices', label: 'Practices' },
-    { id: 'profile', label: 'Profile' },
-    { id: 'goals', label: 'Goal log' },
-    { id: 'account', label: 'Account' },
+    { id: 'connections', label: t('tabs.connections') },
+    { id: 'practices', label: t('tabs.practices') },
+    { id: 'profile', label: t('tabs.profile') },
+    { id: 'goals', label: t('tabs.goals') },
+    { id: 'account', label: t('tabs.account') },
   ];
 
   return (
@@ -413,7 +417,9 @@ export default function SettingsPage() {
       ) : null}
 
       {activeTab === 'profile' ? (
-        <section className="flex flex-col gap-3">
+        <section className="flex flex-col gap-4">
+          <LanguagePicker user={user} locale={locale} />
+          <hr className="border-border" />
           <p className="text-xs text-muted-foreground">
             What the coach remembers about you. Click any value to edit. Add any key — the coach
             will also write here as it gets to know you.
