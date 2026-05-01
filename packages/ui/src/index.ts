@@ -51,6 +51,15 @@ export { WorkspacePrompt, type WorkspacePromptProps } from './components/workspa
 export { YamlTree, type YamlTreeProps } from './components/yaml-tree';
 export { cn } from './lib/utils';
 export {
+  type ColorToken,
+  type FontToken,
+  type RadiusToken,
+  colors,
+  fonts,
+  radii,
+  tokens,
+} from './tokens';
+export {
   type JsonObject,
   type JsonValue,
   type PathSegment,

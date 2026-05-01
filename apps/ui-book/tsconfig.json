@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "jsx": "preserve",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "incremental": true,
+    "composite": false,
+    "verbatimModuleSyntax": false,
+    "types": ["vitest/globals"],
+    "paths": {
+      "@lifecoach/ui": ["../../packages/ui/src"],
+      "@lifecoach/ui/*": ["../../packages/ui/src/*"]
+    }
+  },
+  "include": [".storybook/**/*", "vite.config.ts", "vitest.config.ts"],
+  "exclude": ["node_modules", "storybook-static", "dist"]
+}

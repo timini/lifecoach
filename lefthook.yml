@@ -22,6 +22,11 @@ pre-commit:
           echo "ERROR: IP-based geolocation is forbidden. Use navigator.geolocation only." >&2
           exit 1
         fi
+    # Every component in packages/ui/src/{atoms,molecules,organisms,templates}/
+    # must have a sibling .stories.tsx — stories are the test surface here.
+    check-stories:
+      glob: "packages/ui/src/{atoms,molecules,organisms,templates}/**/*.tsx"
+      run: node scripts/check-stories.mjs
 
 pre-push:
   commands:
