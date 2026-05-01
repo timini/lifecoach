@@ -249,7 +249,7 @@ export default function SettingsPage() {
 
   const footer = (
     <p className="text-xs text-muted-foreground">
-      Current state: <span className="font-mono">{state}</span>
+      Current state: <span className="font-mono text-foreground">{state}</span>
       {savingProfile ? ' · saving…' : ''}
     </p>
   );
@@ -325,7 +325,7 @@ export default function SettingsPage() {
                     placeholder="you@example.com"
                     value={emailDraft}
                     onChange={(e) => setEmailDraft(e.target.value)}
-                    className="h-9 rounded-[var(--radius-control)] border border-border bg-background px-2 text-sm"
+                    className="h-9 rounded-[var(--radius-surface)] border border-border bg-background px-2 text-sm"
                   />
                   <Button
                     size="sm"
@@ -442,7 +442,7 @@ export default function SettingsPage() {
 
       {activeTab === 'account' ? (
         <section className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-center gap-3 rounded-[var(--radius-control)] border border-destructive/40 bg-destructive/10 p-3">
+          <div className="flex flex-wrap items-center gap-3 rounded-[var(--radius-surface)] border border-destructive/40 bg-destructive/10 p-3">
             <div className="flex-1 text-xs text-muted-foreground">
               Sign out returns to a fresh guest chat. Your data stays on the server.
             </div>
@@ -450,13 +450,16 @@ export default function SettingsPage() {
               Sign out
             </Button>
           </div>
-          <div className="flex flex-wrap items-center gap-3 rounded-[var(--radius-control)] border border-border bg-muted/30 p-3 opacity-60">
-            <div className="flex-1 text-xs text-muted-foreground">
-              Delete all my data — coming in Phase 11.
+          <div className="flex flex-wrap items-center gap-3 rounded-[var(--radius-surface)] border border-border bg-muted/30 p-3">
+            <div className="flex-1 text-xs text-muted-foreground">Delete all my data</div>
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-foreground">
+                Coming soon
+              </span>
+              <Button variant="subtle" size="md" disabled>
+                Delete
+              </Button>
             </div>
-            <Button variant="subtle" size="md" disabled>
-              Delete
-            </Button>
           </div>
         </section>
       ) : null}

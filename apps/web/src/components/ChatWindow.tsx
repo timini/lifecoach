@@ -685,15 +685,6 @@ export function ChatWindow() {
           onConnectWorkspace={() => void handleConnectWorkspace()}
         />
       </div>
-      <div className="flex items-center justify-end">
-        <LocationBadge
-          shared={location !== null}
-          requested={locationRequested}
-          onShare={() => {
-            void shareLocation();
-          }}
-        />
-      </div>
     </>
   );
 
@@ -718,7 +709,7 @@ export function ChatWindow() {
       </div>
     ) : (
       <form
-        className="rounded-full border border-border/70 bg-background/70 p-1.5 shadow-sm backdrop-blur-md flex gap-2"
+        className="fixed inset-x-0 bottom-0 z-30 mx-auto flex w-full max-w-[760px] gap-2 border-t border-border/70 bg-background/80 p-3 shadow-[0_-8px_24px_rgba(32,45,38,0.1)] backdrop-blur-md"
         onSubmit={(e) => {
           e.preventDefault();
           void sendText(input);
@@ -731,7 +722,23 @@ export function ChatWindow() {
           disabled={busy}
           className="flex-1"
         />
-        <Button type="submit" disabled={busy || !input.trim()} size="lg" className="rounded-full">
+        <LocationBadge
+          shared={location !== null}
+          requested={locationRequested}
+          onShare={() => {
+            void shareLocation();
+          }}
+        />
+        <Button
+          type="submit"
+          disabled={busy || !input.trim()}
+          size="lg"
+          className={
+            input.trim()
+              ? 'rounded-full bg-accent text-accent-foreground hover:bg-accent/90'
+              : 'rounded-full'
+          }
+        >
           Send
         </Button>
       </form>
@@ -774,37 +781,39 @@ export function ChatWindow() {
           </div>
         </div>
       )}
-      {messages.map((m) => {
-        if (m.role === 'user') {
+      <div className="pb-28">
+        {messages.map((m) => {
+          if (m.role === 'user') {
+            return (
+              <Bubble key={m.id} from="user">
+                {m.text}
+              </Bubble>
+            );
+          }
           return (
-            <Bubble key={m.id} from="user">
-              {m.text}
-            </Bubble>
+            <AssistantGroup
+              key={m.id}
+              msgId={m.id}
+              elements={m.elements}
+              answered={Boolean(m.answered)}
+              onChoice={submitChoice}
+              onGoogleSignIn={() => void handleGoogleSignIn()}
+              onEmailSignIn={handleEmailSignIn}
+              onConnectWorkspace={() => void handleConnectWorkspace()}
+              onProInterest={handleProInterest}
+            />
           );
-        }
-        return (
-          <AssistantGroup
-            key={m.id}
-            msgId={m.id}
-            elements={m.elements}
-            answered={Boolean(m.answered)}
-            onChoice={submitChoice}
-            onGoogleSignIn={() => void handleGoogleSignIn()}
-            onEmailSignIn={handleEmailSignIn}
-            onConnectWorkspace={() => void handleConnectWorkspace()}
-            onProInterest={handleProInterest}
-          />
-        );
-      })}
-      {busy && lastAssistantHasNoContent(messages) && (
-        <div className="flex items-center gap-2 text-sm italic text-muted-foreground">
-          <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-accent/70" />
-          {retryAttempt > 0
-            ? `finding our flow again… (${retryAttempt})`
-            : 'breathing into a response…'}
-        </div>
-      )}
-      <div ref={endRef} />
+        })}
+        {busy && lastAssistantHasNoContent(messages) && (
+          <div className="flex items-center gap-2 text-sm italic text-muted-foreground">
+            <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-accent/70" />
+            {retryAttempt > 0
+              ? `finding our flow again… (${retryAttempt})`
+              : 'breathing into a response…'}
+          </div>
+        )}
+        <div ref={endRef} />
+      </div>
     </ChatShell>
   );
 }

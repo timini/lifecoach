@@ -53,11 +53,19 @@ export function PracticesSection({ profile, onChange }: Props) {
                 <span>{enabled ? 'On' : 'Off'}</span>
                 <input
                   type="checkbox"
+                  role="switch"
                   aria-label={`Toggle ${p.label}`}
+                  aria-checked={enabled}
                   checked={enabled}
                   onChange={(e) => toggle(p.id, e.target.checked)}
-                  className="h-4 w-4 cursor-pointer accent-accent"
+                  className="peer sr-only"
                 />
+                <span
+                  aria-hidden="true"
+                  className="relative h-6 w-11 rounded-full bg-border transition-colors peer-checked:bg-accent"
+                >
+                  <span className="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-5" />
+                </span>
               </label>
             </li>
           );

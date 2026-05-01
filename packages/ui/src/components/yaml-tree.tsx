@@ -205,7 +205,7 @@ function KeyedRow({
     );
   }
   return (
-    <div className="rounded-[var(--radius-control)] border border-border bg-muted/20 p-2">
+    <div className="rounded-[var(--radius-surface)] border border-border bg-muted/20 p-2">
       <div className="flex w-full items-center gap-1">
         <button
           type="button"
@@ -266,7 +266,7 @@ function LeafRow({
           !readOnly && 'hover:border-border hover:bg-muted/40',
         )}
       >
-        {value === null ? '(empty — click to edit)' : formatLeafValue(value)}
+        {value === null ? 'Empty value' : formatLeafValue(value)}
       </button>
     );
   }
