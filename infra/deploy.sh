@@ -56,31 +56,6 @@ ensure_terraform_init() {
   )
 }
 
-ensure_prereq_infra() {
-  # The web build needs Firebase config values as build args; Terraform must
-  # have already created the Firebase project and web app before we build.
-  # The agent's secret_env references GWS_OAUTH_CLIENT_SECRET — the secret
-  # (with a version) and its IAM grant must exist before the Cloud Run
-  # revision update or the revision fails to start.
-  #
-  # We also target the two cloud-run runtime SAs so any pending `moved`
-  # blocks on them play through this targeted apply. Without this,
-  # Terraform 1.9 errors with "Moved resource instances excluded by
-  # targeting" because the module's moved-block instances aren't covered
-  # by the other -target entries.
-  log "Ensuring prereq infra: APIs, Artifact Registry, Firebase Auth, Workspace OAuth secret"
-  (
-    cd "${ENV_DIR}"
-    terraform apply -auto-approve -var-file=terraform.tfvars \
-      -target=module.apis \
-      -target=module.artifact_registry \
-      -target=module.firebase_auth \
-      -target=module.gws_oauth_secret \
-      -target=module.agent.google_service_account.runtime \
-      -target=module.web.google_service_account.runtime
-  )
-}
-
 firebase_build_args() {
   cd "${ENV_DIR}"
   local api_key auth_domain fb_project_id app_id gws_client_id
@@ -138,8 +113,17 @@ apply_terraform() {
 }
 
 main() {
+  # No targeted prereq apply — for ongoing deploys, dev's terraform state
+  # already holds the Firebase outputs the web build reads, and a targeted
+  # apply that included the cloud-run-service module's `moved` block kept
+  # pulling Cloud Run into the plan with image_tag=bootstrap (var default),
+  # failing because that image doesn't exist in Artifact Registry.
+  #
+  # The full `apply_terraform` at the end of this script is non-targeted, so
+  # it consumes any pending `moved` blocks cleanly and updates Cloud Run with
+  # the just-pushed image_tag. First-time bootstrap of a new env is handled
+  # by infra/bootstrap/bootstrap.sh, not this script.
   ensure_terraform_init
-  ensure_prereq_infra
   docker_auth
   if [[ "${WHICH}" == "agent" || "${WHICH}" == "both" ]]; then
     build_and_push agent
