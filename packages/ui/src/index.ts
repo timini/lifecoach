@@ -6,11 +6,12 @@ export {
   type AccountMenuUser,
 } from './components/account-menu';
 export { AuthPrompt, type AuthPromptProps } from './components/auth-prompt';
-export { Avatar, AvatarFallback, AvatarImage } from './components/avatar';
+export { Avatar, AvatarFallback, AvatarImage } from './atoms/avatar';
+export { Badge, type BadgeProps, badgeVariants } from './atoms/badge';
 export { Bubble, type BubbleProps } from './components/bubble';
-export { Button, type ButtonProps, buttonVariants } from './components/button';
+export { Button, type ButtonProps, buttonVariants } from './atoms/button';
 export { ChatShell, type ChatShellProps } from './components/chat-shell';
-export { Checkbox } from './components/checkbox';
+export { Checkbox } from './atoms/checkbox';
 export { ChoicePrompt, type ChoicePromptProps } from './components/choice-prompt';
 export {
   ConnectionRow,
@@ -35,10 +36,14 @@ export {
   type GoalLogProps,
   type GoalLogStatus,
 } from './components/goal-log';
-export { Input, type InputProps } from './components/input';
+export { IconButton, type IconButtonProps, iconButtonVariants } from './atoms/icon-button';
+export { Input, type InputProps } from './atoms/input';
+export { Label, type LabelProps } from './atoms/label';
 export { LocationBadge, type LocationBadgeProps } from './components/location-badge';
 export { Markdown, type MarkdownProps } from './components/markdown';
-export { RadioGroup, RadioGroupItem } from './components/radio-group';
+export { RadioGroup, RadioGroupItem } from './atoms/radio-group';
+export { Spinner, type SpinnerProps, spinnerVariants } from './atoms/spinner';
+export { Text, type TextProps, textVariants } from './atoms/text';
 export {
   type SessionItem,
   SessionsDrawer,
