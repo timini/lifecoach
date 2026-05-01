@@ -653,17 +653,24 @@ export function ChatWindow() {
     .uiAffordances.map((a) => a.kind) as AccountMenuAffordance[];
 
   const header = (
-    <>
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <SessionsDrawerTrigger
-            onOpen={() => {
-              setDrawerOpen(true);
-              void refreshSessions();
-            }}
-          />
-          <h1 className="text-2xl font-semibold tracking-tight">Lifecoach</h1>
-        </div>
+    <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center gap-2">
+        <SessionsDrawerTrigger
+          onOpen={() => {
+            setDrawerOpen(true);
+            void refreshSessions();
+          }}
+        />
+        <h1 className="text-2xl font-semibold tracking-tight">Lifecoach</h1>
+      </div>
+      <div className="flex items-center gap-2">
+        <LocationBadge
+          shared={location !== null}
+          requested={locationRequested}
+          onShare={() => {
+            void shareLocation();
+          }}
+        />
         <AccountMenu
           state={userState}
           affordances={affordances}
@@ -685,16 +692,7 @@ export function ChatWindow() {
           onConnectWorkspace={() => void handleConnectWorkspace()}
         />
       </div>
-      <div className="flex items-center justify-end">
-        <LocationBadge
-          shared={location !== null}
-          requested={locationRequested}
-          onShare={() => {
-            void shareLocation();
-          }}
-        />
-      </div>
-    </>
+    </div>
   );
 
   const starterPrompts = [
