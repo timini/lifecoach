@@ -35,6 +35,9 @@ jobs:
       - name: Guard — no IP-based geolocation
         run: just guard-no-ip-geolocation
 
+      - name: Guard — every UI tier component has a story
+        run: node scripts/check-stories.mjs
+
       - name: Lint
         run: pnpm lint:ci
 

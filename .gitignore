@@ -6,6 +6,7 @@ build
 .next
 .turbo
 coverage
+storybook-static
 *.tsbuildinfo
 
 .env

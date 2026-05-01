@@ -25,6 +25,17 @@ dev-web:
 dev-agent:
     pnpm --filter @lifecoach/agent dev
 
+dev-ui-book:
+    pnpm --filter @lifecoach/ui-book dev
+
+# Storybook for the design system. Stories live in packages/ui/src/{atoms,
+# molecules,organisms,templates}/; the app itself is just a Storybook host.
+storybook:
+    pnpm --filter @lifecoach/ui-book storybook
+
+storybook-build:
+    pnpm --filter @lifecoach/ui-book build-storybook
+
 # --- Quality ---------------------------------------------------------------
 
 lint:
