@@ -62,6 +62,12 @@ ensure_prereq_infra() {
   # The agent's secret_env references GWS_OAUTH_CLIENT_SECRET — the secret
   # (with a version) and its IAM grant must exist before the Cloud Run
   # revision update or the revision fails to start.
+  #
+  # We also target the two cloud-run runtime SAs so any pending `moved`
+  # blocks on them play through this targeted apply. Without this,
+  # Terraform 1.9 errors with "Moved resource instances excluded by
+  # targeting" because the module's moved-block instances aren't covered
+  # by the other -target entries.
   log "Ensuring prereq infra: APIs, Artifact Registry, Firebase Auth, Workspace OAuth secret"
   (
     cd "${ENV_DIR}"
@@ -69,7 +75,9 @@ ensure_prereq_infra() {
       -target=module.apis \
       -target=module.artifact_registry \
       -target=module.firebase_auth \
-      -target=module.gws_oauth_secret
+      -target=module.gws_oauth_secret \
+      -target=module.agent.google_service_account.runtime \
+      -target=module.web.google_service_account.runtime
   )
 }
 
