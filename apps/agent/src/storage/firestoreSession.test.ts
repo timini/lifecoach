@@ -23,6 +23,11 @@ function mkFirestore(): FirestoreLike & { _docs: Map<string, unknown> } {
         async set(value: unknown) {
           docs.set(path, value);
         },
+        async update(value: unknown) {
+          const prev = (docs.get(path) as Record<string, unknown> | undefined) ?? {};
+          const patch = value as Record<string, unknown>;
+          docs.set(path, { ...prev, ...patch });
+        },
         async delete() {
           docs.delete(path);
         },

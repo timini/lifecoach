@@ -32,6 +32,7 @@ import { injectRecoveryEvents } from '../chat/emptyTurnGuard.js';
 export interface FirestoreDocRef {
   get(): Promise<{ exists: boolean; data(): unknown }>;
   set(value: unknown): Promise<unknown>;
+  update(value: unknown): Promise<unknown>;
   delete(): Promise<unknown>;
 }
 
@@ -152,6 +153,22 @@ export function createFirestoreSessionService(deps: {
   firestore: FirestoreLike;
 }): FirestoreSessionService {
   return new FirestoreSessionService(deps.firestore);
+}
+
+export async function saveSessionSummary(deps: {
+  firestore: FirestoreLike;
+  appName: string;
+  userId: string;
+  sessionId: string;
+  summary: string;
+  summaryGeneratedAt: number;
+}): Promise<void> {
+  await deps.firestore.doc(sessionPath(deps.appName, deps.userId, deps.sessionId)).update({
+    state: {
+      summary: deps.summary,
+      summaryGeneratedAt: deps.summaryGeneratedAt,
+    },
+  });
 }
 
 export type { FirestoreSessionService };

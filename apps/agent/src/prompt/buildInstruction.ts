@@ -40,6 +40,8 @@ export interface InstructionContext {
   nearbyPlaces?: NearbyPlace[];
   /** Relevant long-term memories retrieved silently at session start. */
   memories?: Memory[];
+  yesterdaySummary?: string | null;
+  weekSummary?: string | null;
   /**
    * Per-turn nudge directive driven by UsageStateMachine. 'signup' is for
    * heavy anonymous users; 'pro' is for heavy signed-in free users. Absent
@@ -521,6 +523,8 @@ export function buildInstruction(ctx: InstructionContext): string {
     // to use, and the cheat-sheet would be noise.
     ctx.userState === 'workspace_connected' ? WORKSPACE_CHEATSHEET : '',
     formatTime(ctx),
+    ctx.yesterdaySummary ? `YESTERDAY: ${ctx.yesterdaySummary}` : '',
+    ctx.weekSummary ? `WEEK: ${ctx.weekSummary}` : '',
     formatDayPhase(ctx),
     formatLocation(ctx),
     formatWeather(ctx),

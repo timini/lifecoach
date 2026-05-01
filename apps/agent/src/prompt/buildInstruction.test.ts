@@ -95,6 +95,16 @@ describe('buildInstruction', () => {
     expect(s).toMatch(/saving progress/i);
   });
 
+  it('renders YESTERDAY and WEEK blocks when summaries exist', () => {
+    const s = buildInstruction({
+      ...BASE,
+      yesterdaySummary: 'Yesterday was heavy but productive.',
+      weekSummary: 'This week showed better sleep and steadier routines.',
+    });
+    expect(s).toMatch(/YESTERDAY: Yesterday was heavy but productive\./);
+    expect(s).toMatch(/WEEK: This week showed better sleep and steadier routines\./);
+  });
+
   it('does NOT hallucinate a city when location is null (no IP fallback)', () => {
     const s = buildInstruction({ ...BASE, location: null, timezone: null });
     // Must explicitly flag location as unknown and tell the coach to not guess.

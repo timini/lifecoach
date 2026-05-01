@@ -21,6 +21,7 @@ import type { CalendarDensityClient } from './context/calendarDensity.js';
 import type { HolidaysClient } from './context/holidays.js';
 import type { MemoryClient } from './context/memory.js';
 import type { PlacesClient } from './context/places.js';
+import { getOrGenerateSummary, getWeeklySummary } from './context/sessionSummary.js';
 import type { Coord, WeatherClient } from './context/weather.js';
 import type { WorkspaceOAuthClient } from './oauth/workspaceClient.js';
 import { getEnabledPractices } from './practices/index.js';
@@ -89,6 +90,13 @@ export interface SessionReader {
    * this (older / test fakes).
    */
   listSessions?(params: { appName: string; userId: string }): Promise<{ sessions: Session[] }>;
+  saveSummary?(params: {
+    appName: string;
+    userId: string;
+    sessionId: string;
+    summary: string;
+    summaryGeneratedAt: number;
+  }): Promise<void>;
 }
 
 export interface CreateAppDeps {
@@ -613,6 +621,26 @@ export function createApp(deps: CreateAppDeps): Express {
     }).policy();
 
     const hasInteractedToday = sessionHasUserInteraction(existingSession ?? null);
+    const todayLocal = new Intl.DateTimeFormat('en-CA', { timeZone: timezone ?? 'UTC' }).format(
+      now(),
+    );
+    const yesterdayLocal = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone ?? 'UTC',
+    }).format(new Date(new Date(`${todayLocal}T00:00:00.000Z`).getTime() - 24 * 60 * 60 * 1000));
+    const summaryStore = deps.sessionReader
+      ? {
+          appName: deps.sessionReader.appName,
+          getSession: deps.sessionReader.getSession.bind(deps.sessionReader),
+          listSessions: deps.sessionReader.listSessions?.bind(deps.sessionReader),
+          saveSummary: deps.sessionReader.saveSummary?.bind(deps.sessionReader),
+        }
+      : null;
+    const yesterdaySummaryObj = summaryStore
+      ? await getOrGenerateSummary(summaryStore, effectiveUserId, yesterdayLocal).catch(() => null)
+      : null;
+    const weekSummary = summaryStore
+      ? await getWeeklySummary(summaryStore, effectiveUserId, todayLocal).catch(() => null)
+      : null;
 
     const instructionCtx: InstructionContext = {
       now: now(),
@@ -629,6 +657,8 @@ export function createApp(deps: CreateAppDeps): Express {
       memories,
       nudgeMode: usagePolicy.nudgeMode,
       hasInteractedToday,
+      yesterdaySummary: yesterdaySummaryObj?.summary ?? null,
+      weekSummary,
     };
 
     res.setHeader('Content-Type', 'text/event-stream');
@@ -838,6 +868,8 @@ export function createApp(deps: CreateAppDeps): Express {
           tomorrowEventCount: calendarDensity?.tomorrow.count ?? null,
           hasProfile: userProfile !== undefined,
           nearbyPlacesCount: nearbyPlaces?.length ?? 0,
+          hasYesterdaySummary: Boolean(yesterdaySummaryObj?.summary),
+          hasWeekSummary: Boolean(weekSummary),
           memoriesCount: memories?.length ?? 0,
           recentGoalCount: recentGoalUpdates?.length ?? 0,
           toolCount: toolInvocations.length,
@@ -878,7 +910,7 @@ async function main(): Promise<void> {
     { createWorkspaceTokensStore },
     { createUserMetaStore },
     { createWorkspaceOAuthClient, createRealWorkspaceOAuthClient },
-    { createFirestoreSessionService },
+    { createFirestoreSessionService, saveSessionSummary },
     { createUpdateUserProfileTool },
     { createLogGoalUpdateTool },
     { createAskSingleChoiceTool, createAskMultipleChoiceTool },
@@ -1078,6 +1110,7 @@ async function main(): Promise<void> {
       appName: 'lifecoach',
       getSession: (p) => sessionService.getSession(p),
       listSessions: (p) => sessionService.listSessions(p),
+      saveSummary: (p) => saveSessionSummary({ firestore, ...p }),
     },
     verifyToken,
     requireAuth: process.env.REQUIRE_AUTH === 'true',
