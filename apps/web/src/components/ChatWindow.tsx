@@ -653,17 +653,24 @@ export function ChatWindow() {
     .uiAffordances.map((a) => a.kind) as AccountMenuAffordance[];
 
   const header = (
-    <>
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <SessionsDrawerTrigger
-            onOpen={() => {
-              setDrawerOpen(true);
-              void refreshSessions();
-            }}
-          />
-          <h1 className="text-lg font-semibold">Lifecoach</h1>
-        </div>
+    <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center gap-2">
+        <SessionsDrawerTrigger
+          onOpen={() => {
+            setDrawerOpen(true);
+            void refreshSessions();
+          }}
+        />
+        <h1 className="text-2xl font-semibold tracking-tight">Lifecoach</h1>
+      </div>
+      <div className="flex items-center gap-2">
+        <LocationBadge
+          shared={location !== null}
+          requested={locationRequested}
+          onShare={() => {
+            void shareLocation();
+          }}
+        />
         <AccountMenu
           state={userState}
           affordances={affordances}
@@ -685,17 +692,14 @@ export function ChatWindow() {
           onConnectWorkspace={() => void handleConnectWorkspace()}
         />
       </div>
-      <div className="flex items-center justify-end">
-        <LocationBadge
-          shared={location !== null}
-          requested={locationRequested}
-          onShare={() => {
-            void shareLocation();
-          }}
-        />
-      </div>
-    </>
+    </div>
   );
+
+  const starterPrompts = [
+    'I need help grounding myself today.',
+    "Let's map out a fresh vision for my week.",
+    'Give me a space to untangle my thoughts.',
+  ];
 
   const footer =
     viewMode === 'past' ? (
@@ -712,7 +716,7 @@ export function ChatWindow() {
       </div>
     ) : (
       <form
-        className="flex gap-2"
+        className="rounded-full border border-border/70 bg-background/70 p-1.5 shadow-sm backdrop-blur-md flex gap-2"
         onSubmit={(e) => {
           e.preventDefault();
           void sendText(input);
@@ -725,7 +729,7 @@ export function ChatWindow() {
           disabled={busy}
           className="flex-1"
         />
-        <Button type="submit" disabled={busy || !input.trim()} size="lg">
+        <Button type="submit" disabled={busy || !input.trim()} size="lg" className="rounded-full">
           Send
         </Button>
       </form>
@@ -751,8 +755,21 @@ export function ChatWindow() {
         hidden
       />
       {messages.length === 0 && (
-        <div className="text-sm text-muted-foreground">
-          Say hi to get started. The coach is warming up.
+        <div className="space-y-3 text-sm text-muted-foreground">
+          <p>Take a breath — we can start wherever you are.</p>
+          <div className="flex flex-wrap gap-2">
+            {starterPrompts.map((prompt) => (
+              <button
+                key={prompt}
+                type="button"
+                className="rounded-full border border-border/70 bg-white/60 px-4 py-2 text-sm text-foreground transition hover:border-accent/70 hover:bg-white/85"
+                onClick={() => void sendText(prompt)}
+                disabled={busy}
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
         </div>
       )}
       {messages.map((m) => {
@@ -778,8 +795,11 @@ export function ChatWindow() {
         );
       })}
       {busy && lastAssistantHasNoContent(messages) && (
-        <div className="text-sm italic text-muted-foreground">
-          {retryAttempt > 0 ? `retrying… (${retryAttempt})` : 'thinking…'}
+        <div className="flex items-center gap-2 text-sm italic text-muted-foreground">
+          <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-accent/70" />
+          {retryAttempt > 0
+            ? `finding our flow again… (${retryAttempt})`
+            : 'breathing into a response…'}
         </div>
       )}
       <div ref={endRef} />

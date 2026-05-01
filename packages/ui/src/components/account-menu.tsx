@@ -137,8 +137,8 @@ export function AccountMenu({
           <AvatarFallback>{initials(user)}</AvatarFallback>
         </Avatar>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-64">
-        <div className="flex items-center gap-3 px-2 py-2">
+      <DropdownMenuContent align="end" className="w-72">
+        <div className="flex items-center gap-3 py-1">
           <Avatar className="h-10 w-10">
             {user.photoURL ? <AvatarImage src={user.photoURL} alt="" /> : null}
             <AvatarFallback>{initials(user)}</AvatarFallback>
@@ -150,7 +150,7 @@ export function AccountMenu({
             </span>
           </div>
         </div>
-        <div className="px-2 pb-2">
+        <div className="pb-2">
           <span
             className={cn(
               'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide',

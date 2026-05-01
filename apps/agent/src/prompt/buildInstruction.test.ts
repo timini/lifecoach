@@ -12,7 +12,7 @@ const BASE: InstructionContext = {
 describe('buildInstruction', () => {
   it('always includes the persona block', () => {
     const s = buildInstruction(BASE);
-    expect(s).toMatch(/warm, supportive life coach/i);
+    expect(s).toMatch(/emotionally intelligent coaching guide/i);
   });
 
   it('lists not-yet-enabled practices in AVAILABLE_PRACTICES (so the agent can offer)', () => {
