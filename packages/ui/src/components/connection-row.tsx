@@ -28,7 +28,7 @@ export function ConnectionRow({
   action,
 }: ConnectionRowProps) {
   return (
-    <div className="flex items-start gap-3 rounded-[var(--radius-control)] border border-border bg-muted/40 p-3">
+    <div className="flex items-start gap-3 rounded-[var(--radius-container)] border border-border bg-muted/40 p-3">
       <div className="mt-0.5 flex h-6 w-6 items-center justify-center text-muted-foreground">
         {icon}
       </div>

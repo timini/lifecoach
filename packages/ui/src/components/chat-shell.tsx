@@ -20,7 +20,9 @@ export function ChatShell({ header, footer, children, className }: ChatShellProp
         {header}
       </header>
       <section className="flex flex-1 flex-col gap-4 overflow-y-auto py-2">{children}</section>
-      <footer>{footer}</footer>
+      <footer className="sticky bottom-0 z-20 -mx-4 border-t border-border/60 bg-background/85 px-4 py-3 backdrop-blur-md supports-[backdrop-filter]:bg-background/75">
+        {footer}
+      </footer>
     </main>
   );
 }

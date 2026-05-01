@@ -17,6 +17,7 @@ import {
   ToolCallBadge,
   UpgradePrompt,
   WorkspacePrompt,
+  cn,
 } from '@lifecoach/ui';
 import { Renderer, library as openUILibrary } from '@lifecoach/ui/openui';
 import { UserStateMachine } from '@lifecoach/user-state';
@@ -685,15 +686,6 @@ export function ChatWindow() {
           onConnectWorkspace={() => void handleConnectWorkspace()}
         />
       </div>
-      <div className="flex items-center justify-end">
-        <LocationBadge
-          shared={location !== null}
-          requested={locationRequested}
-          onShare={() => {
-            void shareLocation();
-          }}
-        />
-      </div>
     </>
   );
 
@@ -717,24 +709,38 @@ export function ChatWindow() {
         </Button>
       </div>
     ) : (
-      <form
-        className="rounded-full border border-border/70 bg-background/70 p-1.5 shadow-sm backdrop-blur-md flex gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void sendText(input);
-        }}
-      >
-        <Input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Type a message…"
-          disabled={busy}
-          className="flex-1"
+      <div className="flex items-center justify-between gap-3">
+        <LocationBadge
+          shared={location !== null}
+          requested={locationRequested}
+          onShare={() => {
+            void shareLocation();
+          }}
         />
-        <Button type="submit" disabled={busy || !input.trim()} size="lg" className="rounded-full">
-          Send
-        </Button>
-      </form>
+        <form
+          className="flex flex-1 gap-2 rounded-full border border-border/70 bg-background/75 p-1.5 shadow-sm backdrop-blur-md"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void sendText(input);
+          }}
+        >
+          <Input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Type a message…"
+            disabled={busy}
+            className="flex-1"
+          />
+          <Button
+            type="submit"
+            disabled={busy || !input.trim()}
+            size="lg"
+            className={cn(!input.trim() ? 'bg-accent/45 text-accent-foreground' : 'bg-accent')}
+          >
+            Send
+          </Button>
+        </form>
+      </div>
     );
 
   return (
@@ -805,6 +811,7 @@ export function ChatWindow() {
         </div>
       )}
       <div ref={endRef} />
+      <div className="h-24" aria-hidden="true" />
     </ChatShell>
   );
 }
