@@ -58,7 +58,7 @@ export function SessionsDrawer({
       <aside
         aria-hidden={!open}
         className={cn(
-          'fixed inset-y-0 left-0 z-40 flex w-72 max-w-[85vw] flex-col border-r border-border bg-background shadow-xl transition-transform duration-200 ease-out',
+          'fixed inset-y-0 left-0 z-40 flex w-72 max-w-[85vw] flex-col border-r border-border/90 bg-background shadow-[1px_0_10px_rgba(47,59,52,0.08)] transition-transform duration-200 ease-out',
           open ? 'translate-x-0' : '-translate-x-full',
         )}
       >

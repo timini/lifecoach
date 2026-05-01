@@ -17,6 +17,7 @@ import {
   ToolCallBadge,
   UpgradePrompt,
   WorkspacePrompt,
+  cn,
 } from '@lifecoach/ui';
 import { Renderer, library as openUILibrary } from '@lifecoach/ui/openui';
 import { UserStateMachine } from '@lifecoach/user-state';
@@ -685,15 +686,6 @@ export function ChatWindow() {
           onConnectWorkspace={() => void handleConnectWorkspace()}
         />
       </div>
-      <div className="flex items-center justify-end">
-        <LocationBadge
-          shared={location !== null}
-          requested={locationRequested}
-          onShare={() => {
-            void shareLocation();
-          }}
-        />
-      </div>
     </>
   );
 
@@ -718,7 +710,7 @@ export function ChatWindow() {
       </div>
     ) : (
       <form
-        className="rounded-full border border-border/70 bg-background/70 p-1.5 shadow-sm backdrop-blur-md flex gap-2"
+        className="flex items-center gap-2 rounded-full border border-border/70 bg-background/70 p-1.5 shadow-sm backdrop-blur-md"
         onSubmit={(e) => {
           e.preventDefault();
           void sendText(input);
@@ -731,7 +723,21 @@ export function ChatWindow() {
           disabled={busy}
           className="flex-1"
         />
-        <Button type="submit" disabled={busy || !input.trim()} size="lg" className="rounded-full">
+        <LocationBadge
+          shared={location !== null}
+          requested={locationRequested}
+          onShare={() => {
+            void shareLocation();
+          }}
+        />
+        <Button
+          type="submit"
+          disabled={busy || !input.trim()}
+          size="lg"
+          className={cn(
+            !input.trim() || busy ? '' : 'bg-accent text-accent-foreground hover:bg-accent/95',
+          )}
+        >
           Send
         </Button>
       </form>

@@ -205,7 +205,7 @@ function KeyedRow({
     );
   }
   return (
-    <div className="rounded-[var(--radius-control)] border border-border bg-muted/20 p-2">
+    <div className="mt-3 first:mt-0">
       <div className="flex w-full items-center gap-1">
         <button
           type="button"
@@ -231,7 +231,7 @@ function KeyedRow({
         ) : null}
       </div>
       {open ? (
-        <div className="mt-2 pl-3">
+        <div className="mt-2 border-l border-border/60 pl-3">
           <NodeRenderer path={path} node={child} onChange={onChange} readOnly={readOnly} />
         </div>
       ) : null}
@@ -266,7 +266,7 @@ function LeafRow({
           !readOnly && 'hover:border-border hover:bg-muted/40',
         )}
       >
-        {value === null ? '(empty — click to edit)' : formatLeafValue(value)}
+        {value === null ? 'Empty' : formatLeafValue(value)}
       </button>
     );
   }
