@@ -21,6 +21,7 @@ import {
 import { Renderer, library as openUILibrary } from '@lifecoach/ui/openui';
 import { UserStateMachine } from '@lifecoach/user-state';
 import type { User } from 'firebase/auth';
+import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { eventsToMessages } from '../lib/eventHistory';
 import {
@@ -58,6 +59,7 @@ function messageId(): string {
 }
 
 export function ChatWindow() {
+  const t = useTranslations('chat');
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -695,11 +697,7 @@ export function ChatWindow() {
     </div>
   );
 
-  const starterPrompts = [
-    'I need help grounding myself today.',
-    "Let's map out a fresh vision for my week.",
-    'Give me a space to untangle my thoughts.',
-  ];
+  const starterPrompts = t.raw('starters') as string[];
 
   const footer =
     viewMode === 'past' ? (
@@ -725,7 +723,7 @@ export function ChatWindow() {
         <Input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Type a message…"
+          placeholder={t('placeholder')}
           disabled={busy}
           className="flex-1"
         />
@@ -797,9 +795,7 @@ export function ChatWindow() {
       {busy && lastAssistantHasNoContent(messages) && (
         <div className="flex items-center gap-2 text-sm italic text-muted-foreground">
           <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-accent/70" />
-          {retryAttempt > 0
-            ? `finding our flow again… (${retryAttempt})`
-            : 'breathing into a response…'}
+          {retryAttempt > 0 ? `${t('retry')}… (${retryAttempt})` : t('breathing')}
         </div>
       )}
       <div ref={endRef} />

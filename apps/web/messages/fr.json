@@ -1,0 +1,41 @@
+{
+  "chat": {
+    "greeting": "Bonjour — qu'avez-vous en tête aujourd'hui ?",
+    "title": "Lifecoach",
+    "starters": [
+      "Revenir sur hier",
+      "Aidez-moi à imaginer un matin plus calme",
+      "Quelle petite chose puis-je faire maintenant ?"
+    ],
+    "retry": "Réessayer",
+    "breathing": "Respirez lentement pendant que je réfléchis…",
+    "send": "Envoyer",
+    "placeholder": "Écrivez. La meilleure manière de vivre est de prendre soin des petites choses."
+  },
+  "settings": {
+    "title": "Vos réglages",
+    "subtitle": "Connexions, profil que le coach a construit, et votre journal d'objectifs.",
+    "back": "Retour au chat",
+    "tabs": {
+      "connections": "Connexions",
+      "practices": "Pratiques",
+      "profile": "Profil",
+      "goals": "Journal d'objectifs",
+      "account": "Compte"
+    },
+    "connectionStatus": {
+      "linked": "Lié",
+      "notLinked": "Non lié",
+      "verified": "Vérifié",
+      "pendingVerification": "Vérification en attente"
+    },
+    "language": {
+      "label": "Langue",
+      "description": "Choisissez la langue dans laquelle le coach vous répond.",
+      "en": "Anglais",
+      "fr": "Français"
+    },
+    "savedShort": "enregistré",
+    "savingShort": "enregistrement…"
+  }
+}

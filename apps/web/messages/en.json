@@ -1,0 +1,41 @@
+{
+  "chat": {
+    "greeting": "Hello — what's on your mind today?",
+    "title": "Lifecoach",
+    "starters": [
+      "Reflect on yesterday",
+      "Help me plan a calmer morning routine",
+      "What's one tiny thing I can do right now?"
+    ],
+    "retry": "Retry",
+    "breathing": "Take a slow breath while I think…",
+    "send": "Send",
+    "placeholder": "Write something. The way to live is to look after the small things."
+  },
+  "settings": {
+    "title": "Your settings",
+    "subtitle": "Connections, profile the coach has built, and your goal log.",
+    "back": "Back to chat",
+    "tabs": {
+      "connections": "Connections",
+      "practices": "Practices",
+      "profile": "Profile",
+      "goals": "Goal log",
+      "account": "Account"
+    },
+    "connectionStatus": {
+      "linked": "Linked",
+      "notLinked": "Not linked",
+      "verified": "Verified",
+      "pendingVerification": "Pending verification"
+    },
+    "language": {
+      "label": "Language",
+      "description": "Choose the language the coach replies in.",
+      "en": "English",
+      "fr": "French"
+    },
+    "savedShort": "saved",
+    "savingShort": "saving…"
+  }
+}
