@@ -10,6 +10,22 @@ const BASE: InstructionContext = {
 };
 
 describe('buildInstruction', () => {
+  it('renders yesterday and week summary blocks when present', () => {
+    const s = buildInstruction({
+      ...BASE,
+      yesterdaySummary: 'Yesterday was heavy but productive.',
+      weekSummary: 'This week showed better consistency and sleep.',
+    });
+    expect(s).toMatch(/YESTERDAY: Yesterday was heavy but productive\./);
+    expect(s).toMatch(/WEEK: This week showed better consistency and sleep\./);
+  });
+
+  it('omits yesterday and week summary blocks when missing', () => {
+    const s = buildInstruction(BASE);
+    expect(s).not.toMatch(/YESTERDAY:/);
+    expect(s).not.toMatch(/WEEK:/);
+  });
+
   it('always includes the persona block', () => {
     const s = buildInstruction(BASE);
     expect(s).toMatch(/emotionally intelligent coaching guide/i);

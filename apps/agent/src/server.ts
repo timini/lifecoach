@@ -21,6 +21,7 @@ import type { CalendarDensityClient } from './context/calendarDensity.js';
 import type { HolidaysClient } from './context/holidays.js';
 import type { MemoryClient } from './context/memory.js';
 import type { PlacesClient } from './context/places.js';
+import { buildWeekSummary, extractUserLines, summarizeLines } from './context/sessionSummary.js';
 import type { Coord, WeatherClient } from './context/weather.js';
 import type { WorkspaceOAuthClient } from './oauth/workspaceClient.js';
 import { getEnabledPractices } from './practices/index.js';
@@ -613,6 +614,30 @@ export function createApp(deps: CreateAppDeps): Express {
 
     const hasInteractedToday = sessionHasUserInteraction(existingSession ?? null);
 
+    let yesterdaySummary: string | null = null;
+    let weekSummary: string | null = null;
+    if (deps.sessionReader && timezone) {
+      const dayIds: string[] = [];
+      for (let i = 1; i <= 7; i++) {
+        const d = new Date(now().getTime() - i * 24 * 60 * 60 * 1000);
+        dayIds.push(new Intl.DateTimeFormat('en-CA', { timeZone: timezone }).format(d));
+      }
+      const sessions = await Promise.all(
+        dayIds.map((id) =>
+          deps
+            .sessionReader!.getSession({
+              appName: deps.sessionReader!.appName,
+              userId: effectiveUserId,
+              sessionId: id,
+            })
+            .catch(() => null),
+        ),
+      );
+      const daySummaries = sessions.map((s) => summarizeLines(extractUserLines(s?.events)));
+      yesterdaySummary = daySummaries[0] ?? null;
+      weekSummary = buildWeekSummary(daySummaries.filter((x): x is string => Boolean(x)));
+    }
+
     const instructionCtx: InstructionContext = {
       now: now(),
       timezone: timezone ?? null,
@@ -628,6 +653,8 @@ export function createApp(deps: CreateAppDeps): Express {
       memories,
       nudgeMode: usagePolicy.nudgeMode,
       hasInteractedToday,
+      yesterdaySummary,
+      weekSummary,
     };
 
     res.setHeader('Content-Type', 'text/event-stream');
@@ -834,6 +861,8 @@ export function createApp(deps: CreateAppDeps): Express {
           usageState: usagePolicy.state,
           model: usagePolicy.model,
           nudgeMode: usagePolicy.nudgeMode,
+          hasYesterdaySummary: Boolean(yesterdaySummary),
+          hasWeekSummary: Boolean(weekSummary),
           // Per-phase timings (ms). Populated as we go; missing keys mean
           // the phase short-circuited. totalMs is the wall-clock from /chat
           // entry to the finally block.

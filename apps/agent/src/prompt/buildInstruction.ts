@@ -52,6 +52,8 @@ export interface InstructionContext {
    * The synthetic `__session_start__` kickoff doesn't count.
    */
   hasInteractedToday?: boolean;
+  yesterdaySummary?: string | null;
+  weekSummary?: string | null;
 }
 
 const PERSONA_HEADER =
@@ -455,6 +457,13 @@ ${lines}
 If a moment naturally fits one of these, ask the user (single-choice yes/no via ask_single_choice_question) whether they'd like to enable it. On "yes", call update_user_profile with path="practices.<id>.enabled" value="true" and continue normally. Don't pitch unprompted; once per session at most.`;
 }
 
+function formatSessionSummaries(ctx: InstructionContext): string[] {
+  const out: string[] = [];
+  if (ctx.yesterdaySummary) out.push(`YESTERDAY: ${ctx.yesterdaySummary}`);
+  if (ctx.weekSummary) out.push(`WEEK: ${ctx.weekSummary}`);
+  return out;
+}
+
 function formatDayPhase(ctx: InstructionContext): string {
   const tz = ctx.timezone ?? 'UTC';
   // Pull the local hour and YYYY-MM-DD from the same Intl pipeline so the
@@ -521,6 +530,7 @@ export function buildInstruction(ctx: InstructionContext): string {
     // to use, and the cheat-sheet would be noise.
     ctx.userState === 'workspace_connected' ? WORKSPACE_CHEATSHEET : '',
     formatTime(ctx),
+    ...formatSessionSummaries(ctx),
     formatDayPhase(ctx),
     formatLocation(ctx),
     formatWeather(ctx),
