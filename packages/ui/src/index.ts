@@ -4,13 +4,13 @@ export {
   type AccountMenuProps,
   type AccountMenuState,
   type AccountMenuUser,
-} from './components/account-menu';
+} from './organisms/account-menu';
 export { AuthPrompt, type AuthPromptProps } from './molecules/auth-prompt';
 export { Avatar, AvatarFallback, AvatarImage } from './atoms/avatar';
 export { Badge, type BadgeProps, badgeVariants } from './atoms/badge';
 export { Bubble, type BubbleProps } from './molecules/bubble';
 export { Button, type ButtonProps, buttonVariants } from './atoms/button';
-export { ChatShell, type ChatShellProps } from './components/chat-shell';
+export { ChatShell, type ChatShellProps } from './organisms/chat-shell';
 export { Checkbox } from './atoms/checkbox';
 export { ChoicePrompt, type ChoicePromptProps } from './molecules/choice-prompt';
 export {
@@ -29,19 +29,19 @@ export {
   DropdownMenuPortal,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from './components/dropdown-menu';
+} from './organisms/dropdown-menu';
 export {
   GoalLog,
   type GoalLogEntry,
   type GoalLogProps,
   type GoalLogStatus,
-} from './components/goal-log';
+} from './organisms/goal-log';
 export { IconButton, type IconButtonProps, iconButtonVariants } from './atoms/icon-button';
 export { Input, type InputProps } from './atoms/input';
 export { Label, type LabelProps } from './atoms/label';
 export { FormField, type FormFieldProps } from './molecules/form-field';
 export { LocationBadge, type LocationBadgeProps } from './molecules/location-badge';
-export { Markdown, type MarkdownProps } from './components/markdown';
+export { Markdown, type MarkdownProps } from './organisms/markdown';
 export { RadioGroup, RadioGroupItem } from './atoms/radio-group';
 export { Spinner, type SpinnerProps, spinnerVariants } from './atoms/spinner';
 export {
@@ -54,11 +54,16 @@ export {
   SessionsDrawer,
   type SessionsDrawerProps,
   SessionsDrawerTrigger,
-} from './components/sessions-drawer';
+} from './organisms/sessions-drawer';
 export { ToolCallBadge, type ToolCallBadgeProps } from './molecules/tool-call-badge';
 export { UpgradePrompt, type UpgradePromptProps } from './molecules/upgrade-prompt';
 export { WorkspacePrompt, type WorkspacePromptProps } from './molecules/workspace-prompt';
-export { YamlTree, type YamlTreeProps } from './components/yaml-tree';
+export { YamlTree, type YamlTreeProps } from './organisms/yaml-tree';
+export { ChatPageTemplate, type ChatPageTemplateProps } from './templates/chat-page';
+export {
+  SettingsPageTemplate,
+  type SettingsPageTemplateProps,
+} from './templates/settings-page';
 export { cn } from './lib/utils';
 export {
   type ColorToken,

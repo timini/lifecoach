@@ -13,7 +13,7 @@
 
 import { Renderer, createLibrary, defineComponent } from '@openuidev/react-lang';
 import { z } from 'zod/v4';
-import { ChoicePrompt } from '../components/choice-prompt';
+import { ChoicePrompt } from '../molecules/choice-prompt';
 
 const Picker = defineComponent({
   name: 'Picker',
