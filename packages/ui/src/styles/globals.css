@@ -38,8 +38,7 @@
   }
 
   body {
-    background-image:
-      radial-gradient(circle at 18% 22%, rgba(124, 144, 117, 0.2), transparent 46%),
+    background-image: radial-gradient(circle at 18% 22%, rgba(124, 144, 117, 0.2), transparent 46%),
       radial-gradient(circle at 82% 18%, rgba(188, 109, 90, 0.14), transparent 52%),
       radial-gradient(circle at 56% 88%, rgba(180, 196, 172, 0.22), transparent 48%);
     background-attachment: fixed;
