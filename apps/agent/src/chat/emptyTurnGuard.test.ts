@@ -90,7 +90,9 @@ describe('findEmptyTurnGaps', () => {
       toolResponse('call_workspace'),
       userText('any luck?'),
     ];
-    expect(findEmptyTurnGaps(events)).toEqual([3]);
+    // [3] = before 'any luck?' (model owed a reply to the tool result).
+    // [4] = trailing — 'any luck?' itself never got a model reply either.
+    expect(findEmptyTurnGaps(events)).toEqual([3, 4]);
   });
 
   it('flags a gap at the END of the array when the trailing turn never recovered', () => {
@@ -110,7 +112,35 @@ describe('findEmptyTurnGaps', () => {
       modelText(''),
       userText('any luck?'),
     ];
-    expect(findEmptyTurnGaps(events)).toEqual([4]);
+    // Two gaps: before the new user text (model owed a reply), and at end
+    // (the new user text itself never got a real model reply either).
+    expect(findEmptyTurnGaps(events)).toEqual([4, 5]);
+  });
+
+  it('flags the silent-empty-thought-turn pattern (no tool, just an empty model event)', () => {
+    // The thought-only-empty-text Gemini failure mode that poisons sessions:
+    // user text → model emits empty text + thoughtSignature only → user text
+    // → model emits empty text → … neither of the prior guards caught it.
+    const events = [
+      userText('hey 10k done!'),
+      modelText(''),
+      userText('10k done!'),
+      modelText(''),
+      userText('hello?'),
+    ];
+    expect(findEmptyTurnGaps(events)).toEqual([2, 4, 5]);
+  });
+
+  it('flags a gap when a user text gets no model reply at all (no event emitted)', () => {
+    const events = [userText('a'), userText('b'), userText('c')];
+    expect(findEmptyTurnGaps(events)).toEqual([1, 2, 3]);
+  });
+
+  it('flags a trailing gap when the last event is an unanswered user text', () => {
+    // Loaded at the start of the next turn — the previous user message was
+    // never replied to. Inject so the model sees alternating turns.
+    const events = [userText('hi'), modelText('hello'), userText('still there?')];
+    expect(findEmptyTurnGaps(events)).toEqual([3]);
   });
 
   it('finds multiple gaps across multiple poisoned turns', () => {
@@ -123,7 +153,8 @@ describe('findEmptyTurnGaps', () => {
       toolResponse('call_workspace'),
       userText('hello?'),
     ];
-    expect(findEmptyTurnGaps(events)).toEqual([3, 6]);
+    // Two interior gaps + one trailing — 'hello?' also never got a reply.
+    expect(findEmptyTurnGaps(events)).toEqual([3, 6, 7]);
   });
 });
 
@@ -143,10 +174,11 @@ describe('injectRecoveryEvents', () => {
       userText('any luck?'),
     ];
     const out = injectRecoveryEvents(events);
-    expect(out).toHaveLength(events.length + 1);
-    // Gap was at index 3; injected event sits at index 3, original [3] shifts to [4].
+    // 4 originals + 1 interior gap (before 'any luck?') + 1 trailing gap.
+    expect(out).toHaveLength(events.length + 2);
     expect((out[3].content?.parts as Array<{ text?: string }>)[0].text).toBe('Done. What next?');
     expect(out[4]).toBe(events[3]);
+    expect((out[5].content?.parts as Array<{ text?: string }>)[0].text).toBe('Done. What next?');
   });
 
   it('appends a synthetic event when the trailing turn never recovered', () => {
@@ -170,6 +202,31 @@ describe('injectRecoveryEvents', () => {
     const once = injectRecoveryEvents(events);
     const twice = injectRecoveryEvents(once);
     expect(twice).toEqual(once);
+  });
+
+  it('filters poisoned empty-text-no-tool model events out of the result', () => {
+    // The thought-only-empty-text Gemini failure mode poisons history. We
+    // replace the poisoned event with a recovery synthetic so the model
+    // never sees its own broken pattern in subsequent turns.
+    const events = [
+      userText('hey 10k done!'),
+      modelText(''),
+      userText('10k done!'),
+      modelText(''),
+      userText('hello?'),
+    ];
+    const out = injectRecoveryEvents(events);
+    // No poisoned events remain in the output.
+    expect(out.some((e) => e.author === 'lifecoach' && e.content?.role === 'model')).toBe(true);
+    expect(
+      out.every((e) => {
+        const parts = (e.content?.parts ?? []) as Array<{ text?: string; functionCall?: unknown }>;
+        if (e.content?.role !== 'model') return true;
+        return parts.some(
+          (p) => (typeof p.text === 'string' && p.text.length > 0) || p.functionCall,
+        );
+      }),
+    ).toBe(true);
   });
 
   it('does not mutate the input array', () => {
