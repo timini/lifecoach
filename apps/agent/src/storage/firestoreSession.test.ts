@@ -181,12 +181,16 @@ describe('FirestoreSessionService', () => {
       userId: 'u',
       sessionId: 's1',
     });
-    expect(session?.events).toHaveLength(5);
-    // Recovery event was spliced just before the second user message.
+    // 4 originals + 2 recoveries: one before the second user message
+    // (model owed a reply to the tool result) and one trailing (the new
+    // user message itself never got a reply either).
+    expect(session?.events).toHaveLength(6);
     const recovered = session?.events?.[3];
     expect(recovered?.author).toBe('lifecoach');
     expect(recovered?.content?.role).toBe('model');
     expect((recovered?.content?.parts as Array<{ text?: string }>)?.[0]?.text).toBeTruthy();
+    const trailing = session?.events?.[5];
+    expect((trailing?.content?.parts as Array<{ text?: string }>)?.[0]?.text).toBeTruthy();
 
     // Firestore doc itself was NOT mutated — the splice is in-memory only.
     const doc = fs._docs.get(path) as { events: unknown[] };

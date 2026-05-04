@@ -52,19 +52,42 @@ function hasNonEmptyText(event: Event): boolean {
   return partsOf(event).some((p) => typeof p.text === 'string' && p.text.length > 0);
 }
 
+function hasFunctionCall(event: Event): boolean {
+  return partsOf(event).some((p) => p.functionCall !== undefined);
+}
+
 function hasFunctionResponse(event: Event): boolean {
   return partsOf(event).some((p) => p.functionResponse !== undefined);
+}
+
+/**
+ * A model event is "poisoned" when it has no visible text, no functionCall,
+ * and no functionResponse — i.e. the gemini-3-flash-preview thought-only
+ * STOP failure mode. Replaying it through history teaches the model to keep
+ * emitting empty turns; we filter these out at load time and replace them
+ * with a recovery message.
+ */
+export function isPoisonedModelEvent(event: Event): boolean {
+  if (event.content?.role !== 'model') return false;
+  if (hasNonEmptyText(event)) return false;
+  if (hasFunctionCall(event)) return false;
+  if (hasFunctionResponse(event)) return false;
+  return true;
 }
 
 /**
  * Find positions in the events array where a synthetic recovery event
  * needs to be inserted to break the silence pattern.
  *
- * The pattern we detect: a `role: user` event carrying a `functionResponse`
- * (framework-returned tool result) that is NOT followed by any model event
- * with non-empty text before either (a) the next user text message or (b)
- * the end of the array. Each such gap gets one injected recovery event,
- * positioned just before the user text message (or at the end).
+ * Two failure modes are detected:
+ *   1. A `user/functionResponse` (framework-returned tool result) not
+ *      followed by model text before the next user text or end of array.
+ *   2. A `user/text` not followed by model text before the next user text
+ *      or end of array — covers the gemini-3-flash-preview thought-only
+ *      STOP failure mode where the model emits zero (or empty-text) events.
+ *
+ * Empty-text model events and tool-call-only model events do not satisfy
+ * the "owes a reply" requirement.
  *
  * Returns the indices at which to splice in synthetic events. Positions
  * are in the ORIGINAL array; callers walking the array should account for
@@ -85,16 +108,17 @@ export function findEmptyTurnGaps(events: ReadonlyArray<Event>): number[] {
       continue;
     }
     if (role === 'user' && hasNonEmptyText(ev)) {
-      // New user message arriving while the model still owes a reply.
+      // New user message arriving while the model still owes a reply, OR
+      // a sequence of user texts with no model reply in between.
       if (pendingTextResponse) gaps.push(i);
-      pendingTextResponse = false;
+      pendingTextResponse = true;
       continue;
     }
     if (role === 'model' && hasNonEmptyText(ev)) {
       pendingTextResponse = false;
     }
-    // role=model with only functionCall, or any other shape, doesn't
-    // resolve the pending response.
+    // role=model with only functionCall, only an empty text part, or any
+    // other shape, does not resolve the pending response.
   }
   if (pendingTextResponse) gaps.push(events.length);
   return gaps;
@@ -127,13 +151,15 @@ export function makeRecoveryEvent(
 
 /**
  * Splice synthetic recovery events into a stored events array at every
- * gap detected by findEmptyTurnGaps. Returns a NEW array; the input is
- * not mutated. Idempotent: a second pass produces no further changes
- * because the injected events satisfy `hasNonEmptyText`.
+ * gap detected by findEmptyTurnGaps, AND drop poisoned model events
+ * (empty text, no functionCall) so the model doesn't see its own broken
+ * pattern in the prompt history. Returns a NEW array; the input is not
+ * mutated. Idempotent: a second pass produces no further changes because
+ * recovery events satisfy `hasNonEmptyText` and poisoned events have
+ * already been removed.
  */
 export function injectRecoveryEvents(events: ReadonlyArray<Event>): Event[] {
   const gaps = findEmptyTurnGaps(events);
-  if (gaps.length === 0) return events.slice();
   const result: Event[] = [];
   let g = 0;
   for (let i = 0; i < events.length; i++) {
@@ -142,7 +168,9 @@ export function injectRecoveryEvents(events: ReadonlyArray<Event>): Event[] {
       g++;
     }
     const ev = events[i];
-    if (ev !== undefined) result.push(ev);
+    if (ev === undefined) continue;
+    if (isPoisonedModelEvent(ev)) continue;
+    result.push(ev);
   }
   if (g < gaps.length && gaps[g] === events.length) {
     result.push(makeRecoveryEvent('Done. What next?', 'gap-end'));

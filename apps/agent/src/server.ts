@@ -763,13 +763,15 @@ export function createApp(deps: CreateAppDeps): Express {
       timings.ttfbMs = firstEventMs ?? -1;
       timings.ttftMs = firstTextMs ?? -1;
 
-      // Empty-turn guard: Gemini occasionally returns tool calls and no
-      // follow-up text. Without recovery the user sees silence, AND the
-      // empty model turn lands in history and poisons subsequent turns.
-      // Emit a synthetic text reply so (a) the user gets something
-      // useful, (b) future turns see a text-bearing model event in
-      // history.
-      if (firstTextMs === null && toolInvocations.length > 0 && !choiceShown) {
+      // Empty-turn guard: Gemini sometimes returns no follow-up text —
+      // either after a tool call or as a thought-only STOP turn from
+      // gemini-3-flash-preview where 200+ thinking tokens produce empty
+      // output. Without recovery the user sees silence AND the empty
+      // model event lands in history, teaching the model to repeat the
+      // pattern. Emit a synthetic text reply so (a) the user gets
+      // something useful, (b) future turns see a text-bearing model
+      // event in history.
+      if (firstTextMs === null && !choiceShown) {
         const recovery = pickRecoveryText(toolInvocations);
         // SSE side: send as a partial-style delta so the web parser
         // (parseSseAssistantText looks for `partial === true` text deltas)
