@@ -124,22 +124,26 @@ module "agent" {
   # LLM call against a cold instance is what blows the perceived latency.
   min_instances = 1
 
-  env = {
-    GOOGLE_GENAI_USE_VERTEXAI = "true"
-    GOOGLE_CLOUD_PROJECT      = var.project_id
-    # Gemini 3.* models are only reachable via the Vertex `global`
-    # publisher endpoint today — every regional endpoint returns 404.
-    # See apps/agent/src/agent.ts for the pinned model id.
-    GOOGLE_CLOUD_LOCATION = "global"
-    NODE_ENV              = "production"
-    FIREBASE_PROJECT_ID   = var.project_id
-    # Name follows the gcs-user-bucket module's convention so we don't have
-    # to pass the output (avoids a cycle between agent and user_bucket).
-    USER_BUCKET = "lifecoach-users-${var.environment}-${var.project_id}"
-    # Google Workspace OAuth — client ID is public; secret is mounted via
-    # Secret Manager in `secret_env` below.
-    GWS_OAUTH_CLIENT_ID = module.firebase_auth.google_client_id
-  }
+  env = merge(
+    {
+      GOOGLE_GENAI_USE_VERTEXAI = "true"
+      GOOGLE_CLOUD_PROJECT      = var.project_id
+      # Gemini 3.* models are only reachable via the Vertex `global`
+      # publisher endpoint today — every regional endpoint returns 404.
+      # See apps/agent/src/agent.ts for the pinned model id.
+      GOOGLE_CLOUD_LOCATION = "global"
+      NODE_ENV              = "production"
+      FIREBASE_PROJECT_ID   = var.project_id
+      # Name follows the gcs-user-bucket module's convention so we don't have
+      # to pass the output (avoids a cycle between agent and user_bucket).
+      USER_BUCKET = "lifecoach-users-${var.environment}-${var.project_id}"
+      # Google Workspace OAuth — client ID is public; secret is mounted via
+      # Secret Manager in `secret_env` below.
+      GWS_OAUTH_CLIENT_ID = module.firebase_auth.google_client_id
+      SENTRY_ENVIRONMENT  = var.environment
+    },
+    var.sentry_dsn != "" ? { SENTRY_DSN = var.sentry_dsn } : {},
+  )
 
   project_roles = [
     "roles/aiplatform.user",
@@ -264,4 +268,15 @@ output "github_wif_provider" {
 output "github_deployer_sa" {
   value       = module.github_wif.deployer_email
   description = "Pass to google-github-actions/auth as service_account."
+}
+
+output "sentry_dsn" {
+  value       = var.sentry_dsn
+  description = "Sentry DSN. Empty when telemetry is disabled. Read by deploy.sh / preview-deploy.sh and passed as a build-arg to the web Docker image so NEXT_PUBLIC_SENTRY_DSN is inlined at build time."
+  sensitive   = true
+}
+
+output "environment" {
+  value       = var.environment
+  description = "Used by deploy.sh to set NEXT_PUBLIC_SENTRY_ENVIRONMENT on web build-arg."
 }

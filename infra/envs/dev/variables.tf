@@ -64,3 +64,9 @@ variable "github_repo" {
   type        = string
   description = "GitHub repo (OWNER/REPO) allowed to mint deploy credentials via Workload Identity Federation."
 }
+
+variable "sentry_dsn" {
+  type        = string
+  default     = ""
+  description = "Sentry DSN used by both apps/agent (runtime SENTRY_DSN env) and apps/web (NEXT_PUBLIC_SENTRY_DSN inlined at build time). Empty disables Sentry — both SDKs no-op. DSNs are public by Sentry's design (they're shipped in the browser bundle), so this is treated as a non-secret config value rather than a Secret Manager entry."
+}
