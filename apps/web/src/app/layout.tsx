@@ -1,5 +1,6 @@
 import '@lifecoach/ui/styles.css';
 import type { ReactNode } from 'react';
+import { SentryBootstrap } from '../components/SentryBootstrap';
 
 export const metadata = {
   title: 'Lifecoach',
@@ -9,7 +10,10 @@ export const metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body className="bg-background text-foreground">{children}</body>
+      <body className="bg-background text-foreground">
+        <SentryBootstrap />
+        {children}
+      </body>
     </html>
   );
 }
