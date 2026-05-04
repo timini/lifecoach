@@ -36,6 +36,7 @@ import {
   getLocationPermissionState,
   requestBrowserLocation,
 } from '../lib/geolocation';
+import { captureChatEvent } from '../lib/sentry';
 import { sessionIdForToday } from '../lib/sessionId';
 import { type AssistantElement, type AssistantOp, parseSseBlock } from '../lib/sse';
 import { connectWorkspace, fetchWorkspaceStatus } from '../lib/workspace';
@@ -444,6 +445,17 @@ export function ChatWindow() {
         if (rehydrated && ourMessageLanded) {
           setMessages(rehydrated);
         } else {
+          // The agent stream completed but produced no visible content AND
+          // history rehydration didn't include a follow-up assistant
+          // message. This is the surface of the empty-thought-turn bug —
+          // capture context so we can correlate with agent logs.
+          captureChatEvent('chat.empty_turn_fallback_shown', {
+            sessionId,
+            uid: user?.uid ?? null,
+            lastUserText: text,
+            rehydrationHadOurMessage: Boolean(rehydrated && !ourMessageLanded),
+            historyEventCount: rehydrated?.length ?? 0,
+          });
           setMessages((prev) =>
             prev.map((m) => {
               if (m.id !== assistantId || m.role !== 'assistant') return m;
@@ -464,6 +476,11 @@ export function ChatWindow() {
     } else {
       // Exhausted retries. Show a friendly, action-oriented message
       // — never the raw "Failed to fetch" exception.
+      captureChatEvent('chat.retry_exhausted', {
+        sessionId,
+        uid: user?.uid ?? null,
+        lastUserText: text,
+      });
       setMessages((prev) =>
         prev.map((m) =>
           m.id === assistantId && m.role === 'assistant'

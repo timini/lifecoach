@@ -25,6 +25,7 @@ import type { Coord, WeatherClient } from './context/weather.js';
 import type { WorkspaceOAuthClient } from './oauth/workspaceClient.js';
 import { getEnabledPractices } from './practices/index.js';
 import type { InstructionContext, LocationCtx } from './prompt/buildInstruction.js';
+import { captureChatEvent, initSentry } from './sentry.js';
 import type { GoalUpdatesStore } from './storage/goalUpdates.js';
 import type { UserMetaStore } from './storage/userMeta.js';
 import type { UserProfileStore } from './storage/userProfile.js';
@@ -802,12 +803,24 @@ export function createApp(deps: CreateAppDeps): Express {
             tools: toolInvocations.map((t) => t.name),
           }),
         );
+        captureChatEvent('chat.empty_turn_recovered', {
+          uid: effectiveUserId,
+          sessionId,
+          toolCount: toolInvocations.length,
+          tools: toolInvocations.map((t) => t.name),
+          streamMs: timings.streamMs,
+        });
       }
 
       res.write('event: done\ndata: {}\n\n');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       res.write(`event: error\ndata: ${JSON.stringify({ message: msg })}\n\n`);
+      captureChatEvent(
+        'chat.stream_error',
+        { uid: effectiveUserId, sessionId, error: msg },
+        'error',
+      );
     } finally {
       // eslint-disable-next-line no-console
       console.log(
@@ -1080,6 +1093,8 @@ async function main(): Promise<void> {
     workspaceOAuthClient,
     userMetaStore,
   });
+
+  initSentry();
 
   const port = Number(process.env.PORT ?? 8080);
   app.listen(port, () => {

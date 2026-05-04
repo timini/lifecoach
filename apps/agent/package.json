@@ -21,6 +21,7 @@
     "@lifecoach/config": "workspace:*",
     "@lifecoach/shared-types": "workspace:*",
     "@lifecoach/user-state": "workspace:*",
+    "@sentry/node": "^10.51.0",
     "express": "4.21.1",
     "firebase-admin": "13.0.1",
     "google-auth-library": "9.15.0",
