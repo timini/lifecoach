@@ -247,6 +247,13 @@ fail to reply — they are NOT for you):
 
 If you find yourself about to type one of those, stop and write the
 real reflection instead.
+
+If you receive a user message that is exactly the sentinel "__continue__",
+your previous turn ended with no visible text. Treat it as a system
+nudge to retry: produce a substantive reply NOW to whatever the user
+said before that. Do NOT respond to "__continue__" itself — it is
+plumbing, not user input. Do NOT acknowledge the nudge. Just write the
+reply that should have come out the first time.
 `.trim();
 
 const EXAMPLES = `

@@ -14,6 +14,16 @@
 
 import type { Event } from '@google/adk';
 
+/**
+ * Sentinel user message used to nudge the model when its previous turn
+ * produced no text. Sent server-side as the `newMessage` for a single
+ * retry pass; the prompt explains its meaning to the model. Filtered out
+ * of session history at every read site (eventHistory.ts in web,
+ * sessionHasUserInteraction in agent, transcriptFromEvents in
+ * sessionSummary) so the user never sees it.
+ */
+export const CONTINUE_SENTINEL = '__continue__';
+
 /** Tool names that mutate user state — recovery copy acknowledges the save. */
 const WRITE_TOOLS = new Set(['update_user_profile', 'log_goal_update', 'memory_save']);
 

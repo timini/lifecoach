@@ -156,6 +156,18 @@ describe('buildInstruction', () => {
     expect(s).toMatch(/well-placed handoff/);
   });
 
+  it('explains the __continue__ retry sentinel so the model handles it correctly', () => {
+    const s = buildInstruction(BASE);
+    // The directive must mention the literal sentinel text.
+    expect(s).toMatch(/__continue__/);
+    // And tell the model NOT to respond to the sentinel itself, but to the
+    // earlier user message — otherwise it'd echo "what did you mean by
+    // __continue__?" instead of completing the original reply.
+    expect(s).toMatch(
+      /(do not respond to|never respond to).*__continue__|plumbing|not user input/i,
+    );
+  });
+
   it('does NOT hallucinate a city when location is null (no IP fallback)', () => {
     const s = buildInstruction({ ...BASE, location: null, timezone: null });
     // Must explicitly flag location as unknown and tell the coach to not guess.

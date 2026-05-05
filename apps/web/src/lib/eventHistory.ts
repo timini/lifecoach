@@ -154,6 +154,11 @@ export function eventsToMessages(events: readonly EventLike[]): HistoryMessage[]
       // sends to wake the agent on a fresh session. Filtered here so the
       // greeting bubble appears with no preceding user bubble.
       if (text === '__session_start__') continue;
+      // Empty-turn retry sentinel (#40 option B): the agent sends this
+      // to itself when its previous turn produced no text, to force a
+      // second pass. The user never typed it; filter so the rehydrated
+      // transcript reads naturally.
+      if (text === '__continue__') continue;
       if (text) out.push({ id, role: 'user', text });
     } else if (event.author === 'lifecoach') {
       out.push({ id, role: 'assistant', elements });

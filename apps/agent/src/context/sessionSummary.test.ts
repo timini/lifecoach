@@ -57,6 +57,18 @@ describe('transcriptFromEvents', () => {
     );
   });
 
+  it('drops the __continue__ retry sentinel from the transcript', () => {
+    const events = mkConversation(
+      ['user', 'tell me about Saturn'],
+      ['lifecoach', ''],
+      ['user', '__continue__'],
+      ['lifecoach', 'Saturn has rings made of ice and rock.'],
+    );
+    expect(transcriptFromEvents(events)).toBe(
+      'User: tell me about Saturn\nCoach: Saturn has rings made of ice and rock.',
+    );
+  });
+
   it('returns empty string for missing/empty events', () => {
     expect(transcriptFromEvents(undefined)).toBe('');
     expect(transcriptFromEvents([])).toBe('');
