@@ -60,9 +60,16 @@ FIREBASE_API_KEY="$(dev_output firebase_api_key)"
 FIREBASE_AUTH_DOMAIN="$(dev_output firebase_auth_domain)"
 FIREBASE_APP_ID="$(dev_output firebase_app_id)"
 GOOGLE_OAUTH_CLIENT_ID="$(dev_output google_client_id)"
-# Sentry — empty when not configured; SDK no-ops in that case. Public by
-# Sentry's design (DSN ships in the browser bundle).
-SENTRY_DSN_VALUE="$(dev_output sentry_dsn 2>/dev/null || true)"
+# Sentry — read from dev's tfvars rather than `terraform output`. Outputs
+# only exist after `terraform apply` records them, which won't have
+# happened the first time a new variable is introduced; tfvars is the
+# source of truth and is what CI restores from the TFVARS_DEV secret.
+# Empty DSN intentionally disables telemetry (SDK no-ops).
+dev_tfvar() {
+  grep -E "^${1}[[:space:]]*=" "${DEV_DIR}/terraform.tfvars" \
+    | sed -E 's/.*=[[:space:]]*"([^"]*)".*/\1/'
+}
+SENTRY_DSN_VALUE="$(dev_tfvar sentry_dsn)"
 
 # --- Docker auth + builds + pushes -----------------------------------------
 

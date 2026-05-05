@@ -56,9 +56,21 @@ ensure_terraform_init() {
   )
 }
 
+tfvar() {
+  # Read a string variable straight from terraform.tfvars. We can't use
+  # `terraform output` for DSN/environment because outputs reflect the
+  # last-applied state — on the first deploy that introduces a new
+  # variable (or any later rotation), the output is absent/stale until
+  # `terraform apply` runs. Build-args have to be resolved BEFORE the
+  # apply step (apply runs against the already-pushed image), so we read
+  # tfvars directly — the same source of truth used for project_id /
+  # region at the top of this script.
+  grep -E "^${1}[[:space:]]*=" "${TFVARS}" | sed -E 's/.*=[[:space:]]*"([^"]*)".*/\1/'
+}
+
 firebase_build_args() {
   cd "${ENV_DIR}"
-  local api_key auth_domain fb_project_id app_id gws_client_id sentry_dsn environment
+  local api_key auth_domain fb_project_id app_id gws_client_id
   api_key="$(terraform output -raw firebase_api_key 2>/dev/null || true)"
   auth_domain="$(terraform output -raw firebase_auth_domain 2>/dev/null || true)"
   fb_project_id="$(terraform output -raw project_id 2>/dev/null || true)"
@@ -66,11 +78,13 @@ firebase_build_args() {
   # Reused for the GIS popup on the web side; the server-side code exchange
   # (agent) mounts the matching secret via Secret Manager.
   gws_client_id="$(terraform output -raw google_client_id 2>/dev/null || true)"
-  # Sentry DSN is empty when telemetry is disabled — the SDK no-ops if so.
-  # Public by Sentry's design (it's in the browser bundle).
-  sentry_dsn="$(terraform output -raw sentry_dsn 2>/dev/null || true)"
-  environment="$(terraform output -raw environment 2>/dev/null || true)"
   cd - >/dev/null
+  # Sentry — resolved from tfvars rather than terraform output so the
+  # value is correct on the first deploy after introducing the variable.
+  # Empty DSN = SDK no-ops; that's intentional, not a silent failure.
+  local sentry_dsn environment
+  sentry_dsn="$(tfvar sentry_dsn)"
+  environment="$(tfvar environment)"
   printf -- "--build-arg NEXT_PUBLIC_FIREBASE_API_KEY=%s " "${api_key}"
   printf -- "--build-arg NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=%s " "${auth_domain}"
   printf -- "--build-arg NEXT_PUBLIC_FIREBASE_PROJECT_ID=%s " "${fb_project_id}"
