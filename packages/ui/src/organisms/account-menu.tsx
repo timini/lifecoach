@@ -135,8 +135,8 @@ export function AccountMenu({
         aria-label="Account menu"
         className="inline-flex items-center gap-2 rounded-full p-0.5 transition-colors hover:bg-muted focus-visible:outline-none"
       >
-        <Avatar>
-          {user.photoURL ? <AvatarImage src={user.photoURL} alt="" /> : null}
+        <Avatar className="pointer-events-none">
+          {user.photoURL ? <AvatarImage src={user.photoURL} alt="" draggable={false} /> : null}
           <AvatarFallback>{initials(user)}</AvatarFallback>
         </Avatar>
       </DropdownMenuTrigger>
