@@ -65,7 +65,14 @@ tfvar() {
   # apply step (apply runs against the already-pushed image), so we read
   # tfvars directly — the same source of truth used for project_id /
   # region at the top of this script.
-  grep -E "^${1}[[:space:]]*=" "${TFVARS}" | sed -E 's/.*=[[:space:]]*"([^"]*)".*/\1/'
+  #
+  # Returns empty when the key isn't set so optional Terraform variables
+  # (e.g. `sentry_dsn` defaults to "") don't abort the script under
+  # `set -euo pipefail`.
+  local line
+  line="$(grep -E "^${1}[[:space:]]*=" "${TFVARS}" || true)"
+  [[ -z "${line}" ]] && return 0
+  printf '%s' "${line}" | sed -E 's/.*=[[:space:]]*"([^"]*)".*/\1/'
 }
 
 firebase_build_args() {

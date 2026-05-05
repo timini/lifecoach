@@ -66,8 +66,12 @@ GOOGLE_OAUTH_CLIENT_ID="$(dev_output google_client_id)"
 # source of truth and is what CI restores from the TFVARS_DEV secret.
 # Empty DSN intentionally disables telemetry (SDK no-ops).
 dev_tfvar() {
-  grep -E "^${1}[[:space:]]*=" "${DEV_DIR}/terraform.tfvars" \
-    | sed -E 's/.*=[[:space:]]*"([^"]*)".*/\1/'
+  # Returns empty when the key isn't set so optional Terraform variables
+  # don't abort the script under `set -euo pipefail`.
+  local line
+  line="$(grep -E "^${1}[[:space:]]*=" "${DEV_DIR}/terraform.tfvars" || true)"
+  [[ -z "${line}" ]] && return 0
+  printf '%s' "${line}" | sed -E 's/.*=[[:space:]]*"([^"]*)".*/\1/'
 }
 SENTRY_DSN_VALUE="$(dev_tfvar sentry_dsn)"
 
