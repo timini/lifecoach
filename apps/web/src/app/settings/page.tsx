@@ -3,14 +3,16 @@
 import type { WorkspaceStatus } from '@lifecoach/shared-types';
 import {
   Button,
-  ChatShell,
   ConnectionRow,
   GoalLog,
   type GoalLogEntry,
   type JsonObject,
   type JsonValue,
+  SettingsPageTemplate,
+  type SettingsTab,
+  SettingsTabs,
+  Text,
   YamlTree,
-  cn,
 } from '@lifecoach/ui';
 import { UserStateMachine } from '@lifecoach/user-state';
 import type { User } from 'firebase/auth';
@@ -44,6 +46,8 @@ type GoalsState =
   | { status: 'ready'; entries: GoalLogEntry[] }
   | { status: 'error'; message: string };
 
+type TabId = 'connections' | 'practices' | 'profile' | 'goals' | 'account';
+
 export default function SettingsPage() {
   const router = useRouter();
   const t = useTranslations('settings');
@@ -57,9 +61,7 @@ export default function SettingsPage() {
   const [location, setLocation] = useState<BrowserLocation | null>(null);
   const [locationRequested, setLocationRequested] = useState(false);
   const [emailDraft, setEmailDraft] = useState('');
-  const [activeTab, setActiveTab] = useState<
-    'connections' | 'practices' | 'profile' | 'goals' | 'account'
-  >('connections');
+  const [activeTab, setActiveTab] = useState<TabId>('connections');
   const [workspace, setWorkspace] = useState<WorkspaceStatus>({
     connected: false,
     scopes: [],
@@ -79,7 +81,6 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => {
-    // Resume location silently when already granted — no re-prompt on refresh.
     (async () => {
       const state = await getLocationPermissionState();
       if (state !== 'granted') return;
@@ -171,7 +172,6 @@ export default function SettingsPage() {
     if (!user) return;
     if (next === null || typeof next !== 'object' || Array.isArray(next)) return;
     const profile = next as JsonObject;
-    // Optimistic update so the tree feels responsive; revert on error.
     const prev = profileState.status === 'ready' ? profileState.profile : {};
     setProfileState({ status: 'ready', profile });
     setSavingProfile(true);
@@ -239,30 +239,7 @@ export default function SettingsPage() {
     providerData: user.providerData,
   }).current();
 
-  const header = (
-    <>
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">{t('title')}</h1>
-        <Link href="/" className="text-xs text-muted-foreground hover:text-foreground">
-          ← {t('back')}
-        </Link>
-      </div>
-      <p className="text-xs text-foreground/75">{t('subtitle')}</p>
-    </>
-  );
-
-  const footer = (
-    <p className="text-xs text-foreground/75">
-      Current state: <span className="font-mono">{state}</span>
-      {savingProfile ? ' · saving…' : ''}
-    </p>
-  );
-
-  const googleLinked = user.providerData.some((p) => p.providerId === 'google.com');
-  const emailVerified = user.emailVerified;
-  const hasEmail = Boolean(user.email);
-
-  const tabs: Array<{ id: typeof activeTab; label: string }> = [
+  const tabs: ReadonlyArray<SettingsTab<TabId>> = [
     { id: 'connections', label: t('tabs.connections') },
     { id: 'practices', label: t('tabs.practices') },
     { id: 'profile', label: t('tabs.profile') },
@@ -270,31 +247,37 @@ export default function SettingsPage() {
     { id: 'account', label: t('tabs.account') },
   ];
 
-  return (
-    <ChatShell header={header} footer={footer}>
-      <nav
-        aria-label="Settings sections"
-        className="sticky top-0 z-10 flex gap-1 border-b border-border bg-background pt-1 pb-0"
-      >
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="tab"
-            aria-selected={activeTab === t.id}
-            onClick={() => setActiveTab(t.id)}
-            className={cn(
-              '-mb-px border-b-2 px-3 py-2 text-sm transition-colors',
-              activeTab === t.id
-                ? 'border-accent text-foreground'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </nav>
+  const header = (
+    <>
+      <div className="flex items-center justify-between">
+        <Text variant="serif-h3" as="h1">
+          {t('title')}
+        </Text>
+        <Link href="/" className="text-xs text-muted-foreground hover:text-foreground">
+          ← {t('back')}
+        </Link>
+      </div>
+      <Text variant="caption">{t('subtitle')}</Text>
+    </>
+  );
 
+  const footer = (
+    <Text variant="caption">
+      Current state: <span className="font-mono">{state}</span>
+      {savingProfile ? ' · saving…' : ''}
+    </Text>
+  );
+
+  const googleLinked = user.providerData.some((p) => p.providerId === 'google.com');
+  const emailVerified = user.emailVerified;
+  const hasEmail = Boolean(user.email);
+
+  return (
+    <SettingsPageTemplate
+      header={header}
+      footer={footer}
+      tabs={<SettingsTabs<TabId> tabs={tabs} activeId={activeTab} onChange={setActiveTab} />}
+    >
       {activeTab === 'connections' ? (
         <section className="flex flex-col gap-3">
           <ConnectionRow
@@ -405,9 +388,11 @@ export default function SettingsPage() {
 
       {activeTab === 'practices' ? (
         profileState.status === 'loading' ? (
-          <div className="text-xs text-muted-foreground">Loading…</div>
+          <Text variant="caption">Loading…</Text>
         ) : profileState.status === 'error' ? (
-          <div className="text-xs text-destructive">{profileState.message}</div>
+          <Text variant="caption" tone="destructive">
+            {profileState.message}
+          </Text>
         ) : (
           <PracticesSection
             profile={profileState.profile}
@@ -420,14 +405,16 @@ export default function SettingsPage() {
         <section className="flex flex-col gap-4">
           <LanguagePicker user={user} locale={locale} />
           <hr className="border-border" />
-          <p className="text-xs text-muted-foreground">
+          <Text variant="caption">
             What the coach remembers about you. Click any value to edit. Add any key — the coach
             will also write here as it gets to know you.
-          </p>
+          </Text>
           {profileState.status === 'loading' ? (
-            <div className="text-xs text-muted-foreground">Loading…</div>
+            <Text variant="caption">Loading…</Text>
           ) : profileState.status === 'error' ? (
-            <div className="text-xs text-destructive">{profileState.message}</div>
+            <Text variant="caption" tone="destructive">
+              {profileState.message}
+            </Text>
           ) : (
             <YamlTree value={profileState.profile} onChange={(v) => void handleProfileChange(v)} />
           )}
@@ -437,9 +424,11 @@ export default function SettingsPage() {
       {activeTab === 'goals' ? (
         <section className="flex flex-col gap-3">
           {goalsState.status === 'loading' ? (
-            <div className="text-xs text-muted-foreground">Loading…</div>
+            <Text variant="caption">Loading…</Text>
           ) : goalsState.status === 'error' ? (
-            <div className="text-xs text-destructive">{goalsState.message}</div>
+            <Text variant="caption" tone="destructive">
+              {goalsState.message}
+            </Text>
           ) : (
             <GoalLog entries={goalsState.entries} />
           )}
@@ -449,27 +438,27 @@ export default function SettingsPage() {
       {activeTab === 'account' ? (
         <section className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-3 rounded-[var(--radius-container)] border border-destructive/40 bg-destructive/10 p-3">
-            <div className="flex-1 text-xs text-muted-foreground">
+            <Text variant="caption" className="flex-1">
               Sign out returns to a fresh guest chat. Your data stays on the server.
-            </div>
+            </Text>
             <Button variant="subtle" size="md" onClick={() => void handleSignOut()}>
               Sign out
             </Button>
           </div>
           <div className="flex flex-wrap items-center gap-3 rounded-[var(--radius-container)] border border-border bg-muted/40 p-3">
-            <div className="flex-1 text-xs text-muted-foreground">
+            <Text variant="caption" className="flex-1">
               Delete all my data
               <span className="ml-2 inline-flex rounded-full border border-border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
                 Coming soon
               </span>
-            </div>
+            </Text>
             <Button variant="subtle" size="md" disabled>
               Delete
             </Button>
           </div>
         </section>
       ) : null}
-    </ChatShell>
+    </SettingsPageTemplate>
   );
 }
 

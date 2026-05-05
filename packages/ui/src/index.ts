@@ -11,6 +11,15 @@ export { Badge, type BadgeProps, badgeVariants } from './atoms/badge';
 export { Bubble, type BubbleProps } from './molecules/bubble';
 export { Button, type ButtonProps, buttonVariants } from './atoms/button';
 export { ChatShell, type ChatShellProps } from './organisms/chat-shell';
+export { ChatComposer, type ChatComposerProps } from './organisms/chat-composer';
+export {
+  ChatStream,
+  type ChatStreamProps,
+  type ChatStreamElement,
+  type ChatStreamMessage,
+  type ChatStreamUserMessage,
+  type ChatStreamAssistantMessage,
+} from './organisms/chat-stream';
 export { Checkbox } from './atoms/checkbox';
 export { ChoicePrompt, type ChoicePromptProps } from './molecules/choice-prompt';
 export {
@@ -41,6 +50,11 @@ export { Input, type InputProps } from './atoms/input';
 export { Label, type LabelProps } from './atoms/label';
 export { FormField, type FormFieldProps } from './molecules/form-field';
 export { LocationBadge, type LocationBadgeProps } from './molecules/location-badge';
+export {
+  SettingsTabs,
+  type SettingsTabsProps,
+  type SettingsTab,
+} from './molecules/settings-tabs';
 export { Markdown, type MarkdownProps } from './organisms/markdown';
 export { RadioGroup, RadioGroupItem } from './atoms/radio-group';
 export { Spinner, type SpinnerProps, spinnerVariants } from './atoms/spinner';
