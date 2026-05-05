@@ -36,6 +36,7 @@ import { captureChatEvent } from '../lib/sentry';
 import { sessionIdForToday } from '../lib/sessionId';
 import { type Message, useChatStream } from '../lib/useChatStream';
 import { connectWorkspace, fetchWorkspaceStatus } from '../lib/workspace';
+import { DebugPanel, type SessionsOutcome } from './DebugPanel';
 
 export function ChatWindow() {
   const t = useTranslations('chat');
@@ -49,6 +50,11 @@ export function ChatWindow() {
   const [viewMode, setViewMode] = useState<'live' | 'past'>('live');
   const [sessions, setSessions] = useState<SessionItem[]>([]);
   const [composerValue, setComposerValue] = useState('');
+  const [lastSessionsOutcome, setLastSessionsOutcome] = useState<SessionsOutcome | null>(null);
+  const [lastAccountMenuOpenChange, setLastAccountMenuOpenChange] = useState<{
+    open: boolean;
+    at: number;
+  } | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
   const todaySessionId = user ? sessionIdForToday(user.uid) : '';
 
@@ -112,6 +118,8 @@ export function ChatWindow() {
   const refreshSessions = useCallback(async () => {
     if (!user) {
       setSessions([]);
+      const outcome: SessionsOutcome = { kind: 'skipped', reason: 'no_user', at: Date.now() };
+      setLastSessionsOutcome(outcome);
       captureChatEvent('sessions.refresh_skipped', { reason: 'no_user' });
       return;
     }
@@ -121,6 +129,12 @@ export function ChatWindow() {
         headers: { authorization: `Bearer ${idToken}` },
       });
       if (!res.ok) {
+        const outcome: SessionsOutcome = {
+          kind: 'http_error',
+          status: res.status,
+          at: Date.now(),
+        };
+        setLastSessionsOutcome(outcome);
         captureChatEvent('sessions.refresh_http_error', {
           status: res.status,
           uid: user.uid,
@@ -130,17 +144,25 @@ export function ChatWindow() {
       const body = (await res.json()) as { sessions?: SessionItem[] };
       const list = body.sessions ?? [];
       setSessions(list);
+      const sampleIds = list.slice(0, 3).map((s) => s.sessionId);
+      const outcome: SessionsOutcome = {
+        kind: 'done',
+        count: list.length,
+        sampleIds,
+        at: Date.now(),
+      };
+      setLastSessionsOutcome(outcome);
       captureChatEvent('sessions.refresh_done', {
         uid: user.uid,
         count: list.length,
-        sampleIds: list.slice(0, 3).map((s) => s.sessionId),
+        sampleIds,
       });
     } catch (err) {
       setSessions([]);
-      captureChatEvent('sessions.refresh_threw', {
-        uid: user.uid,
-        message: err instanceof Error ? err.message : String(err),
-      });
+      const message = err instanceof Error ? err.message : String(err);
+      const outcome: SessionsOutcome = { kind: 'threw', message, at: Date.now() };
+      setLastSessionsOutcome(outcome);
+      captureChatEvent('sessions.refresh_threw', { uid: user.uid, message });
     }
   }, [user]);
 
@@ -334,6 +356,7 @@ export function ChatWindow() {
           }}
           onConnectWorkspace={() => void handleConnectWorkspace()}
           onOpenChange={(open) => {
+            setLastAccountMenuOpenChange({ open, at: Date.now() });
             captureChatEvent('account_menu.open_change', {
               open,
               uid: user.uid,
@@ -420,6 +443,19 @@ export function ChatWindow() {
         onProInterest={handleProInterest}
       />
       <div ref={endRef} />
+      <DebugPanel
+        user={user}
+        sessionId={sessionId}
+        todaySessionId={todaySessionId}
+        workspaceConnected={workspaceConnected}
+        drawerOpen={drawerOpen}
+        sessionsCount={sessions.length}
+        sessionsSampleIds={sessions.slice(0, 3).map((s) => s.sessionId)}
+        lastSessionsOutcome={lastSessionsOutcome}
+        lastAccountMenuOpenChange={lastAccountMenuOpenChange}
+        messageCount={messages.length}
+        busy={busy}
+      />
     </ChatPageTemplate>
   );
 }
