@@ -707,20 +707,40 @@ export function createApp(deps: CreateAppDeps): Express {
     // and our parser (lines that don't start with `data: `).
     res.write(`: ${' '.repeat(4096)}\n\n`);
 
-    // Debug mode: when the client sends `x-lifecoach-debug: 1`, emit the
-    // full system prompt as a custom SSE op so the browser can render it
-    // in the dev panel. Authorization is implicit — the request is already
-    // bearer-verified above and the prompt only contains data scoped to
-    // the caller's own uid (their profile, goals, memories). Cheap to
-    // build and ship since we already have the full ctx in hand.
-    if (req.header('x-lifecoach-debug') === '1') {
+    // Build the full system instruction and log it to Cloud Logging once
+    // per turn. Useful for prompt-engineering bug triage (we can trace
+    // exactly what the model saw) and cheap — buildInstruction is pure
+    // string concatenation and the runner factory builds it again anyway,
+    // so the only cost is the log line itself. Wrapped in try/catch so
+    // a stringification glitch can never break a real turn.
+    let promptText: string | null = null;
+    try {
+      promptText = buildInstruction(instructionCtx);
+      // eslint-disable-next-line no-console
+      console.log(
+        JSON.stringify({
+          msg: 'chat.prompt',
+          uid: effectiveUserId,
+          sessionId,
+          length: promptText.length,
+          instruction: promptText,
+        }),
+      );
+    } catch (err) {
+      console.error('chat.prompt log build failed:', err);
+    }
+
+    // Debug mode: when the client sends `x-lifecoach-debug: 1`, also push
+    // the prompt back over SSE so the browser dev overlay can render it
+    // without round-tripping to Cloud Logging. Authorization is implicit —
+    // the request is bearer-verified and the prompt only contains data
+    // scoped to the caller's own uid.
+    if (promptText !== null && req.header('x-lifecoach-debug') === '1') {
       try {
-        const promptText = buildInstruction(instructionCtx);
         res.write(
           `data: ${JSON.stringify({ op: 'debug-instruction', instruction: promptText })}\n\n`,
         );
       } catch (err) {
-        // Never let a debug emission break a real turn — log and move on.
         console.error('debug-instruction emit failed:', err);
       }
     }
