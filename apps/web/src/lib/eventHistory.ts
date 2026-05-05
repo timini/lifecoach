@@ -23,6 +23,9 @@ export interface HistoryUserMessage {
   id: string;
   role: 'user';
   text: string;
+  /** Unix-ms timestamp drawn from `event.timestamp` (seconds) when present;
+   * falls back to 0 so callers always have a numeric value to render. */
+  timestamp: number;
 }
 
 export type HistoryAssistantElement =
@@ -40,6 +43,7 @@ export interface HistoryAssistantMessage {
   id: string;
   role: 'assistant';
   elements: HistoryAssistantElement[];
+  timestamp: number;
 }
 
 export type HistoryMessage = HistoryUserMessage | HistoryAssistantMessage;
@@ -65,6 +69,8 @@ interface PartLike {
 interface EventLike {
   id?: string;
   author?: string;
+  /** ADK events store this in seconds-since-epoch. */
+  timestamp?: number;
   content?: { role?: string; parts?: PartLike[] };
 }
 
@@ -145,6 +151,9 @@ export function eventsToMessages(events: readonly EventLike[]): HistoryMessage[]
     if (elements.length === 0) continue;
 
     const id = event.id ?? randomId();
+    // ADK events use seconds-since-epoch; convert to ms for downstream
+    // formatters. Missing → 0 (formatter swallows invalid dates).
+    const timestamp = typeof event.timestamp === 'number' ? Math.floor(event.timestamp * 1000) : 0;
     if (event.author === 'user') {
       const text = elements
         .filter((e): e is { kind: 'text'; text: string } => e.kind === 'text')
@@ -159,9 +168,9 @@ export function eventsToMessages(events: readonly EventLike[]): HistoryMessage[]
       // second pass. The user never typed it; filter so the rehydrated
       // transcript reads naturally.
       if (text === '__continue__') continue;
-      if (text) out.push({ id, role: 'user', text });
+      if (text) out.push({ id, role: 'user', text, timestamp });
     } else if (event.author === 'lifecoach') {
-      out.push({ id, role: 'assistant', elements });
+      out.push({ id, role: 'assistant', elements, timestamp });
     }
   }
 

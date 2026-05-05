@@ -25,7 +25,11 @@ import type { SessionSummaryClient } from './context/sessionSummary.js';
 import type { Coord, WeatherClient } from './context/weather.js';
 import type { WorkspaceOAuthClient } from './oauth/workspaceClient.js';
 import { getEnabledPractices } from './practices/index.js';
-import type { InstructionContext, LocationCtx } from './prompt/buildInstruction.js';
+import {
+  type InstructionContext,
+  type LocationCtx,
+  buildInstruction,
+} from './prompt/buildInstruction.js';
 import { captureChatEvent, initSentry } from './sentry.js';
 import type { GoalUpdatesStore } from './storage/goalUpdates.js';
 import type { UserMetaStore } from './storage/userMeta.js';
@@ -702,6 +706,24 @@ export function createApp(deps: CreateAppDeps): Express {
     // chunk at the end of the turn. Comments are ignored by EventSource
     // and our parser (lines that don't start with `data: `).
     res.write(`: ${' '.repeat(4096)}\n\n`);
+
+    // Debug mode: when the client sends `x-lifecoach-debug: 1`, emit the
+    // full system prompt as a custom SSE op so the browser can render it
+    // in the dev panel. Authorization is implicit — the request is already
+    // bearer-verified above and the prompt only contains data scoped to
+    // the caller's own uid (their profile, goals, memories). Cheap to
+    // build and ship since we already have the full ctx in hand.
+    if (req.header('x-lifecoach-debug') === '1') {
+      try {
+        const promptText = buildInstruction(instructionCtx);
+        res.write(
+          `data: ${JSON.stringify({ op: 'debug-instruction', instruction: promptText })}\n\n`,
+        );
+      } catch (err) {
+        // Never let a debug emission break a real turn — log and move on.
+        console.error('debug-instruction emit failed:', err);
+      }
+    }
 
     const runner = deps.runnerFor({ ctx: instructionCtx, uid: effectiveUserId, usagePolicy });
 

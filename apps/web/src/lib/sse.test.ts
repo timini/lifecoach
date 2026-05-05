@@ -471,4 +471,23 @@ describe('parseSseBlock — extra branches', () => {
     );
     expect(ops).toContainEqual({ op: 'finish-tool-call', id: 't1', ok: true });
   });
+
+  it('parses the agent-issued debug-instruction envelope', () => {
+    const block = `data: ${JSON.stringify({
+      op: 'debug-instruction',
+      instruction: 'You are Lifecoach.\nSystem time: 2026-05-05',
+    })}\n\n`;
+    const ops = parseSseBlock(block);
+    expect(ops).toEqual([
+      {
+        op: 'debug-instruction',
+        instruction: 'You are Lifecoach.\nSystem time: 2026-05-05',
+      },
+    ]);
+  });
+
+  it('rejects malformed debug-instruction envelopes (missing instruction)', () => {
+    const block = `data: ${JSON.stringify({ op: 'debug-instruction' })}\n\n`;
+    expect(parseSseBlock(block)).toEqual([]);
+  });
 });

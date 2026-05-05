@@ -22,12 +22,16 @@ export interface ChatStreamUserMessage {
   id: string;
   role: 'user';
   text: string;
+  /** Unix-ms timestamp; surfaces as a muted time label under the bubble. */
+  timestamp?: number;
 }
 export interface ChatStreamAssistantMessage {
   id: string;
   role: 'assistant';
   elements: ChatStreamElement[];
   answered?: boolean;
+  /** Unix-ms timestamp; surfaces as a muted time label under the bubble. */
+  timestamp?: number;
 }
 export type ChatStreamMessage = ChatStreamUserMessage | ChatStreamAssistantMessage;
 
@@ -70,7 +74,7 @@ export function ChatStream({
       {messages.map((m) => {
         if (m.role === 'user') {
           return (
-            <Bubble key={m.id} from="user">
+            <Bubble key={m.id} from="user" timestamp={m.timestamp}>
               {m.text}
             </Bubble>
           );
@@ -81,6 +85,7 @@ export function ChatStream({
             msgId={m.id}
             elements={m.elements}
             answered={Boolean(m.answered)}
+            timestamp={m.timestamp}
             onChoice={onChoice}
             onGoogleSignIn={onGoogleSignIn}
             onEmailSignIn={onEmailSignIn}
@@ -106,6 +111,9 @@ interface AssistantGroupProps {
   msgId: string;
   elements: ChatStreamElement[];
   answered: boolean;
+  /** Stamps only the LAST text bubble so a tool-call → text sequence shows
+   * a single time label, on the visible reply rather than the badge. */
+  timestamp?: number;
   onChoice: (msgId: string, answer: string) => void;
   onGoogleSignIn: () => void;
   onEmailSignIn: (email: string) => void;
@@ -117,12 +125,23 @@ function AssistantGroup({
   msgId,
   elements,
   answered,
+  timestamp,
   onChoice,
   onGoogleSignIn,
   onEmailSignIn,
   onConnectWorkspace,
   onProInterest,
 }: AssistantGroupProps) {
+  // Index of the last text element — only that bubble carries the timestamp,
+  // otherwise a sequence like [tool-call, tool-call, text] would either
+  // double-stamp or stamp the badge.
+  const lastTextIndex = (() => {
+    for (let i = elements.length - 1; i >= 0; i--) {
+      if (elements[i]?.kind === 'text') return i;
+    }
+    return -1;
+  })();
+
   return (
     <>
       {elements.map((el, i) => {
@@ -136,7 +155,11 @@ function AssistantGroup({
             );
           }
           return (
-            <Bubble key={elKey} from="assistant">
+            <Bubble
+              key={elKey}
+              from="assistant"
+              timestamp={i === lastTextIndex ? timestamp : undefined}
+            >
               <Markdown>{el.text}</Markdown>
             </Bubble>
           );
