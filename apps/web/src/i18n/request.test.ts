@@ -59,4 +59,28 @@ describe('i18n/request', () => {
     const cfg = await factory();
     expect(cfg.locale).toBe('fr');
   });
+
+  test('honours q-values when they reorder document order', async () => {
+    cookieStore.get = () => undefined;
+    // en appears first but is q=0.2; fr is q=0.9 so fr wins.
+    headerStore.get = () => 'en;q=0.2, fr;q=0.9';
+    const cfg = await factory();
+    expect(cfg.locale).toBe('fr');
+  });
+
+  test('treats missing q as 1.0 and breaks ties on document order', async () => {
+    cookieStore.get = () => undefined;
+    // Both default to q=1.0, so en (first) wins.
+    headerStore.get = () => 'en, fr';
+    const cfg = await factory();
+    expect(cfg.locale).toBe('en');
+  });
+
+  test('drops tags with q=0 (explicitly disallowed)', async () => {
+    cookieStore.get = () => undefined;
+    // fr is explicitly q=0 → not acceptable; en is the supported fallback.
+    headerStore.get = () => 'fr;q=0, en';
+    const cfg = await factory();
+    expect(cfg.locale).toBe('en');
+  });
 });

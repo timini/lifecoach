@@ -275,8 +275,18 @@ export function useChatStream({
     [user, sessionId, viewMode, location, busy, applyOps, fetchAndApplyHistory],
   );
 
+  // sendText is memoised on `busy`, so its identity flips on every send.
+  // Stash the latest function in a ref and call through that — the
+  // transcript-load effect below must NOT re-run on busy transitions or it
+  // would `setMessages([])` mid-stream and clobber the in-flight reply.
+  const sendTextRef = useRef(sendText);
+  useEffect(() => {
+    sendTextRef.current = sendText;
+  }, [sendText]);
+
   // Initial transcript load + first-of-day kickoff. Clears stale state from a
-  // previous uid before the new history lands.
+  // previous uid before the new history lands. Deliberately omits sendText
+  // from the deps — see sendTextRef above.
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
@@ -295,13 +305,13 @@ export function useChatStream({
         rehydrated !== null
       ) {
         kickedOffRef.current.add(sessionId);
-        void sendText('__session_start__', { hidden: true });
+        void sendTextRef.current('__session_start__', { hidden: true });
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [user, fetchAndApplyHistory, sessionId, viewMode, sendText]);
+  }, [user, fetchAndApplyHistory, sessionId, viewMode]);
 
   const appendAssistantText = useCallback((text: string) => {
     setMessages((prev) => [

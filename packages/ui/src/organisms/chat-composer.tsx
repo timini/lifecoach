@@ -59,7 +59,7 @@ export function ChatComposer({
     <form
       onSubmit={handleSubmit}
       className={cn(
-        'flex gap-2 rounded-full border border-border/70 bg-background/70 p-1.5 shadow-sm backdrop-blur-md',
+        'flex items-center gap-2 rounded-full border border-border/70 bg-background/70 p-1.5 shadow-sm backdrop-blur-md',
         className,
       )}
     >
