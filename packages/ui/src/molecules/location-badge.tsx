@@ -1,5 +1,5 @@
 import { MapPin } from 'lucide-react';
-import { Button } from './button';
+import { Button } from '../atoms/button';
 
 export interface LocationBadgeProps {
   shared: boolean;

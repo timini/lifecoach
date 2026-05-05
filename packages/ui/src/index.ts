@@ -4,19 +4,29 @@ export {
   type AccountMenuProps,
   type AccountMenuState,
   type AccountMenuUser,
-} from './components/account-menu';
-export { AuthPrompt, type AuthPromptProps } from './components/auth-prompt';
-export { Avatar, AvatarFallback, AvatarImage } from './components/avatar';
-export { Bubble, type BubbleProps } from './components/bubble';
-export { Button, type ButtonProps, buttonVariants } from './components/button';
-export { ChatShell, type ChatShellProps } from './components/chat-shell';
-export { Checkbox } from './components/checkbox';
-export { ChoicePrompt, type ChoicePromptProps } from './components/choice-prompt';
+} from './organisms/account-menu';
+export { AuthPrompt, type AuthPromptProps } from './molecules/auth-prompt';
+export { Avatar, AvatarFallback, AvatarImage } from './atoms/avatar';
+export { Badge, type BadgeProps, badgeVariants } from './atoms/badge';
+export { Bubble, type BubbleProps } from './molecules/bubble';
+export { Button, type ButtonProps, buttonVariants } from './atoms/button';
+export { ChatShell, type ChatShellProps } from './organisms/chat-shell';
+export { ChatComposer, type ChatComposerProps } from './organisms/chat-composer';
+export {
+  ChatStream,
+  type ChatStreamProps,
+  type ChatStreamElement,
+  type ChatStreamMessage,
+  type ChatStreamUserMessage,
+  type ChatStreamAssistantMessage,
+} from './organisms/chat-stream';
+export { Checkbox } from './atoms/checkbox';
+export { ChoicePrompt, type ChoicePromptProps } from './molecules/choice-prompt';
 export {
   ConnectionRow,
   type ConnectionRowProps,
   type ConnectionTone,
-} from './components/connection-row';
+} from './molecules/connection-row';
 export {
   DropdownMenu,
   DropdownMenuCheckIcon,
@@ -28,28 +38,56 @@ export {
   DropdownMenuPortal,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from './components/dropdown-menu';
+} from './organisms/dropdown-menu';
 export {
   GoalLog,
   type GoalLogEntry,
   type GoalLogProps,
   type GoalLogStatus,
-} from './components/goal-log';
-export { Input, type InputProps } from './components/input';
-export { LocationBadge, type LocationBadgeProps } from './components/location-badge';
-export { Markdown, type MarkdownProps } from './components/markdown';
-export { RadioGroup, RadioGroupItem } from './components/radio-group';
+} from './organisms/goal-log';
+export { IconButton, type IconButtonProps, iconButtonVariants } from './atoms/icon-button';
+export { Input, type InputProps } from './atoms/input';
+export { Label, type LabelProps } from './atoms/label';
+export { FormField, type FormFieldProps } from './molecules/form-field';
+export { LocationBadge, type LocationBadgeProps } from './molecules/location-badge';
+export {
+  SettingsTabs,
+  type SettingsTabsProps,
+  type SettingsTab,
+} from './molecules/settings-tabs';
+export { Markdown, type MarkdownProps } from './organisms/markdown';
+export { RadioGroup, RadioGroupItem } from './atoms/radio-group';
+export { Spinner, type SpinnerProps, spinnerVariants } from './atoms/spinner';
+export {
+  StarterPromptCard,
+  type StarterPromptCardProps,
+} from './molecules/starter-prompt-card';
+export { Text, type TextProps, textVariants } from './atoms/text';
 export {
   type SessionItem,
   SessionsDrawer,
   type SessionsDrawerProps,
   SessionsDrawerTrigger,
-} from './components/sessions-drawer';
-export { ToolCallBadge, type ToolCallBadgeProps } from './components/tool-call-badge';
-export { UpgradePrompt, type UpgradePromptProps } from './components/upgrade-prompt';
-export { WorkspacePrompt, type WorkspacePromptProps } from './components/workspace-prompt';
-export { YamlTree, type YamlTreeProps } from './components/yaml-tree';
+} from './organisms/sessions-drawer';
+export { ToolCallBadge, type ToolCallBadgeProps } from './molecules/tool-call-badge';
+export { UpgradePrompt, type UpgradePromptProps } from './molecules/upgrade-prompt';
+export { WorkspacePrompt, type WorkspacePromptProps } from './molecules/workspace-prompt';
+export { YamlTree, type YamlTreeProps } from './organisms/yaml-tree';
+export { ChatPageTemplate, type ChatPageTemplateProps } from './templates/chat-page';
+export {
+  SettingsPageTemplate,
+  type SettingsPageTemplateProps,
+} from './templates/settings-page';
 export { cn } from './lib/utils';
+export {
+  type ColorToken,
+  type FontToken,
+  type RadiusToken,
+  colors,
+  fonts,
+  radii,
+  tokens,
+} from './tokens';
 export {
   type JsonObject,
   type JsonValue,

@@ -1,5 +1,13 @@
 @import "tailwindcss";
-@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap");
+
+/*
+ * Web fonts (Inter sans + Fraunces serif) are NOT @imported here — Tailwind
+ * v4's `@import "tailwindcss"` expands inline, which would push any `@import
+ * url(…)` after the cascaded layers and fail CSS validation. Instead, the
+ * <link> tags live in:
+ *   - apps/web/src/app/layout.tsx
+ *   - apps/ui-book/.storybook/preview-head.html
+ */
 
 /*
  * Lifecoach design tokens. Tailwind v4 is CSS-first — no tailwind.config.js.

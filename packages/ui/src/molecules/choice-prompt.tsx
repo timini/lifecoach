@@ -1,10 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import { Button } from '../atoms/button';
+import { Checkbox } from '../atoms/checkbox';
+import { RadioGroup, RadioGroupItem } from '../atoms/radio-group';
 import { cn } from '../lib/utils';
-import { Button } from './button';
-import { Checkbox } from './checkbox';
-import { RadioGroup, RadioGroupItem } from './radio-group';
 
 export interface ChoicePromptProps {
   question: string;

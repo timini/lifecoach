@@ -1,15 +1,15 @@
 'use client';
 
 import { useState } from 'react';
+import { Button } from '../atoms/button';
+import { Input } from '../atoms/input';
 import { cn } from '../lib/utils';
-import { Button } from './button';
-import { Input } from './input';
 
 export interface AuthPromptProps {
   mode: 'google' | 'email';
   /** Optional pre-filled email (if the model already knew it). */
   email?: string;
-  /** Disabled once the user has acted; subsequent turns keep the history visible but inert. */
+  /** Disabled once the user has acted; subsequent turns keep history visible but inert. */
   disabled: boolean;
   /** Called on Google button click. Implementer does the Firebase linkWithPopup. */
   onGoogle: () => void;

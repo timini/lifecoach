@@ -1,8 +1,8 @@
 'use client';
 
 import { LogOut, Settings } from 'lucide-react';
+import { Avatar, AvatarFallback, AvatarImage } from '../atoms/avatar';
 import { cn } from '../lib/utils';
-import { Avatar, AvatarFallback, AvatarImage } from './avatar';
 import {
   DropdownMenu,
   DropdownMenuContent,

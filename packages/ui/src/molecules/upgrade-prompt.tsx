@@ -1,7 +1,7 @@
 'use client';
 
+import { Button } from '../atoms/button';
 import { cn } from '../lib/utils';
-import { Button } from './button';
 
 export interface UpgradePromptProps {
   /** Called when the user expresses interest — wire to checkout when billing lands. */

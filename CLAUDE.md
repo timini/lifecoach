@@ -8,6 +8,9 @@ AI life coaching web app. Two deployables:
 - `apps/web` — Next.js 15 on Firebase App Hosting
 - `apps/agent` — Google ADK for TypeScript agent (Gemini 3.1 Pro) on Cloud Run
 
+Plus one developer-only app:
+- `apps/ui-book` — Storybook 9 host for the `@lifecoach/ui` design system. Stories are the test surface — every component under `packages/ui/src/{atoms,molecules,organisms,templates}/` has a sibling `*.stories.tsx` whose `play()` runs as a vitest test via `@storybook/addon-vitest` (Chromium browser mode). `scripts/check-stories.mjs` (lefthook + CI) enforces "every tier `.tsx` has a story".
+
 Shared code lives in `packages/*`. Infrastructure is Terraform in `infra/`.
 
 ## Non-negotiable invariants

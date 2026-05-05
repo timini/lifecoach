@@ -1,7 +1,7 @@
 'use client';
 
+import { Button } from '../atoms/button';
 import { cn } from '../lib/utils';
-import { Button } from './button';
 
 export interface WorkspacePromptProps {
   /** Called when the user clicks Connect — implementer runs the GIS popup. */

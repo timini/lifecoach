@@ -13,7 +13,6 @@ export interface ToolCallBadgeProps {
 /**
  * Inline pill that surfaces what the coach is doing while it runs a tool.
  * Spinner while `done === false`; a check (ok) or cross (error) afterwards.
- * Intentionally subtle — this is chrome, not content.
  */
 export function ToolCallBadge({ label, done, ok, className }: ToolCallBadgeProps) {
   const Icon = !done ? Loader2 : ok ? Check : X;

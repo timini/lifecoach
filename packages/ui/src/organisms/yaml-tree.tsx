@@ -2,6 +2,8 @@
 
 import { ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
+import { Button } from '../atoms/button';
+import { Input } from '../atoms/input';
 import { cn } from '../lib/utils';
 import {
   type JsonValue,
@@ -12,8 +14,6 @@ import {
   parseLeafInput,
   setPath,
 } from '../lib/yamlTree';
-import { Button } from './button';
-import { Input } from './input';
 
 export interface YamlTreeProps {
   value: JsonValue;
