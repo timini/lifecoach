@@ -46,18 +46,22 @@ module "agent" {
   min_instances = 0
   max_instances = 2
 
-  env = {
-    GOOGLE_GENAI_USE_VERTEXAI = "true"
-    GOOGLE_CLOUD_PROJECT      = var.project_id
-    GOOGLE_CLOUD_LOCATION     = "global"
-    NODE_ENV                  = "production"
-    FIREBASE_PROJECT_ID       = var.project_id
-    # Reuses dev's user bucket. The bucket name follows the gcs-user-bucket
-    # module's `lifecoach-users-${environment}-${project_id}` convention; we
-    # hardcode `dev` here because previews share dev's bucket.
-    USER_BUCKET         = "lifecoach-users-dev-${var.project_id}"
-    GWS_OAUTH_CLIENT_ID = var.google_oauth_client_id
-  }
+  env = merge(
+    {
+      GOOGLE_GENAI_USE_VERTEXAI = "true"
+      GOOGLE_CLOUD_PROJECT      = var.project_id
+      GOOGLE_CLOUD_LOCATION     = "global"
+      NODE_ENV                  = "production"
+      FIREBASE_PROJECT_ID       = var.project_id
+      # Reuses dev's user bucket. The bucket name follows the gcs-user-bucket
+      # module's `lifecoach-users-${environment}-${project_id}` convention; we
+      # hardcode `dev` here because previews share dev's bucket.
+      USER_BUCKET         = "lifecoach-users-dev-${var.project_id}"
+      GWS_OAUTH_CLIENT_ID = var.google_oauth_client_id
+      SENTRY_ENVIRONMENT  = "preview-pr-${var.pr_number}"
+    },
+    var.sentry_dsn != "" ? { SENTRY_DSN = var.sentry_dsn } : {},
+  )
 
   secret_env = merge(
     var.mem0_enabled ? {

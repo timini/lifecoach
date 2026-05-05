@@ -6,3 +6,6 @@ region          = "us-central1"
 org_id          = "59273835578"
 billing_account = "00F211-1C6C40-2306DA"
 environment     = "dev"
+
+# Optional Sentry DSN. Empty disables telemetry (SDKs no-op).
+# sentry_dsn = "https://<key>@<org>.ingest.sentry.io/<project>"

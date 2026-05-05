@@ -54,3 +54,9 @@ variable "mem0_enabled" {
   default     = true
   description = "Mount the MEM0_API_KEY secret. Defaults to true so previews mirror dev."
 }
+
+variable "sentry_dsn" {
+  type        = string
+  default     = ""
+  description = "Sentry DSN — read from dev's terraform output by preview-deploy.sh and forwarded as a -var. Empty disables telemetry on the preview agent."
+}
