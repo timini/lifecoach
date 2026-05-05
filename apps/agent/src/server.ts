@@ -15,7 +15,7 @@ import {
   claimsToFirebaseUserLike,
   verifyRequest,
 } from './auth.js';
-import { makeRecoveryEvent, pickRecoveryText } from './chat/emptyTurnGuard.js';
+import { CONTINUE_SENTINEL, makeRecoveryEvent, pickRecoveryText } from './chat/emptyTurnGuard.js';
 import type { AirQualityClient } from './context/airQuality.js';
 import type { CalendarDensityClient } from './context/calendarDensity.js';
 import type { HolidaysClient } from './context/holidays.js';
@@ -168,7 +168,7 @@ function sessionHasUserInteraction(session: Session | null | undefined): boolean
       .map((p) => (typeof p.text === 'string' ? p.text : ''))
       .join('')
       .trim();
-    if (text && text !== '__session_start__') return true;
+    if (text && text !== '__session_start__' && text !== CONTINUE_SENTINEL) return true;
   }
   return false;
 }
@@ -716,6 +716,11 @@ export function createApp(deps: CreateAppDeps): Express {
       latencyMs: number | null;
     }> = [];
     const pendingById = new Map<string, { name: string; args: unknown; startedAt: number }>();
+    // Hoisted out of the try so the chat.turn log in finally can read them.
+    // - retried: did the empty-turn retry pass (#40 option B) run?
+    // - firstTextMs: when did the model first emit text? null = empty turn.
+    let retried = false;
+    let firstTextMs: number | null = null;
 
     try {
       const tSession0 = Date.now();
@@ -759,7 +764,6 @@ export function createApp(deps: CreateAppDeps): Express {
       ]);
       const tStream0 = Date.now();
       let firstEventMs: number | null = null;
-      let firstTextMs: number | null = null;
       for await (const event of runner.runAsync({
         userId: effectiveUserId,
         sessionId,
@@ -812,14 +816,76 @@ export function createApp(deps: CreateAppDeps): Express {
       timings.ttfbMs = firstEventMs ?? -1;
       timings.ttftMs = firstTextMs ?? -1;
 
-      // Empty-turn guard: Gemini sometimes returns no follow-up text —
-      // either after a tool call or as a thought-only STOP turn from
-      // gemini-3-flash-preview where 200+ thinking tokens produce empty
-      // output. Without recovery the user sees silence AND the empty
-      // model event lands in history, teaching the model to repeat the
-      // pattern. Emit a synthetic text reply so (a) the user gets
-      // something useful, (b) future turns see a text-bearing model
-      // event in history.
+      // Empty-turn re-invoke (issue #40 option B). Before falling back
+      // to the recovery stub, give the model one more shot. We send a
+      // CONTINUE_SENTINEL user message — the prompt explains it as
+      // "your previous turn was empty, produce real text now". Most
+      // empty-turn cases are gemini-3-flash-preview emitting a
+      // thought-only STOP; a second pass with explicit context
+      // typically produces real output.
+      if (firstTextMs === null && !choiceShown) {
+        retried = true;
+        const tRetry0 = Date.now();
+        const nudgeMessage: Content = {
+          role: 'user',
+          parts: [{ text: CONTINUE_SENTINEL }],
+        };
+        try {
+          for await (const event of runner.runAsync({
+            userId: effectiveUserId,
+            sessionId,
+            newMessage: nudgeMessage,
+            runConfig: { streamingMode: StreamingMode.SSE },
+          })) {
+            if (
+              firstTextMs === null &&
+              (event as { content?: { parts?: Array<{ text?: string }> } }).content?.parts?.some(
+                (p) => typeof p.text === 'string' && p.text.length > 0,
+              )
+            ) {
+              firstTextMs = Date.now() - tStream0;
+            }
+            for (const call of getFunctionCalls(event)) {
+              if (call.id) {
+                pendingById.set(call.id, {
+                  name: call.name ?? '?',
+                  args: call.args,
+                  startedAt: Date.now(),
+                });
+              }
+            }
+            for (const resp of getFunctionResponses(event)) {
+              const pending = resp.id ? pendingById.get(resp.id) : undefined;
+              const name = pending?.name ?? resp.name ?? '?';
+              const respObj = resp.response as { status?: string } | undefined;
+              const ok = respObj?.status === undefined ? null : respObj.status !== 'error';
+              const latencyMs = pending ? Date.now() - pending.startedAt : null;
+              toolInvocations.push({ name, args: pending?.args ?? null, ok, latencyMs });
+              if (resp.id) pendingById.delete(resp.id);
+              if (
+                turnEndingToolNames.has(name) &&
+                (respObj?.status === 'shown' ||
+                  respObj?.status === 'auth_prompted' ||
+                  respObj?.status === 'oauth_prompted' ||
+                  respObj?.status === 'upgrade_prompted')
+              ) {
+                choiceShown = true;
+              }
+            }
+            res.write(`data: ${JSON.stringify(event)}\n\n`);
+            if (choiceShown) break;
+          }
+        } catch {
+          // Retry pass blew up — drop to the recovery stub below.
+        }
+        timings.retryMs = Date.now() - tRetry0;
+      }
+
+      // Existing recovery — only fires if the retry pass also produced
+      // no text (or wasn't attempted because choiceShown was already
+      // true coming out of the first pass). Emits a synthetic reply so
+      // the user gets *something* and future turns see a text-bearing
+      // model event in history.
       if (firstTextMs === null && !choiceShown) {
         const recovery = pickRecoveryText(toolInvocations);
         // SSE side: send as a partial-style delta so the web parser
@@ -891,6 +957,11 @@ export function createApp(deps: CreateAppDeps): Express {
           // from logs without re-instrumenting.
           hasYesterdaySummary: Boolean(yesterdaySummary),
           hasWeekSummary: Boolean(weekSummary),
+          // Issue #40 option B: did we have to re-invoke? And did the retry
+          // produce text? Lets us track empty-turn rate distinctly from
+          // recovered-with-stub rate.
+          emptyTurnRetried: retried,
+          emptyTurnRetrySucceeded: retried && firstTextMs !== null,
           recentGoalCount: recentGoalUpdates?.length ?? 0,
           toolCount: toolInvocations.length,
           tools: toolInvocations,

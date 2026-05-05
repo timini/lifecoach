@@ -90,7 +90,7 @@ export function transcriptFromEvents(events: Event[] | undefined): string {
       .join(' ')
       .replace(/\s+/g, ' ')
       .trim();
-    if (!text || text === '__session_start__') continue;
+    if (!text || text === '__session_start__' || text === '__continue__') continue;
     const role = ev.author === 'user' ? 'User' : 'Coach';
     lines.push(`${role}: ${text}`);
   }

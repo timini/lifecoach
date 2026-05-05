@@ -287,6 +287,28 @@ describe('eventsToMessages', () => {
     expect(msgs[0]).toMatchObject({ role: 'assistant' });
   });
 
+  it('drops the __continue__ retry sentinel from rehydrated history', () => {
+    const msgs = eventsToMessages([
+      { id: 'u1', author: 'user', content: { role: 'user', parts: [{ text: 'hi' }] } },
+      // First model turn was empty (no text); the retry sentinel + the
+      // model's real reply land in history. The user should see only
+      // their own "hi" + the recovered reply, not the plumbing.
+      {
+        id: 'k1',
+        author: 'user',
+        content: { role: 'user', parts: [{ text: '__continue__' }] },
+      },
+      {
+        id: 'a1',
+        author: 'lifecoach',
+        content: { role: 'model', parts: [{ text: 'hey, how are you doing today?' }] },
+      },
+    ]);
+    expect(msgs).toHaveLength(2);
+    expect(msgs[0]).toMatchObject({ role: 'user', text: 'hi' });
+    expect(msgs[1]).toMatchObject({ role: 'assistant' });
+  });
+
   it('preserves order and handles a mixed transcript', () => {
     const msgs = eventsToMessages([
       { id: 'u1', author: 'user', content: { role: 'user', parts: [{ text: 'hey' }] } },

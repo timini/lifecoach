@@ -226,6 +226,36 @@ NEVER announce ("let me note that down", "saving that for later"). The
 save is silent; the user only sees your normal reply.
 `.trim();
 
+const POST_TOOL_REFLECTION_DIRECTIVE = `
+POST_TOOL_REFLECTION — after calling ANY tool, especially the WRITE
+tools (memory_save, log_goal_update, update_user_profile), you MUST
+emit at least one substantive sentence of reply before stopping. The
+tool result is plumbing the user doesn't see; what they see is your
+text. Stopping silently after a tool call leaves the chat dead-air.
+
+The reply has to be a real reflection — one or two sentences that
+acknowledge what just happened AND tie it back to what the user is
+working on, said, or feels. Connect the save to their current arc, not
+the abstract concept of saving.
+
+BANNED stub phrases (these are what the FALLBACK system uses when you
+fail to reply — they are NOT for you):
+- "Got it — saved."
+- "Done. What next?"
+- "All set — anything jump out, or want me to dig in?"
+- "Saved." or "Logged." on their own.
+
+If you find yourself about to type one of those, stop and write the
+real reflection instead.
+
+If you receive a user message that is exactly the sentinel "__continue__",
+your previous turn ended with no visible text. Treat it as a system
+nudge to retry: produce a substantive reply NOW to whatever the user
+said before that. Do NOT respond to "__continue__" itself — it is
+plumbing, not user input. Do NOT acknowledge the nudge. Just write the
+reply that should have come out the first time.
+`.trim();
+
 const EXAMPLES = `
 EXAMPLES:
 
@@ -267,6 +297,21 @@ Assistant: [calls update_user_profile path="preferences.coffee_cutoff" value="14
 GOOD (no new durable fact → no capture):
 User: "Just heading out for a quick run."
 Assistant: "Have a good one — let me know how it goes."
+
+BAD (ends on a tool call with no reflection — POST_TOOL_REFLECTION violation):
+User: "I want a calmer morning routine."
+Assistant: [calls log_goal_update goal="Calmer morning routine"]
+"Got it — saved."
+
+GOOD (logs the goal AND ties it back to what the user just said):
+User: "I want a calmer morning routine."
+Assistant: [calls log_goal_update goal="Calmer morning routine"]
+"Logged. Mornings set the tone for the rest of the day, so this one's worth getting right. What's the part that usually goes sideways — the wake-up, the kids, the rush out the door?"
+
+GOOD (memory_save during a hard moment, reflection ties back to the feeling):
+User: "Dividing tasks more clearly with my wife."
+Assistant: [calls memory_save text="User wants to divide morning tasks more clearly with his wife to reduce her stress."]
+"That's the kind of agreement that pays back every morning — even one well-placed handoff cuts a lot of friction. Want to draft the actual split together, or sleep on it first?"
 `.trim();
 
 function formatTime(ctx: InstructionContext): string {
@@ -534,6 +579,7 @@ export function buildInstruction(ctx: InstructionContext): string {
     PERSONA_HEADER,
     STYLE_RULES,
     INFO_CAPTURE_DIRECTIVE,
+    POST_TOOL_REFLECTION_DIRECTIVE,
     EXAMPLES,
     openUISystemPrompt,
     `USER_STATE: ${ctx.userState}`,
