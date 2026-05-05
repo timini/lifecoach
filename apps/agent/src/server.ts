@@ -25,7 +25,11 @@ import type { SessionSummaryClient } from './context/sessionSummary.js';
 import type { Coord, WeatherClient } from './context/weather.js';
 import type { WorkspaceOAuthClient } from './oauth/workspaceClient.js';
 import { getEnabledPractices } from './practices/index.js';
-import type { InstructionContext, LocationCtx } from './prompt/buildInstruction.js';
+import {
+  type InstructionContext,
+  type LocationCtx,
+  buildInstruction,
+} from './prompt/buildInstruction.js';
 import { captureChatEvent, initSentry } from './sentry.js';
 import type { GoalUpdatesStore } from './storage/goalUpdates.js';
 import type { UserMetaStore } from './storage/userMeta.js';
@@ -702,6 +706,44 @@ export function createApp(deps: CreateAppDeps): Express {
     // chunk at the end of the turn. Comments are ignored by EventSource
     // and our parser (lines that don't start with `data: `).
     res.write(`: ${' '.repeat(4096)}\n\n`);
+
+    // Build the full system instruction and log it to Cloud Logging once
+    // per turn. Useful for prompt-engineering bug triage (we can trace
+    // exactly what the model saw) and cheap — buildInstruction is pure
+    // string concatenation and the runner factory builds it again anyway,
+    // so the only cost is the log line itself. Wrapped in try/catch so
+    // a stringification glitch can never break a real turn.
+    let promptText: string | null = null;
+    try {
+      promptText = buildInstruction(instructionCtx);
+      // eslint-disable-next-line no-console
+      console.log(
+        JSON.stringify({
+          msg: 'chat.prompt',
+          uid: effectiveUserId,
+          sessionId,
+          length: promptText.length,
+          instruction: promptText,
+        }),
+      );
+    } catch (err) {
+      console.error('chat.prompt log build failed:', err);
+    }
+
+    // Debug mode: when the client sends `x-lifecoach-debug: 1`, also push
+    // the prompt back over SSE so the browser dev overlay can render it
+    // without round-tripping to Cloud Logging. Authorization is implicit —
+    // the request is bearer-verified and the prompt only contains data
+    // scoped to the caller's own uid.
+    if (promptText !== null && req.header('x-lifecoach-debug') === '1') {
+      try {
+        res.write(
+          `data: ${JSON.stringify({ op: 'debug-instruction', instruction: promptText })}\n\n`,
+        );
+      } catch (err) {
+        console.error('debug-instruction emit failed:', err);
+      }
+    }
 
     const runner = deps.runnerFor({ ctx: instructionCtx, uid: effectiveUserId, usagePolicy });
 

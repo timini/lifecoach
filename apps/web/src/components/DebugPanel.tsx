@@ -21,6 +21,9 @@ export interface DebugPanelProps {
   lastAccountMenuOpenChange: { open: boolean; at: number } | null;
   messageCount: number;
   busy: boolean;
+  /** Most recent system prompt the agent built (debug-instruction SSE op).
+   * Null when no debug-mode turn has completed yet. */
+  lastSystemPrompt: string | null;
 }
 
 export type SessionsOutcome =
@@ -48,6 +51,7 @@ function tsAgo(at: number): string {
 export function DebugPanel(props: DebugPanelProps) {
   const enabled = useIsDebugEnabled();
   const [, setTick] = useState(0);
+  const [promptOpen, setPromptOpen] = useState(false);
   // Tick once a second so "Xs ago" stays fresh.
   useEffect(() => {
     if (!enabled) return;
@@ -69,6 +73,7 @@ export function DebugPanel(props: DebugPanelProps) {
     lastAccountMenuOpenChange,
     messageCount,
     busy,
+    lastSystemPrompt,
   } = props;
 
   return (
@@ -128,6 +133,67 @@ export function DebugPanel(props: DebugPanelProps) {
       <Hr />
       <Row k="messages.count" v={String(messageCount)} />
       <Row k="busy" v={String(busy)} />
+      <Hr />
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <span style={{ color: '#888', minWidth: 140 }}>systemPrompt</span>
+        <button
+          type="button"
+          onClick={() => setPromptOpen((v) => !v)}
+          disabled={!lastSystemPrompt}
+          style={{
+            padding: '2px 6px',
+            fontSize: 10,
+            background: '#333',
+            color: lastSystemPrompt ? '#9bd' : '#555',
+            border: '1px solid #444',
+            borderRadius: 4,
+            cursor: lastSystemPrompt ? 'pointer' : 'not-allowed',
+          }}
+        >
+          {lastSystemPrompt
+            ? promptOpen
+              ? 'hide'
+              : `show (${lastSystemPrompt.length} ch)`
+            : 'none yet'}
+        </button>
+        {lastSystemPrompt ? (
+          <button
+            type="button"
+            onClick={() => navigator.clipboard?.writeText(lastSystemPrompt)}
+            style={{
+              padding: '2px 6px',
+              fontSize: 10,
+              background: '#333',
+              color: '#9bd',
+              border: '1px solid #444',
+              borderRadius: 4,
+              cursor: 'pointer',
+            }}
+            title="Copy to clipboard"
+          >
+            copy
+          </button>
+        ) : null}
+      </div>
+      {promptOpen && lastSystemPrompt ? (
+        <pre
+          style={{
+            marginTop: 6,
+            padding: 8,
+            background: '#0f0f0f',
+            border: '1px solid #2a2a2a',
+            borderRadius: 4,
+            maxHeight: 240,
+            overflow: 'auto',
+            whiteSpace: 'pre-wrap',
+            fontSize: 10,
+            lineHeight: 1.4,
+            color: '#cfcfcf',
+          }}
+        >
+          {lastSystemPrompt}
+        </pre>
+      ) : null}
     </div>
   );
 }

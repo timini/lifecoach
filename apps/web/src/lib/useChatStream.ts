@@ -11,12 +11,14 @@ export interface UserMessage {
   id: string;
   role: 'user';
   text: string;
+  timestamp: number;
 }
 export interface AssistantMessage {
   id: string;
   role: 'assistant';
   elements: AssistantElement[];
   answered?: boolean;
+  timestamp: number;
 }
 export type Message = UserMessage | AssistantMessage;
 
@@ -29,6 +31,9 @@ export interface UseChatStreamArgs {
   sessionId: string;
   viewMode: 'live' | 'past';
   location: BrowserLocation | null;
+  /** When true, send `x-lifecoach-debug: 1` so the agent emits the full
+   * system prompt as an SSE op; the latest one lands in `lastSystemPrompt`. */
+  debug?: boolean;
 }
 
 export interface UseChatStreamApi {
@@ -39,6 +44,9 @@ export interface UseChatStreamApi {
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   appendAssistantText: (text: string) => void;
   markAnswered: (mid: string) => void;
+  /** Most recent system prompt captured from the agent in debug mode.
+   * Null when debug is off or no turn has yet completed. */
+  lastSystemPrompt: string | null;
 }
 
 /**
@@ -54,12 +62,14 @@ export function useChatStream({
   sessionId,
   viewMode,
   location,
+  debug = false,
 }: UseChatStreamArgs): UseChatStreamApi {
   const [messages, setMessages] = useState<Message[]>([]);
   const [busy, setBusy] = useState(false);
   // 0 = first attempt in flight (or idle). 1+ = currently retrying after a
   // network blip. Drives the "retrying…" indicator copy.
   const [retryAttempt, setRetryAttempt] = useState(0);
+  const [lastSystemPrompt, setLastSystemPrompt] = useState<string | null>(null);
 
   // Tracks sessionIds we've already kicked off in this tab — guards against
   // double-firing on StrictMode re-runs of the history-load effect.
@@ -77,8 +87,14 @@ export function useChatStream({
       const body = (await res.json()) as { events?: unknown[] };
       const rehydrated: Message[] = eventsToMessages((body.events ?? []) as never).map((m) =>
         m.role === 'user'
-          ? { id: m.id, role: 'user', text: m.text }
-          : { id: m.id, role: 'assistant', elements: m.elements, answered: true },
+          ? { id: m.id, role: 'user', text: m.text, timestamp: m.timestamp }
+          : {
+              id: m.id,
+              role: 'assistant',
+              elements: m.elements,
+              answered: true,
+              timestamp: m.timestamp,
+            },
       );
       return rehydrated;
     } catch {
@@ -88,11 +104,21 @@ export function useChatStream({
 
   const applyOps = useCallback((msgId: string, ops: AssistantOp[]) => {
     if (ops.length === 0) return;
+    // Debug-instruction ops aren't tied to a message — they're one-per-turn
+    // metadata. Pull them out and stash separately before mapping over the
+    // remaining ops into element-level updates.
+    for (const op of ops) {
+      if (op.op === 'debug-instruction') {
+        setLastSystemPrompt(op.instruction);
+      }
+    }
+    const elementOps = ops.filter((o) => o.op !== 'debug-instruction');
+    if (elementOps.length === 0) return;
     setMessages((prev) =>
       prev.map((m) => {
         if (m.id !== msgId || m.role !== 'assistant') return m;
         let elements: AssistantElement[] = m.elements;
-        for (const op of ops) {
+        for (const op of elementOps) {
           if (op.op === 'append-text') {
             const last = elements[elements.length - 1];
             if (last?.kind === 'text') {
@@ -120,12 +146,16 @@ export function useChatStream({
       if (!text.trim() || busy || !user || !sessionId || viewMode === 'past') return;
       const hidden = opts?.hidden === true;
       setBusy(true);
+      const now = Date.now();
       if (!hidden) {
-        setMessages((prev) => [...prev, { id: messageId(), role: 'user', text }]);
+        setMessages((prev) => [...prev, { id: messageId(), role: 'user', text, timestamp: now }]);
       }
 
       const assistantId = messageId();
-      setMessages((prev) => [...prev, { id: assistantId, role: 'assistant', elements: [] }]);
+      setMessages((prev) => [
+        ...prev,
+        { id: assistantId, role: 'assistant', elements: [], timestamp: Date.now() },
+      ]);
 
       const attemptOnce = async (): Promise<void> => {
         const idToken = await user.getIdToken();
@@ -134,6 +164,7 @@ export function useChatStream({
           headers: {
             'content-type': 'application/json',
             authorization: `Bearer ${idToken}`,
+            ...(debug ? { 'x-lifecoach-debug': '1' } : {}),
           },
           body: JSON.stringify({
             userId: user.uid,
@@ -272,7 +303,7 @@ export function useChatStream({
 
       setBusy(false);
     },
-    [user, sessionId, viewMode, location, busy, applyOps, fetchAndApplyHistory],
+    [user, sessionId, viewMode, location, busy, applyOps, fetchAndApplyHistory, debug],
   );
 
   // sendText is memoised on `busy`, so its identity flips on every send.
@@ -320,6 +351,7 @@ export function useChatStream({
         id: messageId(),
         role: 'assistant',
         elements: [{ kind: 'text', text }],
+        timestamp: Date.now(),
       },
     ]);
   }, []);
@@ -338,5 +370,6 @@ export function useChatStream({
     setMessages,
     appendAssistantText,
     markAnswered,
+    lastSystemPrompt,
   };
 }

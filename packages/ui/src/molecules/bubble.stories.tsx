@@ -37,3 +37,21 @@ export const LongMessage: Story = {
       'Sometimes the best move is to write down three things you noticed today. Not big things — small ones. The crow on the railing, the way light fell on a teacup, a kindness from a stranger.',
   },
 };
+
+export const WithTimestamp: Story = {
+  args: {
+    from: 'user',
+    children: "Got it — I'll start with the easy one.",
+    timestamp: Date.now() - 60_000,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    // The <time> element renders a locale time string; assert the element
+    // exists and has a valid datetime attribute, not exact text.
+    const time = canvas.getByRole('time');
+    await expect(time).toBeInTheDocument();
+    const dt = time.getAttribute('datetime');
+    await expect(typeof dt).toBe('string');
+    await expect(dt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  },
+};
