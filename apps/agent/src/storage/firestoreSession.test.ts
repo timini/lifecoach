@@ -1,6 +1,10 @@
 import type { Event } from '@google/adk';
 import { describe, expect, it } from 'vitest';
-import { type FirestoreLike, createFirestoreSessionService } from './firestoreSession.js';
+import {
+  type FirestoreLike,
+  createFirestoreSessionService,
+  saveSessionSummary,
+} from './firestoreSession.js';
 
 /**
  * In-memory Firestore-like fake that covers only the minimum surface our
@@ -20,8 +24,33 @@ function mkFirestore(): FirestoreLike & { _docs: Map<string, unknown> } {
             data: () => data,
           };
         },
-        async set(value: unknown) {
-          docs.set(path, value);
+        async set(value: unknown, options?: { merge?: boolean }) {
+          if (options?.merge) {
+            const prev = (docs.get(path) as Record<string, unknown> | undefined) ?? {};
+            const patch = (value as Record<string, unknown>) ?? {};
+            const merged: Record<string, unknown> = { ...prev };
+            for (const [k, v] of Object.entries(patch)) {
+              const prevValue = prev[k];
+              if (
+                v !== null &&
+                typeof v === 'object' &&
+                !Array.isArray(v) &&
+                prevValue !== null &&
+                typeof prevValue === 'object' &&
+                !Array.isArray(prevValue)
+              ) {
+                merged[k] = {
+                  ...(prevValue as Record<string, unknown>),
+                  ...(v as Record<string, unknown>),
+                };
+              } else {
+                merged[k] = v;
+              }
+            }
+            docs.set(path, merged);
+          } else {
+            docs.set(path, value);
+          }
         },
         async delete() {
           docs.delete(path);
@@ -195,5 +224,32 @@ describe('FirestoreSessionService', () => {
     // Firestore doc itself was NOT mutated — the splice is in-memory only.
     const doc = fs._docs.get(path) as { events: unknown[] };
     expect(doc.events).toHaveLength(4);
+  });
+});
+
+describe('saveSessionSummary', () => {
+  it('merges summary fields onto the existing session doc state', async () => {
+    const fs = mkFirestore();
+    const svc = createFirestoreSessionService({ firestore: fs });
+    await svc.createSession({ appName: 'lifecoach', userId: 'u', sessionId: '2026-04-30' });
+
+    await saveSessionSummary({
+      firestore: fs,
+      appName: 'lifecoach',
+      userId: 'u',
+      sessionId: '2026-04-30',
+      summary: 'A clean summary.',
+      generatedAt: 1234,
+    });
+
+    const doc = fs._docs.get('apps/lifecoach/users/u/sessions/2026-04-30') as {
+      id: string;
+      events: unknown[];
+      state: Record<string, unknown>;
+    };
+    expect(doc.id).toBe('2026-04-30');
+    expect(doc.events).toEqual([]);
+    expect(doc.state.summary).toBe('A clean summary.');
+    expect(doc.state.summaryGeneratedAt).toBe(1234);
   });
 });
