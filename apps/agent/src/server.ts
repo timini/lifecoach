@@ -708,14 +708,12 @@ export function createApp(deps: CreateAppDeps): Express {
     res.write(`: ${' '.repeat(4096)}\n\n`);
 
     // Build the full system instruction and log it to Cloud Logging once
-    // per turn. Useful for prompt-engineering bug triage (we can trace
-    // exactly what the model saw) and cheap — buildInstruction is pure
-    // string concatenation and the runner factory builds it again anyway,
-    // so the only cost is the log line itself. Wrapped in try/catch so
-    // a stringification glitch can never break a real turn.
-    let promptText: string | null = null;
+    // per turn. Useful for prompt-engineering bug triage — we can grep
+    // `jsonPayload.msg="chat.prompt"` for the exact string the model saw.
+    // Cheap: buildInstruction is pure string concat. Wrapped in try/catch
+    // so a stringification glitch can never break a real turn.
     try {
-      promptText = buildInstruction(instructionCtx);
+      const promptText = buildInstruction(instructionCtx);
       // eslint-disable-next-line no-console
       console.log(
         JSON.stringify({
@@ -729,22 +727,6 @@ export function createApp(deps: CreateAppDeps): Express {
     } catch (err) {
       console.error('chat.prompt log build failed:', err);
     }
-
-    // Debug mode: when the client sends `x-lifecoach-debug: 1`, also push
-    // the prompt back over SSE so the browser dev overlay can render it
-    // without round-tripping to Cloud Logging. Authorization is implicit —
-    // the request is bearer-verified and the prompt only contains data
-    // scoped to the caller's own uid.
-    if (promptText !== null && req.header('x-lifecoach-debug') === '1') {
-      try {
-        res.write(
-          `data: ${JSON.stringify({ op: 'debug-instruction', instruction: promptText })}\n\n`,
-        );
-      } catch (err) {
-        console.error('debug-instruction emit failed:', err);
-      }
-    }
-
     const runner = deps.runnerFor({ ctx: instructionCtx, uid: effectiveUserId, usagePolicy });
 
     // Track tool invocations for the structured turn log. We care about name

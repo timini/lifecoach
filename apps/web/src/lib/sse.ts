@@ -165,13 +165,7 @@ export function parseSseAssistantText(raw: string): string {
 export type AssistantOp =
   | { op: 'append-text'; text: string }
   | { op: 'push'; element: AssistantElement }
-  | { op: 'finish-tool-call'; id: string; ok: boolean }
-  | {
-      op: 'debug-instruction';
-      /** Full system prompt the agent built for this turn. Only emitted
-       * when the request carried `x-lifecoach-debug: 1`. */
-      instruction: string;
-    };
+  | { op: 'finish-tool-call'; id: string; ok: boolean };
 
 export function parseSseBlock(block: string): AssistantOp[] {
   const out: AssistantOp[] = [];
@@ -185,21 +179,6 @@ export function parseSseBlock(block: string): AssistantOp[] {
   try {
     parsed = JSON.parse(payload);
   } catch {
-    return out;
-  }
-  // Agent-issued debug envelope (when client sent `x-lifecoach-debug: 1`).
-  // Doesn't match the ADK event shape so it has to be handled before the
-  // isAgentEvent gate.
-  if (
-    parsed !== null &&
-    typeof parsed === 'object' &&
-    (parsed as { op?: string }).op === 'debug-instruction' &&
-    typeof (parsed as { instruction?: unknown }).instruction === 'string'
-  ) {
-    out.push({
-      op: 'debug-instruction',
-      instruction: (parsed as { instruction: string }).instruction,
-    });
     return out;
   }
   if (!isAgentEvent(parsed)) return out;

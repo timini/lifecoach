@@ -58,26 +58,8 @@ export function ChatWindow() {
   const endRef = useRef<HTMLDivElement | null>(null);
   const todaySessionId = user ? sessionIdForToday(user.uid) : '';
 
-  // `?debug=1` enables the dev overlay AND turns on the agent's debug
-  // header so we get the full system prompt back per turn. Read once on
-  // mount; same gate as DebugPanel so the two stay in sync.
-  const [debug, setDebug] = useState(false);
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    setDebug(params.get('debug') === '1');
-  }, []);
-
-  const {
-    messages,
-    busy,
-    retryAttempt,
-    sendText,
-    setMessages,
-    appendAssistantText,
-    markAnswered,
-    lastSystemPrompt,
-  } = useChatStream({ user, sessionId, viewMode, location, debug });
+  const { messages, busy, retryAttempt, sendText, setMessages, appendAssistantText, markAnswered } =
+    useChatStream({ user, sessionId, viewMode, location });
 
   useEffect(() => {
     (async () => {
@@ -473,7 +455,6 @@ export function ChatWindow() {
         lastAccountMenuOpenChange={lastAccountMenuOpenChange}
         messageCount={messages.length}
         busy={busy}
-        lastSystemPrompt={lastSystemPrompt}
       />
     </ChatPageTemplate>
   );
