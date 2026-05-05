@@ -133,6 +133,29 @@ describe('buildInstruction', () => {
     expect(wIdx).toBeLessThan(dayPhaseIdx);
   });
 
+  it('always includes POST_TOOL_REFLECTION (no bare-tool-call replies allowed)', () => {
+    const s = buildInstruction(BASE);
+    expect(s).toMatch(/POST_TOOL_REFLECTION/);
+    // Names the write tools by name so the rule is unambiguous.
+    expect(s).toMatch(/memory_save/);
+    expect(s).toMatch(/log_goal_update/);
+    expect(s).toMatch(/update_user_profile/);
+    // Lists the recovery-only stub phrases as banned for the agent itself.
+    expect(s).toMatch(/Got it — saved\./);
+    expect(s).toMatch(/Done\. What next\?/);
+    expect(s).toMatch(/All set — anything jump out/);
+  });
+
+  it('demonstrates POST_TOOL_REFLECTION via a 2-shot example (write + reflection)', () => {
+    const s = buildInstruction(BASE);
+    // The good example pairs log_goal_update with a multi-sentence reflection.
+    expect(s).toMatch(/log_goal_update goal="Calmer morning routine"/);
+    expect(s).toMatch(/Mornings set the tone/);
+    // And a memory_save example that ties back to feeling, not just plumbing.
+    expect(s).toMatch(/memory_save text=/);
+    expect(s).toMatch(/well-placed handoff/);
+  });
+
   it('does NOT hallucinate a city when location is null (no IP fallback)', () => {
     const s = buildInstruction({ ...BASE, location: null, timezone: null });
     // Must explicitly flag location as unknown and tell the coach to not guess.
