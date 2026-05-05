@@ -31,7 +31,7 @@ import { injectRecoveryEvents } from '../chat/emptyTurnGuard.js';
 
 export interface FirestoreDocRef {
   get(): Promise<{ exists: boolean; data(): unknown }>;
-  set(value: unknown): Promise<unknown>;
+  set(value: unknown, options?: { merge?: boolean }): Promise<unknown>;
   delete(): Promise<unknown>;
 }
 
@@ -152,6 +152,31 @@ export function createFirestoreSessionService(deps: {
   firestore: FirestoreLike;
 }): FirestoreSessionService {
   return new FirestoreSessionService(deps.firestore);
+}
+
+/**
+ * Persist a one-paragraph session summary onto the existing session doc's
+ * `state.summary` + `state.summaryGeneratedAt`. Used by sessionSummary.ts
+ * after a Flash Lite call. We merge so we don't clobber any other fields
+ * the ADK base class wrote into `state`.
+ */
+export async function saveSessionSummary(deps: {
+  firestore: FirestoreLike;
+  appName: string;
+  userId: string;
+  sessionId: string;
+  summary: string;
+  generatedAt: number;
+}): Promise<void> {
+  await deps.firestore.doc(sessionPath(deps.appName, deps.userId, deps.sessionId)).set(
+    {
+      state: {
+        summary: deps.summary,
+        summaryGeneratedAt: deps.generatedAt,
+      },
+    },
+    { merge: true },
+  );
 }
 
 export type { FirestoreSessionService };

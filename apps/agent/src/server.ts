@@ -21,6 +21,7 @@ import type { CalendarDensityClient } from './context/calendarDensity.js';
 import type { HolidaysClient } from './context/holidays.js';
 import type { MemoryClient } from './context/memory.js';
 import type { PlacesClient } from './context/places.js';
+import type { SessionSummaryClient } from './context/sessionSummary.js';
 import type { Coord, WeatherClient } from './context/weather.js';
 import type { WorkspaceOAuthClient } from './oauth/workspaceClient.js';
 import { getEnabledPractices } from './practices/index.js';
@@ -113,6 +114,13 @@ export interface CreateAppDeps {
   holidays?: HolidaysClient;
   calendarDensity?: CalendarDensityClient;
   memory?: MemoryClient;
+  /**
+   * Yesterday + 7-day rolling summary provider. Generates lazily via Gemini
+   * Flash Lite on next-day kickoff, persists onto the session doc, and
+   * caches in-memory for 5 minutes. Optional in tests; production wiring
+   * always sets it.
+   */
+  sessionSummary?: SessionSummaryClient;
   profileStore?: UserProfileStore;
   goalUpdatesStore?: GoalUpdatesStore;
   workspaceTokensStore?: WorkspaceTokensStore;
@@ -135,6 +143,15 @@ async function timed<T>(p: Promise<T>): Promise<[T, number]> {
   const t0 = Date.now();
   const v = await p;
   return [v, Date.now() - t0];
+}
+
+/**
+ * Format a Date as YYYY-MM-DD in the user's IANA timezone using the
+ * `en-CA` locale (which always emits ISO-style dates). Used as the
+ * sessionId convention — apps/{app}/users/{uid}/sessions/{YYYY-MM-DD}.
+ */
+function localDayKey(timezone: string, at: Date): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: timezone }).format(at);
 }
 
 /**
@@ -524,6 +541,8 @@ export function createApp(deps: CreateAppDeps): Express {
       [memories, memoryMs],
       [meta, metaMs],
       [existingSession],
+      [yesterdaySummary, yesterdaySummaryMs],
+      [weekSummary, weekSummaryMs],
     ] = await Promise.all([
       timed(
         coord && deps.weather ? deps.weather.get(coord).catch(() => null) : Promise.resolve(null),
@@ -591,6 +610,31 @@ export function createApp(deps: CreateAppDeps): Express {
               .catch(() => null)
           : Promise.resolve(null),
       ),
+      timed(
+        // Yesterday's one-paragraph summary. Lazy + persisted; subsequent
+        // turns same day hit the in-memory cache. Skipped when timezone
+        // is unknown (we'd otherwise compute the wrong day key).
+        deps.sessionSummary && timezone
+          ? deps.sessionSummary
+              .getYesterday({
+                uid: effectiveUserId,
+                todayDateLocal: localDayKey(timezone, now()),
+              })
+              .catch(() => null)
+          : Promise.resolve(null),
+      ),
+      timed(
+        // Rolling 7-day digest. Computed on the fly from up to 7 stored
+        // day-summaries; null until we have ≥2 days of stored summaries.
+        deps.sessionSummary && timezone
+          ? deps.sessionSummary
+              .getWeek({
+                uid: effectiveUserId,
+                todayDateLocal: localDayKey(timezone, now()),
+              })
+              .catch(() => null)
+          : Promise.resolve(null),
+      ),
     ]);
     timings.parallelMs = Date.now() - tParallel0;
     timings.weatherMs = weatherMs;
@@ -602,6 +646,8 @@ export function createApp(deps: CreateAppDeps): Express {
     timings.goalsMs = goalsMs;
     timings.memoryMs = memoryMs;
     timings.metaMs = metaMs;
+    timings.yesterdaySummaryMs = yesterdaySummaryMs;
+    timings.weekSummaryMs = weekSummaryMs;
     const locationCtx: LocationCtx | null = coord ? { coord } : null;
     const chatTurnCount = meta.chatTurnCount;
     const tier = meta.tier;
@@ -629,6 +675,8 @@ export function createApp(deps: CreateAppDeps): Express {
       memories,
       nudgeMode: usagePolicy.nudgeMode,
       hasInteractedToday,
+      yesterdaySummary,
+      weekSummary,
     };
 
     res.setHeader('Content-Type', 'text/event-stream');
@@ -839,6 +887,10 @@ export function createApp(deps: CreateAppDeps): Express {
           hasProfile: userProfile !== undefined,
           nearbyPlacesCount: nearbyPlaces?.length ?? 0,
           memoriesCount: memories?.length ?? 0,
+          // Issue #10 acceptance: log presence so we can verify rollout
+          // from logs without re-instrumenting.
+          hasYesterdaySummary: Boolean(yesterdaySummary),
+          hasWeekSummary: Boolean(weekSummary),
           recentGoalCount: recentGoalUpdates?.length ?? 0,
           toolCount: toolInvocations.length,
           tools: toolInvocations,
@@ -878,7 +930,9 @@ async function main(): Promise<void> {
     { createWorkspaceTokensStore },
     { createUserMetaStore },
     { createWorkspaceOAuthClient, createRealWorkspaceOAuthClient },
-    { createFirestoreSessionService },
+    { createFirestoreSessionService, saveSessionSummary },
+    { createSessionSummaryClient },
+    { createGeminiFlashLiteSummarizer },
     { createUpdateUserProfileTool },
     { createLogGoalUpdateTool },
     { createAskSingleChoiceTool, createAskMultipleChoiceTool },
@@ -905,6 +959,8 @@ async function main(): Promise<void> {
     import('./storage/userMeta.js'),
     import('./oauth/workspaceClient.js'),
     import('./storage/firestoreSession.js'),
+    import('./context/sessionSummary.js'),
+    import('./context/sessionSummarizer.js'),
     import('./tools/updateUserProfile.js'),
     import('./tools/logGoalUpdate.js'),
     import('./tools/askChoice.js'),
@@ -1072,6 +1128,17 @@ async function main(): Promise<void> {
       sessionService,
     }) as unknown as RunnerLike;
 
+  // Yesterday + 7-day rolling summary. The Flash Lite call lives in
+  // sessionSummarizer.ts; here we just plug it into the data-layer client.
+  const sessionSummary = createSessionSummaryClient({
+    store: {
+      appName: 'lifecoach',
+      getSession: (p) => sessionService.getSession(p),
+      saveSummary: (p) => saveSessionSummary({ firestore, ...p }),
+    },
+    summarizer: createGeminiFlashLiteSummarizer({}),
+  });
+
   const app = createApp({
     runnerFor,
     sessionReader: {
@@ -1087,6 +1154,7 @@ async function main(): Promise<void> {
     calendarDensity,
     places,
     memory,
+    sessionSummary,
     profileStore,
     goalUpdatesStore,
     workspaceTokensStore,

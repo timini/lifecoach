@@ -95,6 +95,44 @@ describe('buildInstruction', () => {
     expect(s).toMatch(/saving progress/i);
   });
 
+  it('renders YESTERDAY block when yesterdaySummary is set', () => {
+    const s = buildInstruction({
+      ...BASE,
+      yesterdaySummary: 'The user worked through gym anxiety and committed to a Wednesday session.',
+    });
+    expect(s).toMatch(/YESTERDAY: The user worked through gym anxiety/);
+  });
+
+  it('renders WEEK block when weekSummary is set', () => {
+    const s = buildInstruction({
+      ...BASE,
+      weekSummary: '2026-04-15: better sleep\n2026-04-16: caught up on email',
+    });
+    expect(s).toMatch(/WEEK:\n2026-04-15: better sleep/);
+  });
+
+  it('omits both blocks when summaries are null/missing', () => {
+    const s = buildInstruction({ ...BASE, yesterdaySummary: null, weekSummary: null });
+    expect(s).not.toMatch(/YESTERDAY:/);
+    expect(s).not.toMatch(/WEEK:/);
+  });
+
+  it('orders YESTERDAY/WEEK above DAY_PHASE so continuity comes before greeting choice', () => {
+    const s = buildInstruction({
+      ...BASE,
+      yesterdaySummary: 'snippet',
+      weekSummary: 'week-snippet',
+    });
+    const yIdx = s.indexOf('YESTERDAY:');
+    const wIdx = s.indexOf('WEEK:');
+    const dayPhaseIdx = s.indexOf('DAY_PHASE:');
+    expect(yIdx).toBeGreaterThanOrEqual(0);
+    expect(wIdx).toBeGreaterThanOrEqual(0);
+    expect(dayPhaseIdx).toBeGreaterThanOrEqual(0);
+    expect(yIdx).toBeLessThan(dayPhaseIdx);
+    expect(wIdx).toBeLessThan(dayPhaseIdx);
+  });
+
   it('does NOT hallucinate a city when location is null (no IP fallback)', () => {
     const s = buildInstruction({ ...BASE, location: null, timezone: null });
     // Must explicitly flag location as unknown and tell the coach to not guess.

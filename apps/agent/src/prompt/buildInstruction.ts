@@ -52,6 +52,18 @@ export interface InstructionContext {
    * The synthetic `__session_start__` kickoff doesn't count.
    */
   hasInteractedToday?: boolean;
+  /**
+   * One-paragraph summary of yesterday's chat (in user-local time).
+   * Generated lazily by sessionSummary.ts on next-day kickoff. Absent
+   * for new users / day-0 sessions.
+   */
+  yesterdaySummary?: string | null;
+  /**
+   * Rolling 7-day digest — labelled "DATE: summary" lines for each day
+   * with a stored summary. Absent until the user has at least 2 days
+   * of recorded sessions.
+   */
+  weekSummary?: string | null;
 }
 
 const PERSONA_HEADER =
@@ -455,6 +467,20 @@ ${lines}
 If a moment naturally fits one of these, ask the user (single-choice yes/no via ask_single_choice_question) whether they'd like to enable it. On "yes", call update_user_profile with path="practices.<id>.enabled" value="true" and continue normally. Don't pitch unprompted; once per session at most.`;
 }
 
+/**
+ * Continuity blocks — what the agent should remember about the user's
+ * recent days. Issue #10's design: the user's day-rhythm UX hides chat
+ * history from them, but the agent still needs continuity to be a coach
+ * rather than a chatbot. Order before DAY_PHASE so the model has the
+ * "you've been working on X" context before deciding how to greet.
+ */
+function formatSessionSummaries(ctx: InstructionContext): string[] {
+  const out: string[] = [];
+  if (ctx.yesterdaySummary) out.push(`YESTERDAY: ${ctx.yesterdaySummary}`);
+  if (ctx.weekSummary) out.push(`WEEK:\n${ctx.weekSummary}`);
+  return out;
+}
+
 function formatDayPhase(ctx: InstructionContext): string {
   const tz = ctx.timezone ?? 'UTC';
   // Pull the local hour and YYYY-MM-DD from the same Intl pipeline so the
@@ -521,6 +547,7 @@ export function buildInstruction(ctx: InstructionContext): string {
     // to use, and the cheat-sheet would be noise.
     ctx.userState === 'workspace_connected' ? WORKSPACE_CHEATSHEET : '',
     formatTime(ctx),
+    ...formatSessionSummaries(ctx),
     formatDayPhase(ctx),
     formatLocation(ctx),
     formatWeather(ctx),
