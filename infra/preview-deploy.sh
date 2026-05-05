@@ -60,6 +60,16 @@ FIREBASE_API_KEY="$(dev_output firebase_api_key)"
 FIREBASE_AUTH_DOMAIN="$(dev_output firebase_auth_domain)"
 FIREBASE_APP_ID="$(dev_output firebase_app_id)"
 GOOGLE_OAUTH_CLIENT_ID="$(dev_output google_client_id)"
+# Sentry — read from dev's tfvars rather than `terraform output`. Outputs
+# only exist after `terraform apply` records them, which won't have
+# happened the first time a new variable is introduced; tfvars is the
+# source of truth and is what CI restores from the TFVARS_DEV secret.
+# Empty DSN intentionally disables telemetry (SDK no-ops).
+dev_tfvar() {
+  grep -E "^${1}[[:space:]]*=" "${DEV_DIR}/terraform.tfvars" \
+    | sed -E 's/.*=[[:space:]]*"([^"]*)".*/\1/'
+}
+SENTRY_DSN_VALUE="$(dev_tfvar sentry_dsn)"
 
 # --- Docker auth + builds + pushes -----------------------------------------
 
@@ -78,6 +88,8 @@ build_and_push() {
       --build-arg "NEXT_PUBLIC_FIREBASE_PROJECT_ID=${PROJECT_ID}"
       --build-arg "NEXT_PUBLIC_FIREBASE_APP_ID=${FIREBASE_APP_ID}"
       --build-arg "NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}"
+      --build-arg "NEXT_PUBLIC_SENTRY_DSN=${SENTRY_DSN_VALUE}"
+      --build-arg "NEXT_PUBLIC_SENTRY_ENVIRONMENT=preview-pr-${PR_NUMBER}"
     )
   fi
   docker build \
@@ -115,7 +127,8 @@ apply_preview() {
       -var="firebase_api_key=${FIREBASE_API_KEY}" \
       -var="firebase_auth_domain=${FIREBASE_AUTH_DOMAIN}" \
       -var="firebase_app_id=${FIREBASE_APP_ID}" \
-      -var="google_oauth_client_id=${GOOGLE_OAUTH_CLIENT_ID}" >&2
+      -var="google_oauth_client_id=${GOOGLE_OAUTH_CLIENT_ID}" \
+      -var="sentry_dsn=${SENTRY_DSN_VALUE}" >&2
   )
 }
 

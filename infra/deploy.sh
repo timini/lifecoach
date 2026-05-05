@@ -56,6 +56,18 @@ ensure_terraform_init() {
   )
 }
 
+tfvar() {
+  # Read a string variable straight from terraform.tfvars. We can't use
+  # `terraform output` for DSN/environment because outputs reflect the
+  # last-applied state — on the first deploy that introduces a new
+  # variable (or any later rotation), the output is absent/stale until
+  # `terraform apply` runs. Build-args have to be resolved BEFORE the
+  # apply step (apply runs against the already-pushed image), so we read
+  # tfvars directly — the same source of truth used for project_id /
+  # region at the top of this script.
+  grep -E "^${1}[[:space:]]*=" "${TFVARS}" | sed -E 's/.*=[[:space:]]*"([^"]*)".*/\1/'
+}
+
 firebase_build_args() {
   cd "${ENV_DIR}"
   local api_key auth_domain fb_project_id app_id gws_client_id
@@ -67,11 +79,19 @@ firebase_build_args() {
   # (agent) mounts the matching secret via Secret Manager.
   gws_client_id="$(terraform output -raw google_client_id 2>/dev/null || true)"
   cd - >/dev/null
+  # Sentry — resolved from tfvars rather than terraform output so the
+  # value is correct on the first deploy after introducing the variable.
+  # Empty DSN = SDK no-ops; that's intentional, not a silent failure.
+  local sentry_dsn environment
+  sentry_dsn="$(tfvar sentry_dsn)"
+  environment="$(tfvar environment)"
   printf -- "--build-arg NEXT_PUBLIC_FIREBASE_API_KEY=%s " "${api_key}"
   printf -- "--build-arg NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=%s " "${auth_domain}"
   printf -- "--build-arg NEXT_PUBLIC_FIREBASE_PROJECT_ID=%s " "${fb_project_id}"
   printf -- "--build-arg NEXT_PUBLIC_FIREBASE_APP_ID=%s " "${app_id}"
   printf -- "--build-arg NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID=%s " "${gws_client_id}"
+  printf -- "--build-arg NEXT_PUBLIC_SENTRY_DSN=%s " "${sentry_dsn}"
+  printf -- "--build-arg NEXT_PUBLIC_SENTRY_ENVIRONMENT=%s " "${environment}"
 }
 
 docker_auth() {
