@@ -22,6 +22,10 @@ test('drawer slides into the viewport when opened post-login', async ({ page }) 
   await page.waitForTimeout(2000);
 
   await page.getByLabel(/open sessions/i).click();
+  // Wait for the slide-in transition (200ms) to finish before measuring.
+  // CSS `transition-transform` interpolates from translateX(-100%) to
+  // translateX(0); reading mid-flight returns a stale rect.
+  await page.waitForTimeout(400);
 
   const rect = await page.evaluate(() => {
     const aside = document.querySelector('aside[aria-hidden="false"]');
