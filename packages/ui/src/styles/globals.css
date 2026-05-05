@@ -71,13 +71,20 @@
   }
 }
 
+/*
+ * NB: do not animate `filter` on <body>. Any non-`none` filter on an
+ * ancestor turns it into a containing block for `position: fixed`
+ * descendants — that breaks fixed-positioned drawers / Radix portals
+ * (root cause of the "drawer slides off-screen" bug). The saturation
+ * animation it used to drive (100% → 108%) was visually negligible
+ * anyway; the background-position drift is what carries the breathing
+ * effect.
+ */
 @keyframes mesh-breathe {
   0% {
     background-position: 0% 0%, 100% 0%, 50% 100%;
-    filter: saturate(100%);
   }
   100% {
     background-position: 5% 5%, 96% 8%, 48% 95%;
-    filter: saturate(108%);
   }
 }

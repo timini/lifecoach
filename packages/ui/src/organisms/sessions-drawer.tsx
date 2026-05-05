@@ -57,9 +57,15 @@ export function SessionsDrawer({
 
       <aside
         aria-hidden={!open}
+        // Inline style for the slide transform: Tailwind v4's `translate-x-*`
+        // utilities use the new CSS `translate` property, but in this codebase
+        // toggling between `-translate-x-full` and `translate-x-0` leaves a
+        // stale `translate: -100%` on the element (the on-class doesn't clear
+        // the off-class's declaration cleanly). Using `transform` directly
+        // sidesteps the bug.
+        style={{ transform: open ? 'translateX(0)' : 'translateX(-100%)' }}
         className={cn(
           'fixed inset-y-0 left-0 z-40 flex w-72 max-w-[85vw] flex-col border-r border-border bg-background shadow-xl transition-transform duration-200 ease-out',
-          open ? 'translate-x-0' : '-translate-x-full',
         )}
       >
         <div className="flex items-center justify-between border-b border-border px-4 py-3">

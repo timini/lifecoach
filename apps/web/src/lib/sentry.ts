@@ -22,10 +22,14 @@ export function initSentry(): void {
 }
 
 /**
- * Record a non-error event with structured context. Safe to call before
- * `initSentry` (it's a no-op without a DSN).
+ * Record a non-error event with structured context. Always console.info so
+ * devtools shows the timeline live (faster feedback than waiting for Sentry
+ * to ingest); also forwards to Sentry when DSN is configured.
  */
 export function captureChatEvent(message: string, context: Record<string, unknown>): void {
+  if (typeof console !== 'undefined') {
+    console.info(`[lifecoach] ${message}`, context);
+  }
   if (!DSN) return;
   Sentry.captureMessage(message, {
     level: 'warning',
