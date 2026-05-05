@@ -83,7 +83,7 @@ ensure_prereq_infra() {
 
 firebase_build_args() {
   cd "${ENV_DIR}"
-  local api_key auth_domain fb_project_id app_id gws_client_id
+  local api_key auth_domain fb_project_id app_id gws_client_id sentry_dsn environment
   api_key="$(terraform output -raw firebase_api_key 2>/dev/null || true)"
   auth_domain="$(terraform output -raw firebase_auth_domain 2>/dev/null || true)"
   fb_project_id="$(terraform output -raw project_id 2>/dev/null || true)"
@@ -91,12 +91,18 @@ firebase_build_args() {
   # Reused for the GIS popup on the web side; the server-side code exchange
   # (agent) mounts the matching secret via Secret Manager.
   gws_client_id="$(terraform output -raw google_client_id 2>/dev/null || true)"
+  # Sentry DSN is empty when telemetry is disabled — the SDK no-ops if so.
+  # Public by Sentry's design (it's in the browser bundle).
+  sentry_dsn="$(terraform output -raw sentry_dsn 2>/dev/null || true)"
+  environment="$(terraform output -raw environment 2>/dev/null || true)"
   cd - >/dev/null
   printf -- "--build-arg NEXT_PUBLIC_FIREBASE_API_KEY=%s " "${api_key}"
   printf -- "--build-arg NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=%s " "${auth_domain}"
   printf -- "--build-arg NEXT_PUBLIC_FIREBASE_PROJECT_ID=%s " "${fb_project_id}"
   printf -- "--build-arg NEXT_PUBLIC_FIREBASE_APP_ID=%s " "${app_id}"
   printf -- "--build-arg NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID=%s " "${gws_client_id}"
+  printf -- "--build-arg NEXT_PUBLIC_SENTRY_DSN=%s " "${sentry_dsn}"
+  printf -- "--build-arg NEXT_PUBLIC_SENTRY_ENVIRONMENT=%s " "${environment}"
 }
 
 docker_auth() {
