@@ -48,6 +48,8 @@ export interface AccountMenuProps {
   onEmailSignIn?: () => void;
   onResendVerification?: () => void;
   onConnectWorkspace?: () => void;
+  /** Fired whenever Radix flips the open state — used for telemetry. */
+  onOpenChange?: (open: boolean) => void;
 }
 
 function stateLabel(state: AccountMenuState): string {
@@ -114,6 +116,7 @@ export function AccountMenu({
   onEmailSignIn,
   onResendVerification,
   onConnectWorkspace,
+  onOpenChange,
 }: AccountMenuProps) {
   const renderedAffordances = affordances
     .map((aff) =>
@@ -127,7 +130,7 @@ export function AccountMenu({
     .filter(Boolean);
 
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={onOpenChange}>
       <DropdownMenuTrigger
         aria-label="Account menu"
         className="inline-flex items-center gap-2 rounded-full p-0.5 transition-colors hover:bg-muted focus-visible:outline-none"

@@ -32,6 +32,7 @@ import {
   getLocationPermissionState,
   requestBrowserLocation,
 } from '../lib/geolocation';
+import { captureChatEvent } from '../lib/sentry';
 import { sessionIdForToday } from '../lib/sessionId';
 import { type Message, useChatStream } from '../lib/useChatStream';
 import { connectWorkspace, fetchWorkspaceStatus } from '../lib/workspace';
@@ -111,6 +112,7 @@ export function ChatWindow() {
   const refreshSessions = useCallback(async () => {
     if (!user) {
       setSessions([]);
+      captureChatEvent('sessions.refresh_skipped', { reason: 'no_user' });
       return;
     }
     try {
@@ -118,11 +120,27 @@ export function ChatWindow() {
       const res = await fetch('/api/sessions', {
         headers: { authorization: `Bearer ${idToken}` },
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        captureChatEvent('sessions.refresh_http_error', {
+          status: res.status,
+          uid: user.uid,
+        });
+        return;
+      }
       const body = (await res.json()) as { sessions?: SessionItem[] };
-      setSessions(body.sessions ?? []);
-    } catch {
+      const list = body.sessions ?? [];
+      setSessions(list);
+      captureChatEvent('sessions.refresh_done', {
+        uid: user.uid,
+        count: list.length,
+        sampleIds: list.slice(0, 3).map((s) => s.sessionId),
+      });
+    } catch (err) {
       setSessions([]);
+      captureChatEvent('sessions.refresh_threw', {
+        uid: user.uid,
+        message: err instanceof Error ? err.message : String(err),
+      });
     }
   }, [user]);
 
@@ -276,6 +294,13 @@ export function ChatWindow() {
         <SessionsDrawerTrigger
           onOpen={() => {
             setDrawerOpen(true);
+            captureChatEvent('sessions.drawer_opened', {
+              uid: user.uid,
+              sessionsCountOnOpen: sessions.length,
+              sampleIdsOnOpen: sessions.slice(0, 3).map((s) => s.sessionId),
+              activeSessionId: sessionId,
+              todaySessionId,
+            });
             void refreshSessions();
           }}
         />
@@ -308,6 +333,14 @@ export function ChatWindow() {
             if (user.email) void handleEmailSignIn(user.email);
           }}
           onConnectWorkspace={() => void handleConnectWorkspace()}
+          onOpenChange={(open) => {
+            captureChatEvent('account_menu.open_change', {
+              open,
+              uid: user.uid,
+              state: userState,
+              affordances,
+            });
+          }}
         />
       </div>
     </div>
