@@ -44,3 +44,27 @@ test('drawer slides into the viewport when opened post-login', async ({ page }) 
   // drawer's content rendered, not just an invisible empty panel.
   await expect(page.getByRole('heading', { name: /previous chats/i })).toBeVisible();
 });
+
+/**
+ * Regression: post-login the AccountMenu dropdown must open when the
+ * avatar trigger is clicked. Earlier failure was suspected to be the
+ * same `body { filter: ... }` containing-block trap that broke the
+ * drawer — Radix portals position via getBoundingClientRect against
+ * the trigger, and a containing block on body throws the math off.
+ */
+test('account menu opens post-login', async ({ page }) => {
+  const creds = readE2ECreds();
+  await page.goto('/');
+  await expect(page.locator('[data-testid="chat-window-state"][data-uid]')).toBeAttached();
+  await signInAsTestUser(page, creds);
+  await page.waitForTimeout(1000);
+
+  // Close the drawer if a previous test left it open — only the menu under
+  // test should be expanded.
+  const trigger = page.getByLabel('Account menu');
+  await trigger.click();
+
+  // The dropdown content renders into a Radix portal in document.body.
+  // It carries the "Sign out" item for any logged-in state.
+  await expect(page.getByRole('menuitem', { name: /sign out/i })).toBeVisible({ timeout: 5_000 });
+});
