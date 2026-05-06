@@ -96,6 +96,46 @@ done so we don't re-run today:
 Do this silently — never announce the save.`;
 }
 
+/**
+ * Few-shot examples for EXAMPLES. Returns the workspace arm when the
+ * user has Workspace connected, the light arm otherwise. The directive
+ * itself enforces the time/idempotency gate; examples don't need to —
+ * they're only injected when buildInstruction iterates enabled
+ * practices, which already implies the user has the practice on.
+ */
+function examples(ctx: PracticeCtx): string | null {
+  if (ctx.userState === 'workspace_connected') {
+    return WORKSPACE_EXAMPLE;
+  }
+  return LIGHT_EXAMPLE;
+}
+
+const LIGHT_EXAMPLE = `
+GOOD (DAY_PLANNING, no Workspace — pivot from wellness check-in into a tight 1–3 priority plan):
+User: "Slept ok, feeling alright. Coffee in hand."
+Assistant: "Glad the engine started. While we're here — what's the most important thing today?"
+User: "Finish the report draft. Pick the kids up at 4."
+Assistant: [calls update_user_profile path="practices.day_planning.last_planned_date" value="2026-05-06"]
+"Right — report draft as the big rock, school run at 4 as the immovable. Anything between those two you need to protect time for, or is the rest flex?"
+`.trim();
+
+const WORKSPACE_EXAMPLE = `
+GOOD (DAY_PLANNING with Workspace — quiet inbox pull, batched archive confirmation, then surface 2 tasks):
+User: "Morning. Coffee in. Ready when you are."
+Assistant: [calls call_workspace service="gmail" resource="users.messages" method="list" params='{"userId":"me","q":"newer_than:1d label:INBOX","maxResults":15}']
+[reads top messages with users.messages.get]
+"Six newsletters and three things worth a look this morning."
+[calls ask_single_choice_question question="Archive these 6? Substack digest, LinkedIn weekly, two newsletters from your kids' schools (just FYI), Strava recap, AWS billing alert. (Note — the school ones look auto, no actions in either.)" options=["Yes, archive", "Skip"]]
+User: "Yes, archive"
+Assistant: [calls call_workspace service="gmail" resource="users.messages" method="modify" params='{"userId":"me","id":"<id1>","requestBody":{"removeLabelIds":["INBOX"]}}'] (× 6)
+"Done. Real things: Maya's parent-teacher meeting got bumped to Tuesday 6pm, and there's a contractor invoice waiting on you."
+[calls ask_single_choice_question question="Add 'Maya parent-teacher, Tue 6pm' to your calendar?" options=["Yes", "Skip"]]
+User: "Yes"
+Assistant: [calls call_workspace service="calendar" resource="events" method="insert" params='{"calendarId":"primary","requestBody":{"summary":"Maya parent-teacher","start":{"dateTime":"2026-05-12T18:00:00+01:00"},"end":{"dateTime":"2026-05-12T18:30:00+01:00"}}}']
+[calls update_user_profile path="practices.day_planning.last_planned_date" value="2026-05-06"]
+"Booked. So the day has the parent-teacher locked in for Tuesday and the invoice as today's only must-do — what's the report situation, still on the morning side or has it slid?"
+`.trim();
+
 export const dayPlanning: Practice = {
   id: ID,
   label: 'Plan the day',
@@ -104,4 +144,5 @@ export const dayPlanning: Practice = {
   offerHint:
     'If the user mentions starting their day, feeling overwhelmed by their inbox, or asks "what should I focus on", consider offering Plan the day.',
   directive,
+  examples,
 };

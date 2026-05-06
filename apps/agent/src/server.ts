@@ -120,6 +120,13 @@ export interface CreateAppDeps {
   calendarDensity?: CalendarDensityClient;
   memory?: MemoryClient;
   /**
+   * Whether the long-term memory tool (`memory_save`) is registered for
+   * this run. When false, the prompt's memory examples are suppressed so
+   * the model doesn't try to call a tool that doesn't exist. Defaults to
+   * the truthiness of `memory` when omitted.
+   */
+  memoryEnabled?: boolean;
+  /**
    * Yesterday + 7-day rolling summary provider. Generates lazily via Gemini
    * Flash Lite on next-day kickoff, persists onto the session doc, and
    * caches in-memory for 5 minutes. Optional in tests; production wiring
@@ -688,6 +695,7 @@ export function createApp(deps: CreateAppDeps): Express {
       recentGoalUpdates,
       nearbyPlaces,
       memories,
+      memoryEnabled: deps.memoryEnabled ?? Boolean(deps.memory),
       nudgeMode: usagePolicy.nudgeMode,
       hasInteractedToday,
       yesterdaySummary,
@@ -1263,6 +1271,7 @@ async function main(): Promise<void> {
     calendarDensity,
     places,
     memory,
+    memoryEnabled,
     sessionSummary,
     profileStore,
     profileHistoryStore,
