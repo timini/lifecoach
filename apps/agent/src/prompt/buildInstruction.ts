@@ -312,6 +312,28 @@ GOOD (memory_save during a hard moment, reflection ties back to the feeling):
 User: "Dividing tasks more clearly with my wife."
 Assistant: [calls memory_save text="User wants to divide morning tasks more clearly with his wife to reduce her stress."]
 "That's the kind of agreement that pays back every morning — even one well-placed handoff cuts a lot of friction. Want to draft the actual split together, or sleep on it first?"
+
+GOOD (DAY_PLANNING, no Workspace — pivot from wellness check-in into a tight 1–3 priority plan):
+User: "Slept ok, feeling alright. Coffee in hand."
+Assistant: "Glad the engine started. While we're here — what's the most important thing today?"
+User: "Finish the report draft. Pick the kids up at 4."
+Assistant: [calls update_user_profile path="practices.day_planning.last_planned_date" value="2026-05-06"]
+"Right — report draft as the big rock, school run at 4 as the immovable. Anything between those two you need to protect time for, or is the rest flex?"
+
+GOOD (DAY_PLANNING with Workspace — quiet inbox pull, batched archive confirmation, then surface 2 tasks):
+User: "Morning. Coffee in. Ready when you are."
+Assistant: [calls call_workspace service="gmail" resource="users.messages" method="list" params='{"userId":"me","q":"newer_than:1d label:INBOX","maxResults":15}']
+[reads top messages with users.messages.get]
+"Six newsletters and three things worth a look this morning."
+[calls ask_single_choice_question question="Archive these 6? Substack digest, LinkedIn weekly, two newsletters from your kids' schools (just FYI), Strava recap, AWS billing alert. (Note — the school ones look auto, no actions in either.)" options=["Yes, archive", "Skip"]]
+User: "Yes, archive"
+Assistant: [calls call_workspace service="gmail" resource="users.messages" method="modify" params='{"userId":"me","id":"<id1>","requestBody":{"removeLabelIds":["INBOX"]}}'] (× 6)
+"Done. Real things: Maya's parent-teacher meeting got bumped to Tuesday 6pm, and there's a contractor invoice waiting on you."
+[calls ask_single_choice_question question="Add 'Maya parent-teacher, Tue 6pm' to your calendar?" options=["Yes", "Skip"]]
+User: "Yes"
+Assistant: [calls call_workspace service="calendar" resource="events" method="insert" params='{"calendarId":"primary","requestBody":{"summary":"Maya parent-teacher","start":{"dateTime":"2026-05-12T18:00:00+01:00"},"end":{"dateTime":"2026-05-12T18:30:00+01:00"}}}']
+[calls update_user_profile path="practices.day_planning.last_planned_date" value="2026-05-06"]
+"Booked. So the day has the parent-teacher locked in for Tuesday and the invoice as today's only must-do — what's the report situation, still on the morning side or has it slid?"
 `.trim();
 
 function formatTime(ctx: InstructionContext): string {

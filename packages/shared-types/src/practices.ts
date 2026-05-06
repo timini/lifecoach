@@ -34,6 +34,12 @@ export const PRACTICE_METADATA: readonly PracticeMetadata[] = [
     description:
       'When something meaningful comes up, the coach offers to capture it as a journal entry.',
   },
+  {
+    id: 'day_planning',
+    label: 'Plan the day',
+    description:
+      'After the morning check-in, the coach helps you sort 1–3 priorities — and pulls inbox + calendar signal when Workspace is connected.',
+  },
 ] as const;
 
 /** Profile path for the per-practice on/off flag. */

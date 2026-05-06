@@ -46,6 +46,7 @@ describe('buildInstruction', () => {
         practices: {
           evening_gratitude: { enabled: true },
           journaling: { enabled: true },
+          day_planning: { enabled: true },
         },
       },
     });
