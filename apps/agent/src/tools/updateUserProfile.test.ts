@@ -3,22 +3,27 @@ import { describe, expect, it, vi } from 'vitest';
 import type { UserProfileStore } from '../storage/userProfile.js';
 import { createUpdateUserProfileTool } from './updateUserProfile.js';
 
-function fakeStore(): UserProfileStore & {
+function fakeStore(initial: Record<string, unknown> = {}): UserProfileStore & {
   _calls: Array<{ path: string; value: unknown }>;
 } {
   const calls: Array<{ path: string; value: unknown }> = [];
+  let state: Record<string, unknown> = { ...emptyUserProfile(), ...initial };
   return {
     _calls: calls,
     async read() {
-      return emptyUserProfile();
+      return { ...state };
     },
-    async write() {
-      /* noop */
+    async write(_uid, profile) {
+      state = { ...profile };
     },
     async updatePath(_uid, path, value) {
       calls.push({ path, value });
-      const after = emptyUserProfile();
-      return { ...after, [path]: value };
+      state = { ...state, [path]: value };
+      return { ...state };
+    },
+    async readPath(_uid, path) {
+      // Test fake supports flat paths only (matches what current tests use).
+      return state[path];
     },
   };
 }
@@ -99,10 +104,51 @@ describe('update_user_profile tool (schema-free)', () => {
     const store: UserProfileStore = {
       read: vi.fn(),
       write: vi.fn(),
+      readPath: vi.fn().mockResolvedValue(undefined),
       updatePath: vi.fn().mockRejectedValue(new Error('boom')),
     };
     const tool = createUpdateUserProfileTool({ store, uid: 'u' });
     const res = await exec(tool, { path: 'name', value: 'Alex' });
     expect(res).toMatchObject({ status: 'error', message: 'boom' });
+  });
+
+  it('returns previous_value + modified_at and appends to history when wired', async () => {
+    const store = fakeStore({ name: 'Alex' });
+    const appended: unknown[] = [];
+    const history = {
+      async append(_uid: string, entry: unknown) {
+        appended.push(entry);
+      },
+      async read() {
+        return [];
+      },
+    };
+    const tool = createUpdateUserProfileTool({ store, uid: 'u', history });
+    const res = await exec(tool, { path: 'name', value: 'Tim' });
+    expect(res).toMatchObject({
+      status: 'ok',
+      updated_path: 'name',
+      previous_value: 'Alex',
+      new_value: 'Tim',
+    });
+    expect(typeof (res as { modified_at?: unknown }).modified_at).toBe('string');
+    expect(appended).toHaveLength(1);
+    expect(appended[0]).toMatchObject({ path: 'name', before: 'Alex', after: 'Tim' });
+  });
+
+  it('does not abort the user-facing write when history.append throws', async () => {
+    const store = fakeStore();
+    const history = {
+      async append() {
+        throw new Error('history disk full');
+      },
+      async read() {
+        return [];
+      },
+    };
+    const tool = createUpdateUserProfileTool({ store, uid: 'u', history });
+    const res = await exec(tool, { path: 'volunteering', value: 'shelter' });
+    expect(res).toMatchObject({ status: 'ok' });
+    expect(store._calls).toEqual([{ path: 'volunteering', value: 'shelter' }]);
   });
 });

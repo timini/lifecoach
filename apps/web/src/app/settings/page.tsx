@@ -13,6 +13,7 @@ import {
   SettingsTabs,
   Text,
   YamlTree,
+  lastModifiedByPath,
 } from '@lifecoach/ui';
 import { UserStateMachine } from '@lifecoach/user-state';
 import type { User } from 'firebase/auth';
@@ -36,9 +37,20 @@ import {
 import { connectWorkspace, fetchWorkspaceStatus, revokeWorkspace } from '../../lib/workspace';
 import { PracticesSection } from './PracticesSection';
 
+/**
+ * Audit log entry shape returned by `GET /api/profile`. Surfaced as
+ * `{path → modifiedAt}` per leaf when the YamlTree renders.
+ */
+interface ProfileHistoryEntry {
+  path: string;
+  before?: unknown;
+  after?: unknown;
+  at: string;
+}
+
 type ProfileState =
   | { status: 'loading' }
-  | { status: 'ready'; profile: JsonObject }
+  | { status: 'ready'; profile: JsonObject; history: ProfileHistoryEntry[] }
   | { status: 'error'; message: string };
 
 type GoalsState =
@@ -100,8 +112,15 @@ export default function SettingsPage() {
         headers: { authorization: `Bearer ${idToken}` },
       });
       if (!res.ok) throw new Error(`profile fetch: ${res.status}`);
-      const body = (await res.json()) as { profile?: JsonObject };
-      setProfileState({ status: 'ready', profile: body.profile ?? {} });
+      const body = (await res.json()) as {
+        profile?: JsonObject;
+        history?: ProfileHistoryEntry[];
+      };
+      setProfileState({
+        status: 'ready',
+        profile: body.profile ?? {},
+        history: Array.isArray(body.history) ? body.history : [],
+      });
     } catch (err) {
       setProfileState({
         status: 'error',
@@ -172,8 +191,9 @@ export default function SettingsPage() {
     if (!user) return;
     if (next === null || typeof next !== 'object' || Array.isArray(next)) return;
     const profile = next as JsonObject;
-    const prev = profileState.status === 'ready' ? profileState.profile : {};
-    setProfileState({ status: 'ready', profile });
+    const prevProfile = profileState.status === 'ready' ? profileState.profile : {};
+    const prevHistory = profileState.status === 'ready' ? profileState.history : [];
+    setProfileState({ status: 'ready', profile, history: prevHistory });
     setSavingProfile(true);
     try {
       const idToken = await user.getIdToken();
@@ -184,7 +204,7 @@ export default function SettingsPage() {
       });
       if (!res.ok) throw new Error(`PATCH /api/profile: ${res.status}`);
     } catch (err) {
-      setProfileState({ status: 'ready', profile: prev });
+      setProfileState({ status: 'ready', profile: prevProfile, history: prevHistory });
       setAuthError(err instanceof Error ? err.message : String(err));
     } finally {
       setSavingProfile(false);
@@ -416,7 +436,11 @@ export default function SettingsPage() {
               {profileState.message}
             </Text>
           ) : (
-            <YamlTree value={profileState.profile} onChange={(v) => void handleProfileChange(v)} />
+            <YamlTree
+              value={profileState.profile}
+              onChange={(v) => void handleProfileChange(v)}
+              modifiedAtByPath={lastModifiedByPath(profileState.history)}
+            />
           )}
         </section>
       ) : null}

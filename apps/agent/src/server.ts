@@ -32,6 +32,7 @@ import {
 } from './prompt/buildInstruction.js';
 import { captureChatEvent, initSentry } from './sentry.js';
 import type { GoalUpdatesStore } from './storage/goalUpdates.js';
+import type { ProfileHistoryStore } from './storage/profileHistory.js';
 import type { UserMetaStore } from './storage/userMeta.js';
 import type { UserProfileStore } from './storage/userProfile.js';
 import type { WorkspaceTokensStore } from './storage/workspaceTokens.js';
@@ -126,6 +127,13 @@ export interface CreateAppDeps {
    */
   sessionSummary?: SessionSummaryClient;
   profileStore?: UserProfileStore;
+  /**
+   * Append-only audit log of profile mutations. Optional only because
+   * tests omit it; production wiring always supplies it. When set, every
+   * `update_user_profile` write also appends a `{path, before, after, at}`
+   * entry, and GET /profile returns the rolled-up history alongside.
+   */
+  profileHistoryStore?: ProfileHistoryStore;
   goalUpdatesStore?: GoalUpdatesStore;
   workspaceTokensStore?: WorkspaceTokensStore;
   workspaceOAuthClient?: WorkspaceOAuthClient;
@@ -290,11 +298,14 @@ export function createApp(deps: CreateAppDeps): Express {
     }
     const effectiveUserId = claims?.uid ?? userId;
     if (!deps.profileStore) {
-      res.status(200).json({ profile: {} });
+      res.status(200).json({ profile: {}, history: [] });
       return;
     }
-    const profile = await deps.profileStore.read(effectiveUserId).catch(() => ({}));
-    res.status(200).json({ profile });
+    const [profile, history] = await Promise.all([
+      deps.profileStore.read(effectiveUserId).catch(() => ({})),
+      deps.profileHistoryStore?.read(effectiveUserId).catch(() => []) ?? Promise.resolve([]),
+    ]);
+    res.status(200).json({ profile, history });
   });
 
   app.patch(
@@ -1021,6 +1032,7 @@ async function main(): Promise<void> {
     { createPlacesClient },
     { createMem0MemoryClient, noopMemoryClient },
     { createUserProfileStore },
+    { createProfileHistoryStore },
     { createGoalUpdatesStore },
     { createWorkspaceTokensStore },
     { createUserMetaStore },
@@ -1049,6 +1061,7 @@ async function main(): Promise<void> {
     import('./context/places.js'),
     import('./context/memory.js'),
     import('./storage/userProfile.js'),
+    import('./storage/profileHistory.js'),
     import('./storage/goalUpdates.js'),
     import('./storage/workspaceTokens.js'),
     import('./storage/userMeta.js'),
@@ -1089,6 +1102,7 @@ async function main(): Promise<void> {
   const storage = new Storage();
   const bucket = storage.bucket(bucketName);
   const profileStore = createUserProfileStore({ bucket });
+  const profileHistoryStore = createProfileHistoryStore({ bucket });
   const goalUpdatesStore = createGoalUpdatesStore({ bucket });
 
   // Firestore-backed persistent sessions — history survives Cloud Run cold
@@ -1177,7 +1191,7 @@ async function main(): Promise<void> {
       agent: createRootAgent(
         ctx,
         [
-          createUpdateUserProfileTool({ store: profileStore, uid }),
+          createUpdateUserProfileTool({ store: profileStore, uid, history: profileHistoryStore }),
           createLogGoalUpdateTool({ store: goalUpdatesStore, uid }),
           createAskSingleChoiceTool(),
           createAskMultipleChoiceTool(),
@@ -1251,6 +1265,7 @@ async function main(): Promise<void> {
     memory,
     sessionSummary,
     profileStore,
+    profileHistoryStore,
     goalUpdatesStore,
     workspaceTokensStore,
     workspaceOAuthClient,

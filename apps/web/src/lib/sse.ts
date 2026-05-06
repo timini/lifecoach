@@ -29,6 +29,13 @@ export type AssistantElement =
       done: boolean;
       /** Only meaningful when done=true. Undefined while running. */
       ok?: boolean;
+      /** Raw functionCall.args. Surfaced under the badge when expanded so
+       * the user can see exactly what the agent passed (debug aid). */
+      args?: unknown;
+      /** Raw functionResponse.response. Same surface as args — for
+       * `update_user_profile` this carries `previous_value`, `new_value`
+       * and `modified_at`, which is the user-visible diff. */
+      response?: unknown;
     };
 
 export function parseSseAssistant(raw: string): AssistantElement[] {
@@ -165,7 +172,7 @@ export function parseSseAssistantText(raw: string): string {
 export type AssistantOp =
   | { op: 'append-text'; text: string }
   | { op: 'push'; element: AssistantElement }
-  | { op: 'finish-tool-call'; id: string; ok: boolean };
+  | { op: 'finish-tool-call'; id: string; ok: boolean; response?: unknown };
 
 export function parseSseBlock(block: string): AssistantOp[] {
   const out: AssistantOp[] = [];
@@ -217,6 +224,7 @@ export function parseSseBlock(block: string): AssistantOp[] {
         name: fc.name,
         label: labelForToolCall(fc.name, fc.args),
         done: false,
+        args: fc.args,
       },
     });
   }
@@ -249,6 +257,7 @@ export function parseSseBlock(block: string): AssistantOp[] {
       op: 'finish-tool-call',
       id: fr.id ?? fr.name ?? 'unknown',
       ok: !errored,
+      response: fr.response,
     });
 
     // Choice pickers.

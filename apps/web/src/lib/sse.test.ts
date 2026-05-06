@@ -200,7 +200,9 @@ describe('parseSseBlock (streaming reducer)', () => {
         },
       }),
     );
-    expect(frOps).toContainEqual({ op: 'finish-tool-call', id: 'tc-1', ok: true });
+    expect(frOps).toContainEqual(
+      expect.objectContaining({ op: 'finish-tool-call', id: 'tc-1', ok: true }),
+    );
   });
 
   it('marks the tool-call failed when the response has an error code', () => {
@@ -220,7 +222,9 @@ describe('parseSseBlock (streaming reducer)', () => {
         },
       }),
     );
-    expect(frOps).toContainEqual({ op: 'finish-tool-call', id: 'tc-err', ok: false });
+    expect(frOps).toContainEqual(
+      expect.objectContaining({ op: 'finish-tool-call', id: 'tc-err', ok: false }),
+    );
   });
 
   it('ignores empty or non-data blocks', () => {
@@ -382,7 +386,12 @@ describe('parseSseBlock — extra branches', () => {
         },
       }),
     );
-    expect(ops).toContainEqual({ op: 'push', element: { kind: 'auth', mode: 'google' } });
+    expect(ops).toContainEqual(
+      expect.objectContaining({
+        op: 'push',
+        element: expect.objectContaining({ kind: 'auth', mode: 'google' }),
+      }),
+    );
   });
 
   it('pushes a workspace element from connect_workspace functionResponse', () => {
@@ -402,7 +411,12 @@ describe('parseSseBlock — extra branches', () => {
         },
       }),
     );
-    expect(ops).toContainEqual({ op: 'push', element: { kind: 'workspace' } });
+    expect(ops).toContainEqual(
+      expect.objectContaining({
+        op: 'push',
+        element: expect.objectContaining({ kind: 'workspace' }),
+      }),
+    );
   });
 
   it('pushes an upgrade element from upgrade_to_pro functionResponse', () => {
@@ -422,7 +436,12 @@ describe('parseSseBlock — extra branches', () => {
         },
       }),
     );
-    expect(ops).toContainEqual({ op: 'push', element: { kind: 'upgrade' } });
+    expect(ops).toContainEqual(
+      expect.objectContaining({
+        op: 'push',
+        element: expect.objectContaining({ kind: 'upgrade' }),
+      }),
+    );
   });
 
   it('pushes a choice element from ask_multiple_choice_question response', () => {
@@ -469,6 +488,8 @@ describe('parseSseBlock — extra branches', () => {
         },
       }),
     );
-    expect(ops).toContainEqual({ op: 'finish-tool-call', id: 't1', ok: true });
+    expect(ops).toContainEqual(
+      expect.objectContaining({ op: 'finish-tool-call', id: 't1', ok: true }),
+    );
   });
 });

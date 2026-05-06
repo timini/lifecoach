@@ -98,18 +98,68 @@ describe('eventsToMessages', () => {
     ]);
     expect(msgs).toHaveLength(2);
     if (msgs[0]?.role !== 'assistant') throw new Error();
-    expect(msgs[0].elements).toEqual([
-      {
-        kind: 'tool-call',
-        id: 'tc-1',
-        name: 'call_workspace',
-        label: expect.stringContaining('gmail'),
-        done: true,
-        ok: true,
-      },
-    ]);
+    expect(msgs[0].elements).toHaveLength(1);
+    expect(msgs[0].elements[0]).toMatchObject({
+      kind: 'tool-call',
+      id: 'tc-1',
+      name: 'call_workspace',
+      label: expect.stringContaining('gmail'),
+      done: true,
+      ok: true,
+    });
     if (msgs[1]?.role !== 'assistant') throw new Error();
     expect(msgs[1].elements).toEqual([{ kind: 'text', text: 'got it' }]);
+  });
+
+  it('attaches args + response to the rehydrated tool-call element', () => {
+    const msgs = eventsToMessages([
+      {
+        id: 'e1',
+        author: 'lifecoach',
+        content: {
+          role: 'model',
+          parts: [
+            {
+              functionCall: {
+                id: 'tc-1',
+                name: 'update_user_profile',
+                args: { path: 'family.children[0].name', value: 'Wren' },
+              },
+            },
+          ],
+        },
+      },
+      {
+        id: 'e2',
+        author: 'lifecoach',
+        content: {
+          role: 'model',
+          parts: [
+            {
+              functionResponse: {
+                id: 'tc-1',
+                name: 'update_user_profile',
+                response: {
+                  status: 'ok',
+                  previous_value: null,
+                  new_value: 'Wren',
+                  modified_at: '2026-05-06T18:00:00Z',
+                },
+              },
+            },
+          ],
+        },
+      },
+    ]);
+    if (msgs[0]?.role !== 'assistant') throw new Error();
+    const el = msgs[0].elements[0];
+    if (!el || el.kind !== 'tool-call') throw new Error();
+    expect(el.args).toEqual({ path: 'family.children[0].name', value: 'Wren' });
+    expect(el.response).toMatchObject({
+      previous_value: null,
+      new_value: 'Wren',
+      modified_at: '2026-05-06T18:00:00Z',
+    });
   });
 
   it('marks the pill as failed when the matched response carries an error code', () => {
