@@ -69,9 +69,27 @@ interface PartLike {
 interface EventLike {
   id?: string;
   author?: string;
-  /** ADK events store this in seconds-since-epoch. */
+  /**
+   * Wall-clock when the event was created. Unit is unfortunately ambiguous
+   * across ADK versions and across our own synthesised events: some are
+   * seconds-since-epoch (Python ADK convention, our `makeRecoveryEvent`),
+   * others are milliseconds (TS ADK 0.6.1 runtime). Normalised to ms via
+   * `normaliseEventTimestamp` below.
+   */
   timestamp?: number;
   content?: { role?: string; parts?: PartLike[] };
+}
+
+/**
+ * Normalise an event timestamp to milliseconds-since-epoch. Heuristic:
+ * any value < 1e12 is treated as seconds (1e12 seconds is year ~33658, so
+ * any real second-epoch number is well under that), anything else is
+ * treated as already-ms. Returns 0 on missing / NaN so the formatter can
+ * swallow it as "no timestamp" rather than rendering year 1970 text.
+ */
+export function normaliseEventTimestamp(t: number | undefined): number {
+  if (typeof t !== 'number' || !Number.isFinite(t) || t <= 0) return 0;
+  return t < 1e12 ? Math.floor(t * 1000) : Math.floor(t);
 }
 
 /**
@@ -151,9 +169,7 @@ export function eventsToMessages(events: readonly EventLike[]): HistoryMessage[]
     if (elements.length === 0) continue;
 
     const id = event.id ?? randomId();
-    // ADK events use seconds-since-epoch; convert to ms for downstream
-    // formatters. Missing → 0 (formatter swallows invalid dates).
-    const timestamp = typeof event.timestamp === 'number' ? Math.floor(event.timestamp * 1000) : 0;
+    const timestamp = normaliseEventTimestamp(event.timestamp);
     if (event.author === 'user') {
       const text = elements
         .filter((e): e is { kind: 'text'; text: string } => e.kind === 'text')

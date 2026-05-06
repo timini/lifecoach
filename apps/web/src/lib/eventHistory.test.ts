@@ -1,5 +1,29 @@
 import { describe, expect, it } from 'vitest';
-import { eventsToMessages } from './eventHistory';
+import { eventsToMessages, normaliseEventTimestamp } from './eventHistory';
+
+describe('normaliseEventTimestamp', () => {
+  it('converts seconds-epoch values to ms (heuristic: < 1e12 means seconds)', () => {
+    // 1746540000 ≈ May 2026 in seconds; normalise should give the ms.
+    expect(normaliseEventTimestamp(1746540000)).toBe(1746540000000);
+  });
+
+  it('passes through ms-epoch values untouched', () => {
+    // 1746540000000 ≈ May 2026 in ms; should not be re-multiplied.
+    expect(normaliseEventTimestamp(1746540000000)).toBe(1746540000000);
+  });
+
+  it('returns 0 for missing / non-finite / non-positive', () => {
+    expect(normaliseEventTimestamp(undefined)).toBe(0);
+    expect(normaliseEventTimestamp(0)).toBe(0);
+    expect(normaliseEventTimestamp(-1)).toBe(0);
+    expect(normaliseEventTimestamp(Number.NaN)).toBe(0);
+    expect(normaliseEventTimestamp(Number.POSITIVE_INFINITY)).toBe(0);
+  });
+
+  it('floors fractional seconds (e.g. 1746540000.789 → 1746540000789 ms)', () => {
+    expect(normaliseEventTimestamp(1746540000.789)).toBe(1746540000789);
+  });
+});
 
 describe('eventsToMessages', () => {
   it('returns [] on empty input', () => {
