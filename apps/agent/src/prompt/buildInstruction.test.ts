@@ -46,6 +46,7 @@ describe('buildInstruction', () => {
         practices: {
           evening_gratitude: { enabled: true },
           journaling: { enabled: true },
+          day_planning: { enabled: true },
         },
       },
     });
@@ -147,13 +148,55 @@ describe('buildInstruction', () => {
   });
 
   it('demonstrates POST_TOOL_REFLECTION via a 2-shot example (write + reflection)', () => {
+    // Goal-write reflection always appears (log_goal_update is always registered).
     const s = buildInstruction(BASE);
-    // The good example pairs log_goal_update with a multi-sentence reflection.
     expect(s).toMatch(/log_goal_update goal="Calmer morning routine"/);
     expect(s).toMatch(/Mornings set the tone/);
-    // And a memory_save example that ties back to feeling, not just plumbing.
-    expect(s).toMatch(/memory_save text=/);
-    expect(s).toMatch(/well-placed handoff/);
+    // Memory-save reflection only appears when the memory tool is registered.
+    const withMemory = buildInstruction({ ...BASE, memoryEnabled: true });
+    expect(withMemory).toMatch(/memory_save text=/);
+    expect(withMemory).toMatch(/well-placed handoff/);
+    // And NOT when it isn't, otherwise the model would call a missing tool.
+    expect(s).not.toMatch(/memory_save text=/);
+  });
+
+  it('omits memory_save from INFO_CAPTURE + WRITE-tools list when memory is disabled', () => {
+    const s = buildInstruction(BASE);
+    expect(s).not.toMatch(/→ memory_save/);
+    expect(s).not.toMatch(/, memory_save\)/);
+  });
+
+  it('mentions memory_save in INFO_CAPTURE + WRITE-tools list when memory is enabled', () => {
+    const s = buildInstruction({ ...BASE, memoryEnabled: true });
+    expect(s).toMatch(/→ memory_save/);
+    expect(s).toMatch(/, memory_save\)/);
+  });
+
+  it('omits day_planning examples when the practice is off', () => {
+    const s = buildInstruction(BASE);
+    expect(s).not.toMatch(/DAY_PLANNING/);
+  });
+
+  it('shows the light day_planning example when practice is on but no Workspace', () => {
+    const s = buildInstruction({
+      ...BASE,
+      userState: 'google_linked',
+      userProfile: { practices: { day_planning: { enabled: true } } },
+    });
+    // Light arm copy mentions report-draft + school-run; workspace arm
+    // mentions inbox + archive.
+    expect(s).toMatch(/DAY_PLANNING, no Workspace/);
+    expect(s).not.toMatch(/DAY_PLANNING with Workspace/);
+  });
+
+  it('shows the workspace day_planning example only when practice on AND workspace_connected', () => {
+    const s = buildInstruction({
+      ...BASE,
+      userState: 'workspace_connected',
+      userProfile: { practices: { day_planning: { enabled: true } } },
+    });
+    expect(s).toMatch(/DAY_PLANNING with Workspace/);
+    expect(s).not.toMatch(/DAY_PLANNING, no Workspace/);
   });
 
   it('explains the __continue__ retry sentinel so the model handles it correctly', () => {

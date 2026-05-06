@@ -13,12 +13,13 @@
  */
 
 import { PRACTICE_METADATA, type UserProfile } from '@lifecoach/shared-types';
+import { dayPlanning } from './dayPlanning.js';
 import { eveningGratitude } from './eveningGratitude.js';
 import { journaling } from './journaling.js';
 import { isPracticeEnabled, practiceStateFor } from './types.js';
 import type { Practice } from './types.js';
 
-export const PRACTICES: readonly Practice[] = [eveningGratitude, journaling] as const;
+export const PRACTICES: readonly Practice[] = [eveningGratitude, journaling, dayPlanning] as const;
 
 // Parity check — runs at module load. Any mismatch fails fast and tests
 // catch it in CI long before a real chat hits a missing toggle.

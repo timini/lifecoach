@@ -41,6 +41,14 @@ export interface InstructionContext {
   /** Relevant long-term memories retrieved silently at session start. */
   memories?: Memory[];
   /**
+   * Whether the `memory_save` tool is registered for this turn. Drives
+   * the conditional inclusion of memory examples in the EXAMPLES block —
+   * surfacing memory-flavoured few-shots when the tool isn't actually
+   * registered would mislead the model into a non-existent call. The
+   * server sets this from the same condition that gates tool registration.
+   */
+  memoryEnabled?: boolean;
+  /**
    * Per-turn nudge directive driven by UsageStateMachine. 'signup' is for
    * heavy anonymous users; 'pro' is for heavy signed-in free users. Absent
    * when no nudge applies.
@@ -189,7 +197,12 @@ STYLE:
 - Never use bullet lists unless the user specifically asks for a list.
 `.trim();
 
-const INFO_CAPTURE_DIRECTIVE = `
+/**
+ * INFO_CAPTURE varies subtly when memory is disabled — narrative facts
+ * have to live in the structured profile or be dropped, since memory_save
+ * isn't registered. Conditional via `formatInfoCapture(ctx)` below.
+ */
+const INFO_CAPTURE_BASE = `
 INFO_CAPTURE — listen actively. The user drops durable facts in passing
 ("Maya's parents' evening", "I live near the park", "kids' pyjamas",
 "my Tuesday yoga"). Capture them the FIRST time they appear, inline,
@@ -207,16 +220,6 @@ ALWAYS capture the first time you hear:
 - Strong preferences and dislikes ("I never drink coffee after 2",
   "I hate small talk", "we always do X on Fridays").
 
-Where it goes:
-- STRUCTURED facts that fit a slot (name, age, address, school, job)
-  → update_user_profile. Use a sensible dotted path; invent freely
-  (family.children[0].name, family.partner.name, occupation.title,
-  health.injuries.calf_strain).
-- NARRATIVE / RELATIONAL context that doesn't fit a slot
-  ("Maya is doing well at violin and enjoys it", "training for a
-  half-marathon, calf strain in April") → memory_save.
-- Often BOTH apply — do both. They complement each other.
-
 Heuristic: if a fact would still matter next month, capture it now.
 A passing remark is worth one tool call; you don't need permission and
 you don't need to ask "want me to remember that?" — just do it and
@@ -226,9 +229,37 @@ NEVER announce ("let me note that down", "saving that for later"). The
 save is silent; the user only sees your normal reply.
 `.trim();
 
-const POST_TOOL_REFLECTION_DIRECTIVE = `
+const INFO_CAPTURE_TARGETS_WITH_MEMORY = `
+Where it goes:
+- STRUCTURED facts that fit a slot (name, age, address, school, job)
+  → update_user_profile. Use a sensible dotted path; invent freely
+  (family.children[0].name, family.partner.name, occupation.title,
+  health.injuries.calf_strain).
+- NARRATIVE / RELATIONAL context that doesn't fit a slot
+  ("Maya is doing well at violin and enjoys it", "training for a
+  half-marathon, calf strain in April") → memory_save.
+- Often BOTH apply — do both. They complement each other.
+`.trim();
+
+const INFO_CAPTURE_TARGETS_PROFILE_ONLY = `
+Where it goes:
+- Use update_user_profile with a sensible dotted path; invent freely
+  (family.children[0].name, family.partner.name, occupation.title,
+  health.injuries.calf_strain). Pure narrative facts that don't fit a
+  structured slot are fine to weave into your reply rather than save.
+`.trim();
+
+function formatInfoCapture(ctx: InstructionContext): string {
+  const targets =
+    ctx.memoryEnabled === true
+      ? INFO_CAPTURE_TARGETS_WITH_MEMORY
+      : INFO_CAPTURE_TARGETS_PROFILE_ONLY;
+  return `${INFO_CAPTURE_BASE}\n\n${targets}`;
+}
+
+const POST_TOOL_REFLECTION_DIRECTIVE_BASE = `
 POST_TOOL_REFLECTION — after calling ANY tool, especially the WRITE
-tools (memory_save, log_goal_update, update_user_profile), you MUST
+tools (log_goal_update, update_user_profile{memorySuffix}), you MUST
 emit at least one substantive sentence of reply before stopping. The
 tool result is plumbing the user doesn't see; what they see is your
 text. Stopping silently after a tool call leaves the chat dead-air.
@@ -256,7 +287,23 @@ plumbing, not user input. Do NOT acknowledge the nudge. Just write the
 reply that should have come out the first time.
 `.trim();
 
-const EXAMPLES = `
+/**
+ * Slot the memory_save reference in or out of the WRITE-tools list based
+ * on whether the tool is registered. Avoids advertising a tool the
+ * model can't actually call.
+ */
+function formatPostToolReflection(ctx: InstructionContext): string {
+  const memorySuffix = ctx.memoryEnabled === true ? ', memory_save' : '';
+  return POST_TOOL_REFLECTION_DIRECTIVE_BASE.replace('{memorySuffix}', memorySuffix);
+}
+
+/**
+ * Always-on examples — style, info_capture (profile-only), goal logging.
+ * These cover tools registered for every user (update_user_profile,
+ * log_goal_update, ask_*_choice_question). Memory and practice-specific
+ * examples are appended conditionally below.
+ */
+const STATIC_EXAMPLES = `
 EXAMPLES:
 
 BAD (verbose, formal):
@@ -284,11 +331,6 @@ User: "I've got Maya's parents' evening at 4 today."
 Assistant: [calls update_user_profile path="family.children[0].name" value="Maya"]
 "How are you feeling about it — anything specific you're hoping to hear?"
 
-GOOD (narrative facts about a known family member → memory_save):
-User: "Maya is doing well at violin and she actually enjoys it."
-Assistant: [calls memory_save text="Maya (the user's daughter) is doing well at violin and enjoys playing it."]
-"That's the bit that matters — enjoyment beats prodigy any day."
-
 GOOD (strong preference → update_user_profile):
 User: "I never drink coffee after 2pm, it wrecks my sleep."
 Assistant: [calls update_user_profile path="preferences.coffee_cutoff" value="14:00"]
@@ -307,12 +349,42 @@ GOOD (logs the goal AND ties it back to what the user just said):
 User: "I want a calmer morning routine."
 Assistant: [calls log_goal_update goal="Calmer morning routine"]
 "Logged. Mornings set the tone for the rest of the day, so this one's worth getting right. What's the part that usually goes sideways — the wake-up, the kids, the rush out the door?"
+`.trim();
+
+/**
+ * Memory-tool examples — only injected when memory_save is registered
+ * (`ctx.memoryEnabled === true`). Showing them when memory is off would
+ * mislead the model into calling a tool that doesn't exist.
+ */
+const MEMORY_EXAMPLES = `
+GOOD (narrative facts about a known family member → memory_save):
+User: "Maya is doing well at violin and she actually enjoys it."
+Assistant: [calls memory_save text="Maya (the user's daughter) is doing well at violin and enjoys playing it."]
+"That's the bit that matters — enjoyment beats prodigy any day."
 
 GOOD (memory_save during a hard moment, reflection ties back to the feeling):
 User: "Dividing tasks more clearly with my wife."
 Assistant: [calls memory_save text="User wants to divide morning tasks more clearly with his wife to reduce her stress."]
 "That's the kind of agreement that pays back every morning — even one well-placed handoff cuts a lot of friction. Want to draft the actual split together, or sleep on it first?"
 `.trim();
+
+/**
+ * Assemble EXAMPLES from the always-on block + memory-gated block + the
+ * `examples()` hook on each enabled practice. A practice's examples are
+ * skipped when its `examples()` returns null. Empty strings get filtered
+ * by the outer `.filter(Boolean)` in buildInstruction.
+ */
+function formatExamples(ctx: InstructionContext): string {
+  const parts: string[] = [STATIC_EXAMPLES];
+  if (ctx.memoryEnabled === true) parts.push(MEMORY_EXAMPLES);
+  for (const p of getEnabledPractices(ctx.userProfile)) {
+    if (!p.examples) continue;
+    const practiceCtx = { ...ctx, practiceState: practiceStateFor(ctx.userProfile, p.id) };
+    const block = p.examples(practiceCtx);
+    if (block && block.trim().length > 0) parts.push(block);
+  }
+  return parts.join('\n\n');
+}
 
 function formatTime(ctx: InstructionContext): string {
   const tz = ctx.timezone ?? 'UTC';
@@ -578,9 +650,9 @@ export function buildInstruction(ctx: InstructionContext): string {
   return [
     PERSONA_HEADER,
     STYLE_RULES,
-    INFO_CAPTURE_DIRECTIVE,
-    POST_TOOL_REFLECTION_DIRECTIVE,
-    EXAMPLES,
+    formatInfoCapture(ctx),
+    formatPostToolReflection(ctx),
+    formatExamples(ctx),
     openUISystemPrompt,
     `USER_STATE: ${ctx.userState}`,
     `STATE_DIRECTIVE: ${directive}`,

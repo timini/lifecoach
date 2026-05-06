@@ -10,6 +10,7 @@
 
 import { FunctionTool } from '@google/adk';
 import { z } from 'zod';
+import { localDateAndHour } from './dayClock.js';
 import type { Practice, PracticeCtx, PracticeDeps } from './types.js';
 
 const ID = 'evening_gratitude';
@@ -22,24 +23,6 @@ interface GratitudeEntry {
   date: string; // YYYY-MM-DD local
   text: string;
   ts: string; // ISO UTC
-}
-
-function localDateAndHour(now: Date, tz: string | null): { date: string; hour: number } {
-  // en-CA reliably returns YYYY-MM-DD in the chosen timezone; sv-SE for
-  // 24-hour HH so we can read the hour without locale surprises.
-  const tzOpt = tz ?? 'UTC';
-  const date = new Intl.DateTimeFormat('en-CA', {
-    timeZone: tzOpt,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(now);
-  const hourStr = new Intl.DateTimeFormat('sv-SE', {
-    timeZone: tzOpt,
-    hour: '2-digit',
-    hour12: false,
-  }).format(now);
-  return { date, hour: Number.parseInt(hourStr, 10) };
 }
 
 function directive(ctx: PracticeCtx): string | null {

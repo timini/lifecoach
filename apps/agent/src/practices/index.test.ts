@@ -112,7 +112,7 @@ describe('getEnabledPractices / getDisabledPractices', () => {
     const enabled = getEnabledPractices(profile);
     const disabled = getDisabledPractices(profile);
     expect(enabled.map((p) => p.id)).toEqual(['evening_gratitude']);
-    expect(disabled.map((p) => p.id)).toEqual(['journaling']);
+    expect(disabled.map((p) => p.id)).toEqual(['journaling', 'day_planning']);
   });
 
   it('treats no-profile as everything-disabled', () => {

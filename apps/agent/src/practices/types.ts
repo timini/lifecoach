@@ -49,6 +49,15 @@ export interface Practice {
    */
   directive?: (ctx: PracticeCtx) => string | null;
   /**
+   * Few-shot examples injected into the EXAMPLES block when this practice
+   * is ON. Same conditional shape as `directive`: return null to add
+   * nothing this turn. Distinct from `directive` so a practice can ship
+   * its examples even when its directive doesn't need to fire (or vice
+   * versa). The string should already include the `GOOD (...)` / `BAD
+   * (...)` framing — buildInstruction concatenates verbatim.
+   */
+  examples?: (ctx: PracticeCtx) => string | null;
+  /**
    * Tools the practice exposes when ON. The factory takes shared deps +
    * per-uid scoping. Returns 0..N FunctionTool instances.
    */
