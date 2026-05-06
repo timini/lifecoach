@@ -16,7 +16,19 @@ export type ChatStreamElement =
   | { kind: 'auth'; mode: 'google' | 'email'; email?: string }
   | { kind: 'workspace' }
   | { kind: 'upgrade' }
-  | { kind: 'tool-call'; id: string; name: string; label: string; done: boolean; ok?: boolean };
+  | {
+      kind: 'tool-call';
+      id: string;
+      name: string;
+      label: string;
+      done: boolean;
+      ok?: boolean;
+      /** Raw args / response surfaced under the badge when the user
+       * expands it (debug aid). Optional because older rehydrated
+       * events won't have them. */
+      args?: unknown;
+      response?: unknown;
+    };
 
 export interface ChatStreamUserMessage {
   id: string;
@@ -183,7 +195,16 @@ function AssistantGroup({
           return <UpgradePrompt key={elKey} disabled={answered} onInterest={onProInterest} />;
         }
         if (el.kind === 'tool-call') {
-          return <ToolCallBadge key={elKey} label={el.label} done={el.done} ok={el.ok} />;
+          return (
+            <ToolCallBadge
+              key={elKey}
+              label={el.label}
+              done={el.done}
+              ok={el.ok}
+              args={el.args}
+              response={el.response}
+            />
+          );
         }
         return (
           <ChoicePrompt

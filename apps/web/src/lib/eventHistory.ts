@@ -37,6 +37,12 @@ export type HistoryAssistantElement =
       label: string;
       done: true;
       ok: boolean;
+      /** Original args from functionCall — surfaced when the badge is
+       * expanded. Undefined when rehydrating older events that didn't
+       * persist args. */
+      args?: unknown;
+      /** Original response from functionResponse — same surface as args. */
+      response?: unknown;
     };
 
 export interface HistoryAssistantMessage {
@@ -162,6 +168,8 @@ export function eventsToMessages(events: readonly EventLike[]): HistoryMessage[]
           label: labelForToolCall(fc.name, fc.args),
           done: true,
           ok: !isErrored(matched),
+          args: fc.args,
+          response: matched?.response,
         });
       }
     }

@@ -20,10 +20,24 @@ export interface YamlTreeProps {
   onChange: (next: JsonValue) => void;
   /** Optional read-only mode — disables all edit controls. */
   readOnly?: boolean;
+  /**
+   * `{ "family.children[0].name": "2026-05-06T18:32:00Z" }`-shaped lookup,
+   * keyed by canonical dotted-path. When provided, the leaf row renders a
+   * muted relative time next to the value so the user can see when each
+   * fact was last set. Path is canonicalised with `pathKey` below — keep
+   * the agent / API side using the same dotted-path convention.
+   */
+  modifiedAtByPath?: Readonly<Record<string, string>>;
   className?: string;
 }
 
-export function YamlTree({ value, onChange, readOnly = false, className }: YamlTreeProps) {
+export function YamlTree({
+  value,
+  onChange,
+  readOnly = false,
+  modifiedAtByPath,
+  className,
+}: YamlTreeProps) {
   const initial = value ?? {};
   return (
     <div className={cn('flex flex-col gap-1 text-sm', className)}>
@@ -32,6 +46,7 @@ export function YamlTree({ value, onChange, readOnly = false, className }: YamlT
         node={initial}
         onChange={(next) => onChange(next)}
         readOnly={readOnly}
+        modifiedAtByPath={modifiedAtByPath ?? {}}
       />
     </div>
   );
@@ -42,14 +57,31 @@ interface NodeProps {
   node: JsonValue;
   onChange: (next: JsonValue) => void;
   readOnly: boolean;
+  modifiedAtByPath: Readonly<Record<string, string>>;
 }
 
-function NodeRenderer({ path, node, onChange, readOnly }: NodeProps) {
+function NodeRenderer({ path, node, onChange, readOnly, modifiedAtByPath }: NodeProps) {
   if (node === null || node === undefined) {
-    return <LeafRow path={path} value={null} onChange={onChange} readOnly={readOnly} />;
+    return (
+      <LeafRow
+        path={path}
+        value={null}
+        onChange={onChange}
+        readOnly={readOnly}
+        modifiedAt={modifiedAtByPath[pathKey(path)]}
+      />
+    );
   }
   if (Array.isArray(node)) {
-    return <ArrayNode path={path} items={node} onChange={onChange} readOnly={readOnly} />;
+    return (
+      <ArrayNode
+        path={path}
+        items={node}
+        onChange={onChange}
+        readOnly={readOnly}
+        modifiedAtByPath={modifiedAtByPath}
+      />
+    );
   }
   if (typeof node === 'object') {
     return (
@@ -58,10 +90,33 @@ function NodeRenderer({ path, node, onChange, readOnly }: NodeProps) {
         obj={node as Record<string, JsonValue>}
         onChange={onChange}
         readOnly={readOnly}
+        modifiedAtByPath={modifiedAtByPath}
       />
     );
   }
-  return <LeafRow path={path} value={node} onChange={onChange} readOnly={readOnly} />;
+  return (
+    <LeafRow
+      path={path}
+      value={node}
+      onChange={onChange}
+      readOnly={readOnly}
+      modifiedAt={modifiedAtByPath[pathKey(path)]}
+    />
+  );
+}
+
+/**
+ * Canonical dotted-path key. Mirrors the agent's `update_user_profile`
+ * convention: object keys joined with `.`, array indices as `[i]`.
+ *   ['family', 'children', 0, 'name']  →  'family.children[0].name'
+ */
+export function pathKey(path: readonly PathSegment[]): string {
+  let out = '';
+  for (const seg of path) {
+    if (typeof seg === 'number') out += `[${seg}]`;
+    else out += out.length === 0 ? seg : `.${seg}`;
+  }
+  return out;
 }
 
 function ObjectNode({
@@ -69,11 +124,13 @@ function ObjectNode({
   obj,
   onChange,
   readOnly,
+  modifiedAtByPath,
 }: {
   path: PathSegment[];
   obj: Record<string, JsonValue>;
   onChange: (next: JsonValue) => void;
   readOnly: boolean;
+  modifiedAtByPath: Readonly<Record<string, string>>;
 }) {
   const entries = Object.entries(obj);
   return (
@@ -90,6 +147,7 @@ function ObjectNode({
             onChange(rest);
           }}
           readOnly={readOnly}
+          modifiedAtByPath={modifiedAtByPath}
         />
       ))}
       {!readOnly ? (
@@ -111,11 +169,13 @@ function ArrayNode({
   items,
   onChange,
   readOnly,
+  modifiedAtByPath,
 }: {
   path: PathSegment[];
   items: readonly JsonValue[];
   onChange: (next: JsonValue) => void;
   readOnly: boolean;
+  modifiedAtByPath: Readonly<Record<string, string>>;
 }) {
   return (
     <div className="flex flex-col gap-1">
@@ -136,6 +196,7 @@ function ArrayNode({
                   onChange(copy);
                 }}
                 readOnly={readOnly}
+                modifiedAtByPath={modifiedAtByPath}
               />
             </div>
             {!readOnly ? (
@@ -175,6 +236,7 @@ function KeyedRow({
   onChange,
   onDelete,
   readOnly,
+  modifiedAtByPath,
 }: {
   path: PathSegment[];
   label: string;
@@ -182,6 +244,7 @@ function KeyedRow({
   onChange: (next: JsonValue) => void;
   onDelete: () => void;
   readOnly: boolean;
+  modifiedAtByPath: Readonly<Record<string, string>>;
 }) {
   const isContainer =
     child !== null &&
@@ -194,7 +257,13 @@ function KeyedRow({
       <div className="flex items-center gap-2 rounded-sm px-1 py-0.5 hover:bg-muted/40">
         <span className="w-40 shrink-0 truncate text-xs text-muted-foreground">{label}</span>
         <div className="flex-1">
-          <LeafRow path={path} value={child} onChange={onChange} readOnly={readOnly} />
+          <LeafRow
+            path={path}
+            value={child}
+            onChange={onChange}
+            readOnly={readOnly}
+            modifiedAt={modifiedAtByPath[pathKey(path)]}
+          />
         </div>
         {!readOnly ? (
           <Button variant="ghost" size="sm" aria-label={`Remove ${label}`} onClick={onDelete}>
@@ -232,7 +301,13 @@ function KeyedRow({
       </div>
       {open ? (
         <div className="mt-2 border-l border-border/60 pl-3">
-          <NodeRenderer path={path} node={child} onChange={onChange} readOnly={readOnly} />
+          <NodeRenderer
+            path={path}
+            node={child}
+            onChange={onChange}
+            readOnly={readOnly}
+            modifiedAtByPath={modifiedAtByPath}
+          />
         </div>
       ) : null}
     </div>
@@ -243,31 +318,49 @@ function LeafRow({
   value,
   onChange,
   readOnly,
+  modifiedAt,
 }: {
   path: PathSegment[];
   value: JsonValue;
   onChange: (next: JsonValue) => void;
   readOnly: boolean;
+  /** ISO 8601 timestamp from the audit log; renders as a muted relative
+   * time next to the value (e.g. "yesterday", "Mar 5"). Undefined when
+   * we have no history entry for this leaf — common for hand-edited
+   * fields the agent never wrote. */
+  modifiedAt?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(formatLeafValue(value));
+  const stamp = modifiedAt ? formatModifiedAt(modifiedAt) : null;
   if (readOnly || !editing) {
     return (
-      <button
-        type="button"
-        onClick={() => {
-          if (readOnly) return;
-          setDraft(formatLeafValue(value));
-          setEditing(true);
-        }}
-        className={cn(
-          'w-full truncate rounded-sm border border-transparent px-2 py-1 text-left text-sm',
-          value === null ? 'text-muted-foreground italic' : 'text-foreground',
-          !readOnly && 'hover:border-border hover:bg-muted/40',
-        )}
-      >
-        {value === null ? 'Empty' : formatLeafValue(value)}
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            if (readOnly) return;
+            setDraft(formatLeafValue(value));
+            setEditing(true);
+          }}
+          className={cn(
+            'flex-1 truncate rounded-sm border border-transparent px-2 py-1 text-left text-sm',
+            value === null ? 'text-muted-foreground italic' : 'text-foreground',
+            !readOnly && 'hover:border-border hover:bg-muted/40',
+          )}
+        >
+          {value === null ? 'Empty' : formatLeafValue(value)}
+        </button>
+        {stamp ? (
+          <time
+            dateTime={modifiedAt}
+            title={modifiedAt}
+            className="shrink-0 text-[10px] text-muted-foreground"
+          >
+            {stamp}
+          </time>
+        ) : null}
+      </div>
     );
   }
   return (
@@ -351,4 +444,43 @@ function AddFieldRow({ onAdd }: { onAdd: (path: string) => void }) {
       </Button>
     </form>
   );
+}
+
+/**
+ * Format an ISO 8601 timestamp as a compact relative-ish label suitable
+ * for the leaf-row footer. Within the last 7 days we render a humanised
+ * relative form ("just now", "5m ago", "yesterday"); older dates fall
+ * back to a short locale date. Exported for unit tests.
+ */
+export function formatModifiedAt(iso: string, now: Date = new Date()): string {
+  const t = new Date(iso);
+  if (Number.isNaN(t.getTime())) return '';
+  const deltaMs = now.getTime() - t.getTime();
+  if (deltaMs < 0) return t.toLocaleDateString();
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  if (deltaMs < minute) return 'just now';
+  if (deltaMs < hour) return `${Math.floor(deltaMs / minute)}m ago`;
+  if (deltaMs < day) return `${Math.floor(deltaMs / hour)}h ago`;
+  if (deltaMs < 2 * day) return 'yesterday';
+  if (deltaMs < 7 * day) return `${Math.floor(deltaMs / day)}d ago`;
+  return t.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+/**
+ * Reduce an audit log to `{path → mostRecentISO}`. Pure: takes the raw
+ * history array and walks it once, keeping the latest `at` per path.
+ * Exported because the settings page composes the lookup before passing
+ * to YamlTree (and unit tests want to assert it directly).
+ */
+export function lastModifiedByPath(
+  entries: ReadonlyArray<{ path: string; at: string }>,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const entry of entries) {
+    const prev = out[entry.path];
+    if (!prev || entry.at > prev) out[entry.path] = entry.at;
+  }
+  return out;
 }

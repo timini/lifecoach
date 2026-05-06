@@ -1,5 +1,6 @@
 import { FunctionTool } from '@google/adk';
 import { z } from 'zod';
+import type { ProfileHistoryStore } from '../storage/profileHistory.js';
 import type { UserProfileStore } from '../storage/userProfile.js';
 
 /**
@@ -18,6 +19,12 @@ import type { UserProfileStore } from '../storage/userProfile.js';
 export function createUpdateUserProfileTool(deps: {
   store: UserProfileStore;
   uid: string;
+  /**
+   * Optional audit-log store. When wired, every successful profile write
+   * appends a `{path, before, after, at}` entry. Optional so existing
+   * tests pass a single store; production wiring always supplies it.
+   */
+  history?: ProfileHistoryStore;
 }): FunctionTool {
   const parameters = z.object({
     path: z
@@ -57,11 +64,31 @@ export function createUpdateUserProfileTool(deps: {
       const { path, value } = input as { path: string; value: string | null };
       try {
         const resolved = resolveValue(path, value);
+        // Read the previous value first so we can include it in the
+        // functionResponse (used by the UI to show "null → wren" diffs)
+        // and in the audit log entry. updatePath does its own read+write
+        // internally, so this is one extra read per profile turn.
+        const before = await deps.store.readPath(deps.uid, path);
         const profile = await deps.store.updatePath(deps.uid, path, resolved);
+        const at = new Date().toISOString();
+        // Append to the audit log; never let a history-write failure abort
+        // the user-facing write that already succeeded.
+        try {
+          await deps.history?.append(deps.uid, {
+            path,
+            before,
+            after: resolved,
+            at,
+          });
+        } catch (logErr) {
+          console.error('profile.history.append failed:', logErr);
+        }
         return {
           status: 'ok' as const,
           updated_path: path,
           new_value: resolved,
+          previous_value: before,
+          modified_at: at,
           profile_after: profile,
         };
       } catch (err) {

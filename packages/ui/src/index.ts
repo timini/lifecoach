@@ -72,7 +72,13 @@ export {
 export { ToolCallBadge, type ToolCallBadgeProps } from './molecules/tool-call-badge';
 export { UpgradePrompt, type UpgradePromptProps } from './molecules/upgrade-prompt';
 export { WorkspacePrompt, type WorkspacePromptProps } from './molecules/workspace-prompt';
-export { YamlTree, type YamlTreeProps } from './organisms/yaml-tree';
+export {
+  YamlTree,
+  type YamlTreeProps,
+  formatModifiedAt,
+  lastModifiedByPath,
+  pathKey,
+} from './organisms/yaml-tree';
 export { ChatPageTemplate, type ChatPageTemplateProps } from './templates/chat-page';
 export {
   SettingsPageTemplate,

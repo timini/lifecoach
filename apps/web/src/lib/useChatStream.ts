@@ -113,7 +113,7 @@ export function useChatStream({
           } else if (op.op === 'finish-tool-call') {
             elements = elements.map((el) =>
               el.kind === 'tool-call' && el.id === op.id && !el.done
-                ? { ...el, done: true, ok: op.ok }
+                ? { ...el, done: true, ok: op.ok, response: op.response }
                 : el,
             );
           }
