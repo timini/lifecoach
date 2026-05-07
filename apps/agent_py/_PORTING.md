@@ -10,13 +10,13 @@ Tracks per-module status of the rebuild. Update as we go.
 | `apps/agent/src/auth.ts`                               | `lifecoach_agent/auth.py`                           | 5     | — |
 | `apps/agent/src/sentry.ts`                             | `lifecoach_agent/sentry_setup.py`                   | 0     | — |
 | `apps/agent/src/chat/emptyTurnGuard.ts`                | `lifecoach_agent/chat/empty_turn_guard.py`          | 8     | — |
-| `apps/agent/src/prompt/buildInstruction.ts`            | `lifecoach_agent/prompt/build_instruction.py`       | 3     | — |
-| `apps/agent/src/practices/dayPlanning.ts`              | `lifecoach_agent/practices/day_planning.py`         | 3     | — |
-| `apps/agent/src/practices/eveningGratitude.ts`         | `lifecoach_agent/practices/evening_gratitude.py`    | 3     | — |
-| `apps/agent/src/practices/journaling.ts`               | `lifecoach_agent/practices/journaling.py`           | 3     | — |
-| `apps/agent/src/practices/dayClock.ts`                 | `lifecoach_agent/practices/day_clock.py`            | 3     | — |
-| `apps/agent/src/practices/index.ts`                    | `lifecoach_agent/practices/__init__.py`             | 3     | — |
-| `apps/agent/src/practices/types.ts`                    | `lifecoach_agent/practices/types.py`                | 3     | — |
+| `apps/agent/src/prompt/buildInstruction.ts`            | `lifecoach_agent/prompt/build_instruction.py`       | 3     | done |
+| `apps/agent/src/practices/dayPlanning.ts`              | `lifecoach_agent/practices/day_planning.py`         | 3     | done |
+| `apps/agent/src/practices/eveningGratitude.ts`         | `lifecoach_agent/practices/evening_gratitude.py`    | 3     | done (directive); tools wired Phase 6 |
+| `apps/agent/src/practices/journaling.ts`               | `lifecoach_agent/practices/journaling.py`           | 3     | done (directive); tools wired Phase 6 |
+| `apps/agent/src/practices/dayClock.ts`                 | `lifecoach_agent/practices/day_clock.py`            | 3     | done |
+| `apps/agent/src/practices/index.ts`                    | `lifecoach_agent/practices/__init__.py`             | 3     | done |
+| `apps/agent/src/practices/types.ts`                    | `lifecoach_agent/practices/types.py`                | 3     | done |
 | `packages/user-state/src/UserStateMachine.ts`          | `lifecoach_agent/state/user_state.py`               | 2     | done |
 | `packages/user-state/src/UsageStateMachine.ts`         | `lifecoach_agent/state/usage_state.py`              | 2     | done |
 | `packages/user-state/src/DailyFlowMachine.ts`          | `lifecoach_agent/state/daily_flow.py`               | 2     | done |
