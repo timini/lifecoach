@@ -9,6 +9,7 @@ default:
 install:
     pnpm install
     pnpm lefthook install
+    cd apps/agent_py && uv sync
 
 clean:
     pnpm clean
@@ -77,6 +78,50 @@ check: lint-ci typecheck test guard-no-ip-geolocation
 
 build:
     pnpm turbo run build
+
+# --- Python agent (apps/agent_py) -----------------------------------------
+#
+# The TS service in apps/agent/ is being phased out in favour of a Python
+# ADK rebuild — see apps/agent_py/README.md and ~/.claude/plans/.
+
+dev-py:
+    cd apps/agent_py && uv run uvicorn lifecoach_agent.server:app --reload --port 8080
+
+test-py:
+    cd apps/agent_py && uv run pytest
+
+test-py-cov:
+    cd apps/agent_py && uv run pytest --cov=lifecoach_agent --cov-report=term-missing
+
+lint-py:
+    cd apps/agent_py && uv run ruff check . && uv run ruff format --check .
+
+lint-py-fix:
+    cd apps/agent_py && uv run ruff check --fix . && uv run ruff format .
+
+typecheck-py:
+    cd apps/agent_py && uv run mypy src
+
+# Run the Tier-1 eval suite (fully stubbed, deterministic, fast).
+eval:
+    cd apps/agent_py && uv run pytest tests/evals/
+
+# Run Tier-2 evals against real Gemini. Costs $$ — manual / nightly only.
+eval-real:
+    cd apps/agent_py && LIFECOACH_EVAL_REAL_LLM=1 uv run pytest -m real_llm tests/evals/
+
+# Regenerate Pydantic contracts from packages/shared-types Zod schemas.
+# Fails CI if the regenerated output drifts from what's committed.
+contracts-regen:
+    pnpm --filter @lifecoach/shared-types run emit-json-schema
+    cd apps/agent_py && bash scripts/regenerate-contracts.sh
+
+contracts-check:
+    pnpm --filter @lifecoach/shared-types run emit-json-schema
+    cd apps/agent_py && bash scripts/regenerate-contracts.sh
+    git diff --exit-code apps/agent_py/src/lifecoach_agent/contracts/generated.py
+
+check-py: lint-py typecheck-py test-py
 
 # --- E2E -------------------------------------------------------------------
 
