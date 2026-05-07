@@ -30,13 +30,14 @@ Tracks per-module status of the rebuild. Update as we go.
 | `apps/agent/src/context/sessionSummary.ts`             | `lifecoach_agent/context/session_summary.py`        | 4     | done |
 | `apps/agent/src/context/sessionSummarizer.ts`          | `lifecoach_agent/context/session_summarizer.py`     | 4     | done (google-genai instead of @google/genai) |
 | `apps/agent/src/context/memory.ts` (mem0)              | `lifecoach_agent/context/memory.py` (Memory Bank)   | 4     | done (clean break from mem0; VertexAiMemoryBankService wrapper + noop fallback) |
-| `apps/agent/src/storage/firestoreSession.ts`           | `lifecoach_agent/storage/firestore_session.py`      | 5     | — |
-| `apps/agent/src/storage/userProfile.ts`                | `lifecoach_agent/storage/user_profile.py`           | 5     | — |
-| `apps/agent/src/storage/profileHistory.ts`             | `lifecoach_agent/storage/profile_history.py`        | 5     | — |
-| `apps/agent/src/storage/goalUpdates.ts`                | `lifecoach_agent/storage/goal_updates.py`           | 5     | — |
-| `apps/agent/src/storage/userMeta.ts`                   | `lifecoach_agent/storage/user_meta.py`              | 5     | — |
-| `apps/agent/src/storage/workspaceTokens.ts`            | `lifecoach_agent/storage/workspace_tokens.py`       | 5     | — |
-| `apps/agent/src/oauth/workspaceClient.ts`              | `lifecoach_agent/oauth/workspace_client.py`         | 5     | — |
+| `apps/agent/src/storage/firestoreSession.ts`           | `lifecoach_agent/storage/firestore_session.py`      | 5     | done (data plane; ADK Runner wiring at Phase 9) |
+| `apps/agent/src/storage/userProfile.ts`                | `lifecoach_agent/storage/user_profile.py`           | 5     | done |
+| `apps/agent/src/storage/profileHistory.ts`             | `lifecoach_agent/storage/profile_history.py`        | 5     | done |
+| `apps/agent/src/storage/goalUpdates.ts`                | `lifecoach_agent/storage/goal_updates.py`           | 5     | done |
+| `apps/agent/src/storage/userMeta.ts`                   | `lifecoach_agent/storage/user_meta.py`              | 5     | done |
+| `apps/agent/src/storage/workspaceTokens.ts`            | `lifecoach_agent/storage/workspace_tokens.py`       | 5     | done |
+| `apps/agent/src/oauth/workspaceClient.ts`              | `lifecoach_agent/oauth/workspace_client.py`         | 5     | done |
+| `apps/agent/src/auth.ts`                               | `lifecoach_agent/auth.py`                           | 5     | done |
 | `apps/agent/src/tools/authUser.ts`                     | `lifecoach_agent/tools/auth_user.py`                | 6     | — |
 | `apps/agent/src/tools/connectWorkspace.ts`             | `lifecoach_agent/tools/connect_workspace.py`        | 6     | — |
 | `apps/agent/src/tools/updateUserProfile.ts`            | `lifecoach_agent/tools/update_user_profile.py`      | 6     | — |

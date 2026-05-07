@@ -37,10 +37,9 @@ class WorkspaceTokensProtocol(Protocol):
     async def get_valid_access_token(self, uid: str) -> str: ...
 
 
-class ScopeRequiredError(Exception):
-    """Raised by `WorkspaceTokensProtocol.get_valid_access_token` when
-    the user has lapsed and needs to reconnect."""
-
+# Re-exported for callers importing from this module — the canonical
+# definition now lives next to the store that raises it.
+from lifecoach_agent.storage.workspace_tokens import ScopeRequiredError  # noqa: E402, F401
 
 # Function fetching events for `uid` between `time_min` and `time_max`
 # (RFC3339 strings). Returns a list of dict-shaped events as the Calendar
