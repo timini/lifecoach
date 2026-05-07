@@ -17,10 +17,11 @@ Tracks per-module status of the rebuild. Update as we go.
 | `apps/agent/src/practices/dayClock.ts`                 | `lifecoach_agent/practices/day_clock.py`            | 3     | — |
 | `apps/agent/src/practices/index.ts`                    | `lifecoach_agent/practices/__init__.py`             | 3     | — |
 | `apps/agent/src/practices/types.ts`                    | `lifecoach_agent/practices/types.py`                | 3     | — |
-| `packages/user-state/src/UserStateMachine.ts`          | `lifecoach_agent/state/user_state.py`               | 2     | — |
-| `packages/user-state/src/UsageStateMachine.ts`         | `lifecoach_agent/state/usage_state.py`              | 2     | — |
-| `packages/user-state/src/DailyFlowMachine.ts`          | `lifecoach_agent/state/daily_flow.py`               | 2     | — |
-| `packages/user-state/src/policies.ts`                  | `lifecoach_agent/state/policies.py`                 | 2     | — |
+| `packages/user-state/src/UserStateMachine.ts`          | `lifecoach_agent/state/user_state.py`               | 2     | done |
+| `packages/user-state/src/UsageStateMachine.ts`         | `lifecoach_agent/state/usage_state.py`              | 2     | done |
+| `packages/user-state/src/DailyFlowMachine.ts`          | `lifecoach_agent/state/daily_flow.py`               | 2     | done |
+| `packages/user-state/src/policies.ts`                  | `lifecoach_agent/state/policies.py`                 | 2     | done |
+| `packages/user-state/src/types.ts`                     | `lifecoach_agent/state/types.py`                    | 2     | done |
 | `apps/agent/src/context/weather.ts`                    | `lifecoach_agent/context/weather.py`                | 4     | — |
 | `apps/agent/src/context/places.ts`                     | `lifecoach_agent/context/places.py`                 | 4     | — |
 | `apps/agent/src/context/airQuality.ts`                 | `lifecoach_agent/context/air_quality.py`            | 4     | — |
