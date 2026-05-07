@@ -2,6 +2,10 @@ import { type FunctionTool, LlmAgent } from '@google/adk';
 import type { WorkspaceTokensStore } from '../../storage/workspaceTokens.js';
 import type { ExecFileLike } from './gwsExec.js';
 import type { RunGwsLogEvent } from './runGws.js';
+import { createAddCalendarEventTool } from './tools/addCalendarEvent.js';
+import { createAddTaskTool } from './tools/addTask.js';
+import { createArchiveMessagesTool } from './tools/archiveMessages.js';
+import { createCompleteTaskTool } from './tools/completeTask.js';
 import { createGetMessageTool } from './tools/getMessage.js';
 import { createListEventsTool } from './tools/listEvents.js';
 import { createListInboxTool } from './tools/listInbox.js';
@@ -43,16 +47,24 @@ export interface CreateWorkspaceAgentDeps {
   log?: (event: RunGwsLogEvent) => void;
   /** Override model, e.g. for tests. Default WORKSPACE_AGENT_MODEL. */
   model?: string;
+  /** Override agent name. Default WORKSPACE_AGENT_NAME. */
+  name?: string;
+  /** Override agent description (shown to the parent agent). */
+  description?: string;
+  /** Override system instruction. Default WORKSPACE_AGENT_INSTRUCTION. */
+  instruction?: string;
 }
+
+const DEFAULT_DESCRIPTION =
+  "Reads the user's Google Workspace data (Gmail / Calendar / Tasks) and returns structured answers.";
 
 export function createWorkspaceAgent(deps: CreateWorkspaceAgentDeps): LlmAgent {
   const tools = buildWorkspaceAgentTools(deps);
   return new LlmAgent({
-    name: WORKSPACE_AGENT_NAME,
+    name: deps.name ?? WORKSPACE_AGENT_NAME,
     model: deps.model ?? WORKSPACE_AGENT_MODEL,
-    description:
-      "Reads the user's Google Workspace data (Gmail / Calendar / Tasks) and returns structured answers. Read-only.",
-    instruction: WORKSPACE_AGENT_INSTRUCTION,
+    description: deps.description ?? DEFAULT_DESCRIPTION,
+    instruction: deps.instruction ?? WORKSPACE_AGENT_INSTRUCTION,
     tools,
     // Sub-agent stays in its tool budget — never escapes to the parent
     // or to a sibling.
@@ -62,11 +74,18 @@ export function createWorkspaceAgent(deps: CreateWorkspaceAgentDeps): LlmAgent {
 }
 
 /**
- * Returns the array of internal tools the sub-agent uses. Exported for
- * the unit test that asserts the toolset; the next commit extends this to
- * include the write tools shared with main.
+ * Returns the array of internal tools the sub-agent uses (5 reads + 4
+ * writes). The same write FunctionTool instances are also exposed on the
+ * main agent via the workspace module's index factory; the main-side
+ * exposure keeps single-step writes off the sub-agent's LLM hop, while
+ * having them in the sub-agent's toolset lets a future "act inline"
+ * prompt run end-to-end inside the sub-agent if/when we want that.
  */
 export function buildWorkspaceAgentTools(deps: CreateWorkspaceAgentDeps): FunctionTool[] {
+  return buildWorkspaceAgentReadTools(deps).concat(buildWorkspaceAgentWriteTools(deps));
+}
+
+export function buildWorkspaceAgentReadTools(deps: CreateWorkspaceAgentDeps): FunctionTool[] {
   const sharedDeps = {
     store: deps.store,
     uid: deps.uid,
@@ -79,5 +98,20 @@ export function buildWorkspaceAgentTools(deps: CreateWorkspaceAgentDeps): Functi
     createSearchMessagesTool(sharedDeps),
     createListEventsTool(sharedDeps),
     createListTasksTool(sharedDeps),
+  ];
+}
+
+export function buildWorkspaceAgentWriteTools(deps: CreateWorkspaceAgentDeps): FunctionTool[] {
+  const sharedDeps = {
+    store: deps.store,
+    uid: deps.uid,
+    execFile: deps.execFile,
+    log: deps.log,
+  };
+  return [
+    createArchiveMessagesTool(sharedDeps),
+    createAddCalendarEventTool(sharedDeps),
+    createAddTaskTool(sharedDeps),
+    createCompleteTaskTool(sharedDeps),
   ];
 }

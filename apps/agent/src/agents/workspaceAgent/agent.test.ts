@@ -4,9 +4,15 @@ import {
   WORKSPACE_AGENT_INSTRUCTION,
   WORKSPACE_AGENT_MODEL,
   WORKSPACE_AGENT_NAME,
+  buildWorkspaceAgentReadTools,
   buildWorkspaceAgentTools,
+  buildWorkspaceAgentWriteTools,
   createWorkspaceAgent,
 } from './agent.js';
+import { ADD_CALENDAR_EVENT_TOOL_NAME } from './tools/addCalendarEvent.js';
+import { ADD_TASK_TOOL_NAME } from './tools/addTask.js';
+import { ARCHIVE_MESSAGES_TOOL_NAME } from './tools/archiveMessages.js';
+import { COMPLETE_TASK_TOOL_NAME } from './tools/completeTask.js';
 import { GET_MESSAGE_TOOL_NAME } from './tools/getMessage.js';
 import { LIST_EVENTS_TOOL_NAME } from './tools/listEvents.js';
 import { LIST_INBOX_TOOL_NAME } from './tools/listInbox.js';
@@ -56,7 +62,7 @@ describe('createWorkspaceAgent', () => {
 });
 
 describe('buildWorkspaceAgentTools', () => {
-  it('returns the five read tools in a stable order', () => {
+  it('returns the 9 tools in stable order: 5 reads then 4 writes', () => {
     const tools = buildWorkspaceAgentTools({ store: fakeStore(), uid: 'u' });
     expect(tools.map((t) => t.name)).toEqual([
       LIST_INBOX_TOOL_NAME,
@@ -64,13 +70,30 @@ describe('buildWorkspaceAgentTools', () => {
       SEARCH_MESSAGES_TOOL_NAME,
       LIST_EVENTS_TOOL_NAME,
       LIST_TASKS_TOOL_NAME,
+      ARCHIVE_MESSAGES_TOOL_NAME,
+      ADD_CALENDAR_EVENT_TOOL_NAME,
+      ADD_TASK_TOOL_NAME,
+      COMPLETE_TASK_TOOL_NAME,
     ]);
   });
 
-  it('every read tool description is read-only or includes "read-only"', () => {
-    const tools = buildWorkspaceAgentTools({ store: fakeStore(), uid: 'u' });
-    for (const t of tools) {
+  it('every read tool description includes "read-only"', () => {
+    const reads = buildWorkspaceAgentReadTools({ store: fakeStore(), uid: 'u' });
+    for (const t of reads) {
       expect(t.description.toLowerCase()).toContain('read-only');
+    }
+  });
+
+  it('write tools are not labelled read-only', () => {
+    const writes = buildWorkspaceAgentWriteTools({ store: fakeStore(), uid: 'u' });
+    expect(writes.map((t) => t.name)).toEqual([
+      ARCHIVE_MESSAGES_TOOL_NAME,
+      ADD_CALENDAR_EVENT_TOOL_NAME,
+      ADD_TASK_TOOL_NAME,
+      COMPLETE_TASK_TOOL_NAME,
+    ]);
+    for (const t of writes) {
+      expect(t.description.toLowerCase()).not.toContain('read-only');
     }
   });
 });
