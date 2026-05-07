@@ -26,10 +26,10 @@ Tracks per-module status of the rebuild. Update as we go.
 | `apps/agent/src/context/places.ts`                     | `lifecoach_agent/context/places.py`                 | 4     | done (token-arg; ADC integration deferred to Phase 5) |
 | `apps/agent/src/context/airQuality.ts`                 | `lifecoach_agent/context/air_quality.py`            | 4     | done |
 | `apps/agent/src/context/holidays.ts`                   | `lifecoach_agent/context/holidays.py`               | 4     | done |
-| `apps/agent/src/context/calendarDensity.ts`            | `lifecoach_agent/context/calendar_density.py`       | 4     | — |
-| `apps/agent/src/context/sessionSummary.ts`             | `lifecoach_agent/context/session_summary.py`        | 4     | — |
-| `apps/agent/src/context/sessionSummarizer.ts`          | `lifecoach_agent/context/session_summarizer.py`     | 4     | — |
-| `apps/agent/src/context/memory.ts` (mem0)              | `lifecoach_agent/context/memory.py` (Memory Bank)   | 4     | — |
+| `apps/agent/src/context/calendarDensity.ts`            | `lifecoach_agent/context/calendar_density.py`       | 4     | done (events fetcher Protocol; google-api-python-client impl in Phase 7) |
+| `apps/agent/src/context/sessionSummary.ts`             | `lifecoach_agent/context/session_summary.py`        | 4     | done |
+| `apps/agent/src/context/sessionSummarizer.ts`          | `lifecoach_agent/context/session_summarizer.py`     | 4     | done (google-genai instead of @google/genai) |
+| `apps/agent/src/context/memory.ts` (mem0)              | `lifecoach_agent/context/memory.py` (Memory Bank)   | 4     | done (clean break from mem0; VertexAiMemoryBankService wrapper + noop fallback) |
 | `apps/agent/src/storage/firestoreSession.ts`           | `lifecoach_agent/storage/firestore_session.py`      | 5     | — |
 | `apps/agent/src/storage/userProfile.ts`                | `lifecoach_agent/storage/user_profile.py`           | 5     | — |
 | `apps/agent/src/storage/profileHistory.ts`             | `lifecoach_agent/storage/profile_history.py`        | 5     | — |

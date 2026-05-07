@@ -19,6 +19,13 @@ from lifecoach_agent.context.air_quality import (
 from lifecoach_agent.context.air_quality import (
     HttpFetcher as AirQualityFetcher,
 )
+from lifecoach_agent.context.calendar_density import (
+    TODAY_EVENT_LIMIT,
+    CalendarDensityClient,
+    EventsFetcher,
+    ScopeRequiredError,
+    WorkspaceTokensProtocol,
+)
 from lifecoach_agent.context.holidays import (
     HolidaysClient,
     tz_to_country,
@@ -26,11 +33,28 @@ from lifecoach_agent.context.holidays import (
 from lifecoach_agent.context.holidays import (
     HttpFetcher as HolidaysFetcher,
 )
+from lifecoach_agent.context.memory import (
+    Memory,
+    MemoryClient,
+    VertexMemoryClient,
+    create_vertex_memory_client,
+    noop_memory_client,
+)
 from lifecoach_agent.context.places import (
     HttpFetcher as PlacesFetcher,
 )
 from lifecoach_agent.context.places import (
     PlacesClient,
+)
+from lifecoach_agent.context.session_summarizer import (
+    create_gemini_flash_lite_summarizer,
+)
+from lifecoach_agent.context.session_summary import (
+    DaySummary,
+    SessionSummaryClient,
+    SessionSummaryStore,
+    Summarizer,
+    transcript_from_events,
 )
 from lifecoach_agent.context.weather import (
     HttpFetcher as WeatherFetcher,
@@ -43,13 +67,29 @@ from lifecoach_agent.context.weather import (
 __all__ = [
     "AirQualityClient",
     "AirQualityFetcher",
+    "CalendarDensityClient",
+    "DaySummary",
+    "EventsFetcher",
     "HolidaysClient",
     "HolidaysFetcher",
+    "Memory",
+    "MemoryClient",
     "PlacesClient",
     "PlacesFetcher",
+    "ScopeRequiredError",
+    "SessionSummaryClient",
+    "SessionSummaryStore",
+    "Summarizer",
+    "TODAY_EVENT_LIMIT",
+    "VertexMemoryClient",
     "WeatherClient",
     "WeatherFetcher",
+    "WorkspaceTokensProtocol",
+    "create_gemini_flash_lite_summarizer",
+    "create_vertex_memory_client",
+    "noop_memory_client",
     "round_for_cache",
     "round_for_cache_aq",
+    "transcript_from_events",
     "tz_to_country",
 ]
