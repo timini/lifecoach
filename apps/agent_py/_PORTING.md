@@ -45,14 +45,9 @@ Tracks per-module status of the rebuild. Update as we go.
 | `apps/agent/src/tools/askChoice.ts`                    | `lifecoach_agent/tools/ask_choice.py`               | 6     | done |
 | `apps/agent/src/tools/memorySave.ts`                   | `lifecoach_agent/tools/memory_save.py`              | 6     | done |
 | `apps/agent/src/tools/upgradeToPro.ts`                 | `lifecoach_agent/tools/upgrade_to_pro.py`           | 6     | done |
-| `apps/agent/src/agents/workspaceAgent/gwsExec.ts`      | DELETED (subsumed by `gws_client.py`)               | 7     | — |
-| `apps/agent/src/agents/workspaceAgent/runGws.ts`       | DELETED (subsumed by `gws_client.py`)               | 7     | — |
-| —                                                      | `lifecoach_agent/workspace_agent/gws_client.py`     | 7     | new (google-api-python-client) |
-| `apps/agent/src/agents/workspaceAgent/agent.ts`        | `lifecoach_agent/workspace_agent/agent.py`          | 7     | — |
-| `apps/agent/src/agents/workspaceAgent/index.ts`        | `lifecoach_agent/workspace_agent/__init__.py`       | 7     | — |
-| `apps/agent/src/agents/workspaceAgent/projections/*`   | `lifecoach_agent/workspace_agent/projections/*`     | 7     | — |
-| `apps/agent/src/agents/workspaceAgent/tools/*`         | `lifecoach_agent/workspace_agent/tools/*`           | 7     | — |
-| `apps/agent/src/agents/workspaceAgent/agentTools/*`    | `lifecoach_agent/workspace_agent/agent_tools/*`     | 7     | — |
+| `apps/agent/src/tools/callWorkspace.ts` (gws CLI)      | `lifecoach_agent/workspace_agent/gws_client.py`     | 7     | done (google-api-python-client; gws CLI dropped entirely) |
+| —                                                      | `lifecoach_agent/workspace_agent/call_workspace.py` | 7     | done (ADK FunctionTool wrapper) |
+| The full sub-agent redesign (separate ADK Agent + 9 internal tools + 2 AgentTool wrappers) lands as a follow-up issue — see plan §"Phase 7 — Workspace sub-agent". | | 7+ | follow-up |
 
 Status legend: `—` (todo), `wip` (in progress on a branch), `done` (merged
 to main / migration branch).
