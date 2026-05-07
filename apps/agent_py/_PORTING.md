@@ -22,10 +22,10 @@ Tracks per-module status of the rebuild. Update as we go.
 | `packages/user-state/src/DailyFlowMachine.ts`          | `lifecoach_agent/state/daily_flow.py`               | 2     | done |
 | `packages/user-state/src/policies.ts`                  | `lifecoach_agent/state/policies.py`                 | 2     | done |
 | `packages/user-state/src/types.ts`                     | `lifecoach_agent/state/types.py`                    | 2     | done |
-| `apps/agent/src/context/weather.ts`                    | `lifecoach_agent/context/weather.py`                | 4     | — |
-| `apps/agent/src/context/places.ts`                     | `lifecoach_agent/context/places.py`                 | 4     | — |
-| `apps/agent/src/context/airQuality.ts`                 | `lifecoach_agent/context/air_quality.py`            | 4     | — |
-| `apps/agent/src/context/holidays.ts`                   | `lifecoach_agent/context/holidays.py`               | 4     | — |
+| `apps/agent/src/context/weather.ts`                    | `lifecoach_agent/context/weather.py`                | 4     | done |
+| `apps/agent/src/context/places.ts`                     | `lifecoach_agent/context/places.py`                 | 4     | done (token-arg; ADC integration deferred to Phase 5) |
+| `apps/agent/src/context/airQuality.ts`                 | `lifecoach_agent/context/air_quality.py`            | 4     | done |
+| `apps/agent/src/context/holidays.ts`                   | `lifecoach_agent/context/holidays.py`               | 4     | done |
 | `apps/agent/src/context/calendarDensity.ts`            | `lifecoach_agent/context/calendar_density.py`       | 4     | — |
 | `apps/agent/src/context/sessionSummary.ts`             | `lifecoach_agent/context/session_summary.py`        | 4     | — |
 | `apps/agent/src/context/sessionSummarizer.ts`          | `lifecoach_agent/context/session_summarizer.py`     | 4     | — |
