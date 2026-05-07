@@ -115,16 +115,11 @@ class FirestoreSessionService:
             events = events[-num_recent_events:]
         if after_timestamp is not None:
             events = [e for e in events if (e.get("timestamp") or 0) > after_timestamp]
-        # Phase 8 will splice synthetic recovery events here. Until then,
-        # pass through unmodified.
-        try:
-            from lifecoach_agent.chat.empty_turn_guard import (  # type: ignore[import-not-found,import-untyped]
-                inject_recovery_events,
-            )
+        # Splice synthetic recovery events for already-poisoned sessions
+        # so the model never sees its own broken pattern in history.
+        from lifecoach_agent.chat.empty_turn_guard import inject_recovery_events
 
-            events = inject_recovery_events(events)
-        except ImportError:
-            pass
+        events = inject_recovery_events(events)
         out = dict(stored)
         out["events"] = events
         return out

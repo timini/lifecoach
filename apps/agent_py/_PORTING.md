@@ -9,7 +9,7 @@ Tracks per-module status of the rebuild. Update as we go.
 | `apps/agent/src/server.ts`                             | `lifecoach_agent/server.py`                         | 9     | — |
 | `apps/agent/src/auth.ts`                               | `lifecoach_agent/auth.py`                           | 5     | — |
 | `apps/agent/src/sentry.ts`                             | `lifecoach_agent/sentry_setup.py`                   | 0     | — |
-| `apps/agent/src/chat/emptyTurnGuard.ts`                | `lifecoach_agent/chat/empty_turn_guard.py`          | 8     | — |
+| `apps/agent/src/chat/emptyTurnGuard.ts`                | `lifecoach_agent/chat/empty_turn_guard.py`          | 8     | done |
 | `apps/agent/src/prompt/buildInstruction.ts`            | `lifecoach_agent/prompt/build_instruction.py`       | 3     | done |
 | `apps/agent/src/practices/dayPlanning.ts`              | `lifecoach_agent/practices/day_planning.py`         | 3     | done |
 | `apps/agent/src/practices/eveningGratitude.ts`         | `lifecoach_agent/practices/evening_gratitude.py`    | 3     | done (directive); tools wired Phase 6 |
