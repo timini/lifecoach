@@ -75,12 +75,16 @@ export function createAddCalendarEventTool(deps: CreateAddCalendarEventToolDeps)
       const isAllDay = /^\d{4}-\d{2}-\d{2}$/.test(args.start);
 
       const startBlock = isAllDay ? { date: args.start } : { dateTime: args.start };
+      // Calendar all-day end dates are EXCLUSIVE — defaulting end=start
+      // creates a zero-length / invalid event. Default to the next day
+      // for a single-day all-day event. For timed events default to
+      // start + 30 min.
       const endBlock = args.end
         ? isAllDay
           ? { date: args.end }
           : { dateTime: args.end }
         : isAllDay
-          ? { date: args.start }
+          ? { date: addDaysIso(args.start, 1) }
           : { dateTime: addMs(args.start, DEFAULT_DURATION_MS) };
 
       const requestBody: Record<string, unknown> = {
@@ -113,6 +117,15 @@ export function createAddCalendarEventTool(deps: CreateAddCalendarEventToolDeps)
       return { status: 'ok', event: projection };
     },
   });
+}
+
+function addDaysIso(yyyyMmDd: string, days: number): string {
+  // Pure date arithmetic in UTC — avoids DST edge cases that don't apply
+  // to all-day events (which carry no timezone).
+  const ts = Date.parse(`${yyyyMmDd}T00:00:00Z`);
+  if (Number.isNaN(ts)) return yyyyMmDd;
+  const next = new Date(ts + days * 24 * 60 * 60 * 1000);
+  return next.toISOString().slice(0, 10);
 }
 
 function addMs(rfc3339: string, ms: number): string {

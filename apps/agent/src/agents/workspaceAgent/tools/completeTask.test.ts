@@ -48,12 +48,15 @@ describe('complete_task', () => {
     expect(r.task.status).toBe('completed');
 
     const argv = calls[0] ?? [];
-    expect(argv.slice(0, 4)).toEqual(['tasks', 'tasks', 'update', '--params']);
+    // Use patch (PATCH partial), NOT update (PUT full resource), so
+    // title/notes/due aren't wiped.
+    expect(argv.slice(0, 4)).toEqual(['tasks', 'tasks', 'patch', '--params']);
     const params = JSON.parse(argv[argv.indexOf('--params') + 1] ?? '{}');
     expect(params.task).toBe('t1');
     const body = JSON.parse(argv[argv.indexOf('--json') + 1] ?? '{}');
     expect(body.status).toBe('completed');
-    expect(body.id).toBe('t1');
+    // patch body should NOT include the id (avoids accidental clobber).
+    expect(body.id).toBeUndefined();
   });
 
   it('honours a custom taskListId', async () => {

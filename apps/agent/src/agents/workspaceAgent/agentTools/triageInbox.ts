@@ -1,5 +1,6 @@
 import { AgentTool } from '@google/adk';
 import { type TriageReport, TriageReportSchema } from '@lifecoach/shared-types';
+import { z } from 'zod';
 import { type CreateWorkspaceAgentDeps, createWorkspaceAgent } from '../agent.js';
 
 /**
@@ -16,7 +17,7 @@ const TRIAGE_DESCRIPTION =
 
 const TRIAGE_INSTRUCTION = `You are the inbox-triage sub-agent for a coaching assistant.
 
-The parent will hand you a triage request (optionally with a "since" window like "1d" or "12h"; default 1d).
+The parent will hand you a JSON message such as {} or {"since":"1d"} — parse it and use the "since" key (default "1d") as the inbox window.
 
 Procedure:
 1. Call list_inbox({ since }) to get message ids + snippets.
@@ -47,12 +48,20 @@ export interface TriageInboxToolResult {
   raw: string;
 }
 
+const TRIAGE_INPUT_SCHEMA = z.object({
+  since: z
+    .string()
+    .optional()
+    .describe('Gmail-style relative window (e.g. "1d", "12h", "3d"). Default "1d".'),
+});
+
 export function createTriageInboxTool(deps: CreateWorkspaceAgentDeps): AgentTool {
   const agent = createWorkspaceAgent({
     ...deps,
     name: TRIAGE_INBOX_TOOL_NAME,
     description: TRIAGE_DESCRIPTION,
     instruction: TRIAGE_INSTRUCTION,
+    inputSchema: TRIAGE_INPUT_SCHEMA,
   });
   return new AgentTool({ agent, skipSummarization: false });
 }

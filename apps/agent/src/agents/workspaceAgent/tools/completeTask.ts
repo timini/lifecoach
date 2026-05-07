@@ -41,15 +41,19 @@ export function createCompleteTaskTool(deps: CreateCompleteTaskToolDeps): Functi
       const args = input as { id: string; taskListId?: string };
       const taskListId = args.taskListId ?? '@default';
 
+      // tasks.update is a PUT requiring the FULL task resource — sending
+      // only `{id, status}` would wipe title/notes/due. tasks.patch is
+      // the partial-update endpoint and is the correct verb for a
+      // single-field flip.
       const result = await runGws({
         store,
         uid,
         toolName: COMPLETE_TASK_TOOL_NAME,
         service: 'tasks',
         resource: 'tasks',
-        method: 'update',
+        method: 'patch',
         params: { tasklist: taskListId, task: args.id },
-        body: { id: args.id, status: 'completed' },
+        body: { status: 'completed' },
         execFile,
         log,
       });

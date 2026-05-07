@@ -1,4 +1,5 @@
 import { AgentTool } from '@google/adk';
+import { z } from 'zod';
 import { type CreateWorkspaceAgentDeps, createWorkspaceAgent } from '../agent.js';
 
 /**
@@ -15,7 +16,7 @@ const FIND_DESCRIPTION =
 
 const FIND_INSTRUCTION = `You are the workspace-search sub-agent for a coaching assistant.
 
-The parent will hand you a natural-language query asking for specific information across Gmail, Calendar, and Google Tasks.
+The parent will hand you a JSON message of the form {"query":"..."} — parse it and treat the "query" string as a natural-language request asking for specific information across Gmail, Calendar, and Google Tasks.
 
 Procedure:
 1. Pick the right read tool(s):
@@ -33,12 +34,22 @@ Final answer: a short natural-language answer (≤4 sentences) that:
 
 Be terse. The parent agent will paraphrase.`;
 
+const FIND_INPUT_SCHEMA = z.object({
+  query: z
+    .string()
+    .min(1)
+    .describe(
+      'Natural-language question — e.g. "Sarah\'s email last week", "what\'s Thursday afternoon".',
+    ),
+});
+
 export function createFindWorkspaceTool(deps: CreateWorkspaceAgentDeps): AgentTool {
   const agent = createWorkspaceAgent({
     ...deps,
     name: FIND_WORKSPACE_TOOL_NAME,
     description: FIND_DESCRIPTION,
     instruction: FIND_INSTRUCTION,
+    inputSchema: FIND_INPUT_SCHEMA,
   });
   return new AgentTool({ agent, skipSummarization: false });
 }

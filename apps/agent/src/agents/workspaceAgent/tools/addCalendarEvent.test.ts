@@ -103,6 +103,24 @@ describe('add_calendar_event', () => {
     expect(body.end).toEqual({ date: '2026-05-13' });
   });
 
+  it('defaults all-day end to the NEXT day when omitted (Calendar end is exclusive)', async () => {
+    const calls: string[][] = [];
+    const fakeExec: ExecFileLike = async (_bin, argv) => {
+      calls.push(argv);
+      return { stdout: JSON.stringify({ id: 'ev1' }), stderr: '', code: 0 };
+    };
+    const tool = createAddCalendarEventTool({
+      store: fakeStore(),
+      uid: 'u',
+      execFile: fakeExec,
+    });
+    await exec(tool, { summary: 'Single-day holiday', start: '2026-05-12' });
+    const body = JSON.parse(calls[0]?.[calls[0]?.indexOf('--json') + 1] ?? '{}');
+    expect(body.start).toEqual({ date: '2026-05-12' });
+    // Without this default the event would be zero-length / invalid.
+    expect(body.end).toEqual({ date: '2026-05-13' });
+  });
+
   it('passes a custom calendarId through', async () => {
     const calls: string[][] = [];
     const fakeExec: ExecFileLike = async (_bin, argv) => {

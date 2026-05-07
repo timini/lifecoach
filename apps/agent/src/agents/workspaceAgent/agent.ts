@@ -1,4 +1,5 @@
 import { type FunctionTool, LlmAgent } from '@google/adk';
+import type * as z from 'zod';
 import type { WorkspaceTokensStore } from '../../storage/workspaceTokens.js';
 import type { ExecFileLike } from './gwsExec.js';
 import type { RunGwsLogEvent } from './runGws.js';
@@ -53,6 +54,14 @@ export interface CreateWorkspaceAgentDeps {
   description?: string;
   /** Override system instruction. Default WORKSPACE_AGENT_INSTRUCTION. */
   instruction?: string;
+  /**
+   * Optional Zod schema describing the JSON shape the parent agent passes
+   * via `AgentTool`. Setting this is REQUIRED whenever the AgentTool
+   * wrapper expects structured args; otherwise ADK falls back to a
+   * generic `{ request: string }` shape and the LLM has to invent that
+   * key, which leads to empty/undefined inner messages.
+   */
+  inputSchema?: z.ZodObject<z.ZodRawShape>;
 }
 
 const DEFAULT_DESCRIPTION =
@@ -65,6 +74,12 @@ export function createWorkspaceAgent(deps: CreateWorkspaceAgentDeps): LlmAgent {
     model: deps.model ?? WORKSPACE_AGENT_MODEL,
     description: deps.description ?? DEFAULT_DESCRIPTION,
     instruction: deps.instruction ?? WORKSPACE_AGENT_INSTRUCTION,
+    // ADK ships with its own pinned zod copy in node_modules — the
+    // ZodObject we hand it from our workspace's zod is structurally
+    // identical but nominally distinct. ADK accepts ZodObject at
+    // runtime; the cast is purely a TS-side bridge.
+    // biome-ignore lint/suspicious/noExplicitAny: cross-zod-instance bridge
+    ...(deps.inputSchema ? { inputSchema: deps.inputSchema as any } : {}),
     tools,
     // Sub-agent stays in its tool budget — never escapes to the parent
     // or to a sibling.
