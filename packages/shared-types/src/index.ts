@@ -30,4 +30,14 @@ export {
   type WorkspaceScope,
   type WorkspaceStatus,
 } from './workspace.js';
+export {
+  EventProjectionSchema,
+  MessageProjectionSchema,
+  TaskProjectionSchema,
+  TriageReportSchema,
+  type EventProjection,
+  type MessageProjection,
+  type TaskProjection,
+  type TriageReport,
+} from './workspaceProjections.js';
 export { PRACTICE_METADATA, practiceEnabledPath, type PracticeMetadata } from './practices.js';
