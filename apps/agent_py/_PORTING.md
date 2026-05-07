@@ -5,6 +5,7 @@ Tracks per-module status of the rebuild. Update as we go.
 | TS source                                              | Python target                                       | Phase | Status |
 |--------------------------------------------------------|-----------------------------------------------------|-------|--------|
 | `apps/agent/src/agent.ts`                              | `lifecoach_agent/agent.py`                          | 0/9   | bootstrapped (hello-world) |
+| `packages/shared-types/src/*`                          | `lifecoach_agent/contracts/models.py`               | 1     | done |
 | `apps/agent/src/server.ts`                             | `lifecoach_agent/server.py`                         | 9     | — |
 | `apps/agent/src/auth.ts`                               | `lifecoach_agent/auth.py`                           | 5     | — |
 | `apps/agent/src/sentry.ts`                             | `lifecoach_agent/sentry_setup.py`                   | 0     | — |

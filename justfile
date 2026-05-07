@@ -110,16 +110,11 @@ eval:
 eval-real:
     cd apps/agent_py && LIFECOACH_EVAL_REAL_LLM=1 uv run pytest -m real_llm tests/evals/
 
-# Regenerate Pydantic contracts from packages/shared-types Zod schemas.
-# Fails CI if the regenerated output drifts from what's committed.
-contracts-regen:
-    pnpm --filter @lifecoach/shared-types run emit-json-schema
-    cd apps/agent_py && bash scripts/regenerate-contracts.sh
-
-contracts-check:
-    pnpm --filter @lifecoach/shared-types run emit-json-schema
-    cd apps/agent_py && bash scripts/regenerate-contracts.sh
-    git diff --exit-code apps/agent_py/src/lifecoach_agent/contracts/generated.py
+# Pydantic contracts in apps/agent_py/src/lifecoach_agent/contracts/ are a
+# hand-maintained mirror of packages/shared-types. Drift is caught by
+# `tests/unit/test_contracts.py`, which ports the TS test cases verbatim
+# — if a Zod schema gains a constraint, regenerate that test by porting
+# the matching `.test.ts` change.
 
 check-py: lint-py typecheck-py test-py
 
