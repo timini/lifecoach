@@ -1,0 +1,1118 @@
+"""FastAPI server — Python port of `apps/agent/src/server.ts`.
+
+Endpoints (all paths + body shapes mirror the TS surface so the web app
+needs zero changes when we cut over):
+
+    GET    /health                       -> {status: "ok"}
+    GET    /history?userId=&sessionId=   -> {events}
+    GET    /sessions                     -> {sessions: [{sessionId, lastUpdateTime}]}
+    GET    /profile?userId=              -> {profile, history}
+    PATCH  /profile           body{profile} -> {status: "ok"}
+    GET    /goals?userId=                -> {updates}
+    POST   /workspace/oauth-exchange  body{code} -> {connected, scopes, grantedAt}
+    GET    /workspace/status             -> {connected, scopes, grantedAt}
+    DELETE /workspace                    -> {connected:false, scopes:[], grantedAt:null}
+    POST   /chat              body{userId, sessionId, message, location?, timezone?}
+                                         -> SSE stream
+
+The SSE wire format matches the TS server byte-for-byte:
+  - Initial 4096-space comment line to flush past Cloud Run's GFE buffer.
+  - `data: <JSON>\\n\\n` per ADK event.
+  - `event: done\\ndata: {}\\n\\n` at the end.
+  - `event: error\\ndata: {"message": "..."}\\n\\n` on exception.
+
+Per-turn behaviour mirrored from the TS:
+  1. Auth (verify Bearer if `verifyToken` set; 401 if `requireAuth` set
+     and no claims).
+  2. Read workspace token doc to derive `workspaceScopesGranted`.
+  3. Build a `UserStateMachine` from claims + workspace state.
+  4. Parallel-fetch ALL turn context (weather, places, AQ, holidays,
+     calendar density, profile, goals, memories, meta, existing
+     session, yesterday + week summaries) in one `asyncio.gather`,
+     timing each branch.
+  5. Build `InstructionContext`, log the rendered prompt at length, and
+     call `runnerFor(ctx, uid, usagePolicy)` to mint a Runner.
+  6. Stream the model's events to the client; on first empty turn,
+     synthesise a `__continue__` user message and try once more
+     (issue #40 option B); if STILL empty, emit a recovery stub via
+     `pick_recovery_text` + `make_recovery_event` and persist it.
+  7. Log the `chat.turn` line in `finally`.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import json
+import logging
+import re
+import time
+from collections.abc import AsyncIterator, Awaitable, Callable
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Any, Protocol, cast
+from zoneinfo import ZoneInfo
+
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, StreamingResponse
+
+from lifecoach_agent.agent import RunnerLike
+from lifecoach_agent.auth import (
+    TokenVerifier,
+    VerifiedClaims,
+    claims_to_firebase_user_like,
+    verify_request,
+)
+from lifecoach_agent.chat.empty_turn_guard import (
+    CONTINUE_SENTINEL,
+    make_recovery_event,
+    pick_recovery_text,
+)
+from lifecoach_agent.context.air_quality import AirQualityClient
+from lifecoach_agent.context.calendar_density import CalendarDensityClient
+from lifecoach_agent.context.holidays import HolidaysClient, tz_to_country
+from lifecoach_agent.context.memory import MemoryClient
+from lifecoach_agent.context.places import PlacesClient
+from lifecoach_agent.context.session_summary import SessionSummaryClient
+from lifecoach_agent.context.weather import WeatherClient
+from lifecoach_agent.oauth.workspace_client import WorkspaceOAuthClient
+from lifecoach_agent.prompt.build_instruction import (
+    Coord,
+    InstructionContext,
+    LocationCtx,
+    build_instruction,
+)
+from lifecoach_agent.sentry_setup import capture_chat_event
+from lifecoach_agent.state import (
+    FirebaseProvider,
+    FirebaseUserLike,
+    Tier,
+    UsageInputs,
+    UsagePolicy,
+    UsageStateMachine,
+    UserStateMachine,
+)
+from lifecoach_agent.storage.goal_updates import GoalUpdatesStore
+from lifecoach_agent.storage.profile_history import ProfileHistoryStore
+from lifecoach_agent.storage.user_meta import UserMetaStore
+from lifecoach_agent.storage.user_profile import UserProfileStore
+from lifecoach_agent.storage.workspace_tokens import WorkspaceTokensStore
+
+logger = logging.getLogger("lifecoach_agent.server")
+
+# --- Tool factories (closure-bound per turn) -----------------------------
+#
+# Imported lazily by the runner factory built in `main.py`; the server
+# itself doesn't call these directly.
+
+# --- Helpers --------------------------------------------------------------
+
+
+def _now_ms() -> int:
+    return int(time.time() * 1000)
+
+
+async def _timed(coro: Awaitable[Any]) -> tuple[Any, int]:
+    """Wrap an awaitable with a stopwatch — returns (value, elapsed_ms).
+    Mirrors `timed<T>` in server.ts."""
+    t0 = _now_ms()
+    v = await coro
+    return v, _now_ms() - t0
+
+
+def _local_day_key(timezone: str, at: datetime) -> str:
+    """YYYY-MM-DD in `timezone`. Matches the `Intl.DateTimeFormat('en-CA',
+    {timeZone})` output the TS uses for the per-day session id."""
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=ZoneInfo("UTC"))
+    return at.astimezone(ZoneInfo(timezone)).strftime("%Y-%m-%d")
+
+
+def _session_has_user_interaction(session: Any) -> bool:
+    """True when this session already contains at least one *real* user
+    message — anything beyond the synthetic kickoff sentinels.
+
+    Drives DailyFlowMachine's morning_greeting → morning flip via
+    `has_interacted_today`. Matches `sessionHasUserInteraction` in TS.
+    """
+    if session is None:
+        return False
+    events = (
+        session.get("events") if isinstance(session, dict) else getattr(session, "events", None)
+    ) or []
+    for ev in events:
+        author = ev.get("author") if isinstance(ev, dict) else getattr(ev, "author", None)
+        if author != "user":
+            continue
+        content = ev.get("content") if isinstance(ev, dict) else getattr(ev, "content", None)
+        parts = (
+            content.get("parts")
+            if isinstance(content, dict)
+            else (getattr(content, "parts", None) if content is not None else None)
+        ) or []
+        joined = "".join(
+            (p.get("text") if isinstance(p, dict) else getattr(p, "text", None)) or ""
+            for p in parts
+        ).strip()
+        if joined and joined not in ("__session_start__", CONTINUE_SENTINEL):
+            return True
+    return False
+
+
+# --- DI shape -------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class RunnerForParams:
+    """One-turn factory input. The agent factory builds an `Agent` with
+    the right tool list + materialised instruction; the runner is a
+    `google.adk.runners.Runner` (or a fake in tests)."""
+
+    ctx: InstructionContext
+    uid: str
+    usage_policy: UsagePolicy
+
+
+class SessionReader(Protocol):
+    """Read-only handle to the session store for /history and /sessions."""
+
+    app_name: str
+
+    async def get_session(self, *, app_name: str, user_id: str, session_id: str) -> Any | None: ...
+
+    async def list_sessions(self, *, app_name: str, user_id: str) -> list[Any]: ...
+
+
+@dataclass
+class CreateAppDeps:
+    """Mirrors the TS `CreateAppDeps`. Tests construct one with fakes;
+    `main.py` constructs the production wiring."""
+
+    runner_for: Callable[[RunnerForParams], RunnerLike]
+    session_reader: SessionReader | None = None
+    verify_token: TokenVerifier | None = None
+    require_auth: bool = False
+    weather: WeatherClient | None = None
+    places: PlacesClient | None = None
+    places_token_provider: Callable[[], Awaitable[str | None]] | None = None
+    air_quality: AirQualityClient | None = None
+    holidays: HolidaysClient | None = None
+    calendar_density: CalendarDensityClient | None = None
+    memory: MemoryClient | None = None
+    memory_enabled: bool | None = None
+    session_summary: SessionSummaryClient | None = None
+    profile_store: UserProfileStore | None = None
+    profile_history_store: ProfileHistoryStore | None = None
+    goal_updates_store: GoalUpdatesStore | None = None
+    workspace_tokens_store: WorkspaceTokensStore | None = None
+    workspace_oauth_client: WorkspaceOAuthClient | None = None
+    user_meta_store: UserMetaStore | None = None
+    now: Callable[[], datetime] = field(
+        default_factory=lambda: lambda: datetime.now(ZoneInfo("UTC"))
+    )
+
+
+# --- Helpers for endpoint auth -------------------------------------------
+
+
+async def _verify(request: Request, deps: CreateAppDeps) -> VerifiedClaims | None:
+    if deps.verify_token is None:
+        return None
+    auth_header = request.headers.get("authorization") or request.headers.get("Authorization")
+    return await verify_request({"authorization": auth_header or ""}, deps.verify_token)
+
+
+def _bridge_firebase_user(
+    claims: VerifiedClaims, workspace_scopes_granted: bool
+) -> FirebaseUserLike:
+    """`auth.claims_to_firebase_user_like` returns the auth-module shape
+    (camelCase fields, dict providerData). The state machine expects the
+    state-types shape (snake_case, tuple of FirebaseProvider). Bridge
+    the two here so the server can stay decoupled from either's evolution.
+    """
+    auth_shape = claims_to_firebase_user_like(claims, workspace_scopes_granted)
+    providers = tuple(
+        FirebaseProvider(provider_id=str(p.get("providerId") or ""))
+        for p in auth_shape.providerData
+    )
+    return FirebaseUserLike(
+        is_anonymous=auth_shape.isAnonymous,
+        email_verified=auth_shape.emailVerified,
+        provider_data=providers,
+        workspace_scopes_granted=auth_shape.workspaceScopesGranted,
+    )
+
+
+def _coerce_tier(value: Any) -> Tier:
+    """Narrow the dict-typed `tier` reading to the Tier Literal."""
+    return "pro" if value == "pro" else "free"
+
+
+# --- App factory ---------------------------------------------------------
+
+
+def create_app(deps: CreateAppDeps) -> FastAPI:
+    """Build the FastAPI app. The TS `createApp` accepts `CreateAppDeps`
+    and returns an Express handler; we accept the same and return a
+    FastAPI app (mountable + ASGI-testable)."""
+    app = FastAPI()
+
+    # ---- /health ---------------------------------------------------------
+
+    @app.get("/health")
+    async def health() -> dict[str, str]:
+        return {"status": "ok"}
+
+    # ---- /history --------------------------------------------------------
+
+    @app.get("/history")
+    async def history(request: Request) -> JSONResponse:
+        user_id = request.query_params.get("userId")
+        session_id = request.query_params.get("sessionId")
+        if not user_id or not session_id:
+            return JSONResponse({"error": "userId and sessionId are required"}, status_code=400)
+        claims = await _verify(request, deps)
+        if deps.require_auth and claims is None:
+            return JSONResponse({"error": "unauthenticated"}, status_code=401)
+        effective_user_id = claims.uid if claims else user_id
+
+        reader = deps.session_reader
+        if reader is None:
+            return JSONResponse({"events": []})
+        try:
+            session = await reader.get_session(
+                app_name=reader.app_name, user_id=effective_user_id, session_id=session_id
+            )
+        except Exception:  # noqa: BLE001
+            session = None
+        events: list[Any] = []
+        if session is not None:
+            raw_events = (
+                session.get("events")
+                if isinstance(session, dict)
+                else getattr(session, "events", [])
+            )
+            events = list(raw_events or [])
+        return JSONResponse({"events": events})
+
+    # ---- /sessions -------------------------------------------------------
+
+    @app.get("/sessions")
+    async def sessions(request: Request) -> JSONResponse:
+        claims = await _verify(request, deps)
+        if deps.require_auth and claims is None:
+            return JSONResponse({"error": "unauthenticated"}, status_code=401)
+        effective_user_id = claims.uid if claims else None
+        if effective_user_id is None:
+            # No auth → no scope to list — match TS empty fallback.
+            return JSONResponse({"sessions": []})
+
+        reader = deps.session_reader
+        if reader is None:
+            return JSONResponse({"sessions": []})
+        try:
+            session_list = await reader.list_sessions(
+                app_name=reader.app_name, user_id=effective_user_id
+            )
+        except Exception:  # noqa: BLE001
+            session_list = []
+        items: list[dict[str, Any]] = []
+        for s in session_list or []:
+            sid = s.get("id") if isinstance(s, dict) else getattr(s, "id", None)
+            ts_raw = (
+                s.get("lastUpdateTime") if isinstance(s, dict) else getattr(s, "lastUpdateTime", 0)
+            )
+            ts = int(ts_raw) if isinstance(ts_raw, int | float) else 0
+            items.append({"sessionId": sid, "lastUpdateTime": ts})
+        items.sort(key=lambda x: cast(int, x["lastUpdateTime"]), reverse=True)
+        return JSONResponse({"sessions": items})
+
+    # ---- /profile (GET + PATCH) -----------------------------------------
+
+    @app.get("/profile")
+    async def get_profile(request: Request) -> JSONResponse:
+        user_id = request.query_params.get("userId")
+        if not user_id:
+            return JSONResponse({"error": "userId is required"}, status_code=400)
+        claims = await _verify(request, deps)
+        if deps.require_auth and claims is None:
+            return JSONResponse({"error": "unauthenticated"}, status_code=401)
+        effective_user_id = claims.uid if claims else user_id
+        if deps.profile_store is None:
+            return JSONResponse({"profile": {}, "history": []})
+        try:
+            profile = await deps.profile_store.read(effective_user_id)
+        except Exception:  # noqa: BLE001
+            profile = {}
+        history: list[dict[str, Any]] = []
+        if deps.profile_history_store is not None:
+            try:
+                entries = await deps.profile_history_store.read(effective_user_id)
+                history = [
+                    {"path": e.path, "before": e.before, "after": e.after, "at": e.at}
+                    for e in entries
+                ]
+            except Exception:  # noqa: BLE001
+                history = []
+        return JSONResponse({"profile": profile, "history": history})
+
+    @app.patch("/profile")
+    async def patch_profile(request: Request) -> JSONResponse:
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001
+            body = {}
+        profile = body.get("profile") if isinstance(body, dict) else None
+        if not isinstance(profile, dict):
+            return JSONResponse({"error": "body.profile must be an object"}, status_code=400)
+        claims = await _verify(request, deps)
+        if claims is None:
+            # Direct profile writes always require a verified token, even
+            # when `require_auth` is false at the app level.
+            return JSONResponse({"error": "unauthenticated"}, status_code=401)
+        effective_user_id = claims.uid
+        if deps.profile_store is None:
+            return JSONResponse({"error": "profile store not configured"}, status_code=503)
+        await deps.profile_store.write(effective_user_id, profile)
+        return JSONResponse({"status": "ok"})
+
+    # ---- /goals ----------------------------------------------------------
+
+    @app.get("/goals")
+    async def get_goals(request: Request) -> JSONResponse:
+        user_id = request.query_params.get("userId")
+        if not user_id:
+            return JSONResponse({"error": "userId is required"}, status_code=400)
+        claims = await _verify(request, deps)
+        if deps.require_auth and claims is None:
+            return JSONResponse({"error": "unauthenticated"}, status_code=401)
+        effective_user_id = claims.uid if claims else user_id
+        if deps.goal_updates_store is None:
+            return JSONResponse({"updates": []})
+        try:
+            updates = await deps.goal_updates_store.recent(effective_user_id, 20)
+        except Exception:  # noqa: BLE001
+            updates = []
+        return JSONResponse({"updates": [u.model_dump(exclude_none=True) for u in updates]})
+
+    # ---- Workspace OAuth -------------------------------------------------
+
+    @app.post("/workspace/oauth-exchange")
+    async def workspace_oauth_exchange(request: Request) -> JSONResponse:
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001
+            body = {}
+        code = body.get("code") if isinstance(body, dict) else None
+        if not isinstance(code, str) or not code:
+            return JSONResponse({"error": "body.code (string) is required"}, status_code=400)
+        claims = await _verify(request, deps)
+        if claims is None:
+            return JSONResponse({"error": "unauthenticated"}, status_code=401)
+        if deps.workspace_oauth_client is None or deps.workspace_tokens_store is None:
+            return JSONResponse({"error": "workspace not configured"}, status_code=503)
+        try:
+            tokens = await deps.workspace_oauth_client.exchange_code(code)
+            stored = await deps.workspace_tokens_store.set(claims.uid, tokens)
+            return JSONResponse(
+                {
+                    "connected": True,
+                    "scopes": list(stored.scopes),
+                    "grantedAt": stored.grantedAt,
+                }
+            )
+        except Exception as err:  # noqa: BLE001
+            message = str(err)
+            print(
+                json.dumps(
+                    {
+                        "msg": "workspace.oauth_exchange_failed",
+                        "uid": claims.uid,
+                        # Sanitise — never echo a stray access token.
+                        "reason": re.sub(r"ya29\.\S+", "[redacted]", message)[:200],
+                    }
+                )
+            )
+            return JSONResponse({"error": "oauth_exchange_failed"}, status_code=400)
+
+    @app.get("/workspace/status")
+    async def workspace_status(request: Request) -> JSONResponse:
+        claims = await _verify(request, deps)
+        if claims is None:
+            return JSONResponse({"error": "unauthenticated"}, status_code=401)
+        if deps.workspace_tokens_store is None:
+            return JSONResponse({"connected": False, "scopes": [], "grantedAt": None})
+        try:
+            doc = await deps.workspace_tokens_store.get(claims.uid)
+        except Exception:  # noqa: BLE001
+            doc = None
+        if doc is None:
+            return JSONResponse({"connected": False, "scopes": [], "grantedAt": None})
+        return JSONResponse(
+            {
+                "connected": True,
+                "scopes": list(doc.scopes),
+                "grantedAt": doc.grantedAt,
+            }
+        )
+
+    @app.delete("/workspace")
+    async def workspace_delete(request: Request) -> JSONResponse:
+        claims = await _verify(request, deps)
+        if claims is None:
+            return JSONResponse({"error": "unauthenticated"}, status_code=401)
+        if deps.workspace_tokens_store is None:
+            return JSONResponse({"connected": False, "scopes": [], "grantedAt": None})
+        try:
+            existing = await deps.workspace_tokens_store.get(claims.uid)
+        except Exception:  # noqa: BLE001
+            existing = None
+        if existing is not None and deps.workspace_oauth_client is not None:
+            with contextlib.suppress(Exception):
+                await deps.workspace_oauth_client.revoke_refresh_token(existing.refreshToken)
+        with contextlib.suppress(Exception):
+            await deps.workspace_tokens_store.delete(claims.uid)
+        return JSONResponse({"connected": False, "scopes": [], "grantedAt": None})
+
+    # ---- /chat (SSE) -----------------------------------------------------
+
+    @app.post("/chat")
+    async def chat(request: Request) -> Any:
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001
+            body = {}
+        if not isinstance(body, dict):
+            body = {}
+        user_id = body.get("userId")
+        session_id = body.get("sessionId")
+        message = body.get("message")
+        location = body.get("location")
+        timezone = body.get("timezone")
+        if (
+            not isinstance(user_id, str)
+            or not isinstance(session_id, str)
+            or not isinstance(message, str)
+        ):
+            return JSONResponse(
+                {"error": "userId, sessionId, and message are required"},
+                status_code=400,
+            )
+
+        # Auth + workspace-grant inspection -------------------------------
+        t0 = _now_ms()
+        timings: dict[str, int] = {}
+
+        def tick() -> int:
+            return _now_ms() - t0
+
+        t_auth0 = _now_ms()
+        claims = await _verify(request, deps)
+        timings["authMs"] = _now_ms() - t_auth0
+        if deps.require_auth and claims is None:
+            return JSONResponse({"error": "unauthenticated"}, status_code=401)
+        effective_user_id = claims.uid if claims else user_id
+
+        t_ws_grant0 = _now_ms()
+        workspace_scopes_granted = False
+        if claims is not None and deps.workspace_tokens_store is not None:
+            try:
+                doc = await deps.workspace_tokens_store.get(effective_user_id)
+                workspace_scopes_granted = bool(doc and doc.refreshToken)
+            except Exception:  # noqa: BLE001
+                workspace_scopes_granted = False
+        timings["wsGrantMs"] = _now_ms() - t_ws_grant0
+
+        if claims is not None:
+            machine = UserStateMachine.from_firebase_user(
+                _bridge_firebase_user(claims, workspace_scopes_granted)
+            )
+        else:
+            machine = UserStateMachine("anonymous")
+
+        # Parallel context fetch ----------------------------------------
+        coord: Coord | None = None
+        if isinstance(location, dict):
+            lat = location.get("lat")
+            lng = location.get("lng")
+            if isinstance(lat, int | float) and isinstance(lng, int | float):
+                coord = Coord(lat=float(lat), lng=float(lng))
+        country_code = tz_to_country(timezone if isinstance(timezone, str) else None)
+        want_calendar_density = (
+            machine.current() == "workspace_connected"
+            and deps.calendar_density is not None
+            and isinstance(timezone, str)
+            and bool(timezone)
+        )
+
+        async def _none() -> None:
+            return None
+
+        async def _empty_list() -> list[Any]:
+            return []
+
+        async def _places_call() -> Any:
+            if coord is None or deps.places is None:
+                return []
+            token: str | None = None
+            if deps.places_token_provider is not None:
+                with contextlib.suppress(Exception):
+                    token = await deps.places_token_provider()
+            try:
+                return await deps.places.get(coord, token)
+            except Exception:  # noqa: BLE001
+                return []
+
+        async def _meta_call() -> dict[str, Any]:
+            if deps.user_meta_store is None:
+                return {"chatTurnCount": 0, "tier": "free"}
+            try:
+                doc = await deps.user_meta_store.increment_turn_count(effective_user_id)
+                return {"chatTurnCount": doc.chatTurnCount, "tier": doc.tier}
+            except Exception:  # noqa: BLE001
+                return {"chatTurnCount": 0, "tier": "free"}
+
+        t_parallel0 = _now_ms()
+        results = await asyncio.gather(
+            _timed(
+                deps.weather.get(coord)
+                if (coord is not None and deps.weather is not None)
+                else _none()
+            ),
+            _timed(_places_call()),
+            _timed(
+                deps.air_quality.get(coord)
+                if (coord is not None and deps.air_quality is not None)
+                else _none()
+            ),
+            _timed(
+                deps.holidays.next7Days(country_code)
+                if (country_code and deps.holidays is not None)
+                else _empty_list()
+            ),
+            _timed(
+                cast(CalendarDensityClient, deps.calendar_density).get(
+                    uid=effective_user_id,
+                    timezone=cast(str, timezone),
+                    now=deps.now(),
+                )
+                if want_calendar_density
+                else _none()
+            ),
+            _timed(
+                deps.profile_store.read(effective_user_id)
+                if deps.profile_store is not None
+                else _none()
+            ),
+            _timed(
+                deps.goal_updates_store.recent(effective_user_id, 20)
+                if deps.goal_updates_store is not None
+                else _empty_list()
+            ),
+            _timed(
+                deps.memory.search(effective_user_id, message, 5)
+                if deps.memory is not None
+                else _empty_list()
+            ),
+            _timed(_meta_call()),
+            _timed(
+                deps.session_reader.get_session(
+                    app_name=deps.session_reader.app_name,
+                    user_id=effective_user_id,
+                    session_id=session_id,
+                )
+                if deps.session_reader is not None
+                else _none()
+            ),
+            _timed(
+                deps.session_summary.get_yesterday(
+                    uid=effective_user_id,
+                    today_date_local=_local_day_key(timezone, deps.now()),
+                )
+                if (deps.session_summary is not None and isinstance(timezone, str) and timezone)
+                else _none()
+            ),
+            _timed(
+                deps.session_summary.get_week(
+                    uid=effective_user_id,
+                    today_date_local=_local_day_key(timezone, deps.now()),
+                )
+                if (deps.session_summary is not None and isinstance(timezone, str) and timezone)
+                else _none()
+            ),
+            return_exceptions=False,
+        )
+        timings["parallelMs"] = _now_ms() - t_parallel0
+        (
+            (weather, weather_ms),
+            (nearby_places, places_ms),
+            (air_quality, air_quality_ms),
+            (holidays, holidays_ms),
+            (calendar_density, calendar_density_ms),
+            (user_profile, profile_ms),
+            (recent_goal_updates, goals_ms),
+            (memories, memory_ms),
+            (meta, meta_ms),
+            (existing_session, _existing_session_ms),
+            (yesterday_summary, yesterday_summary_ms),
+            (week_summary, week_summary_ms),
+        ) = results
+        timings["weatherMs"] = weather_ms
+        timings["placesMs"] = places_ms
+        timings["airQualityMs"] = air_quality_ms
+        timings["holidaysMs"] = holidays_ms
+        timings["calendarDensityMs"] = calendar_density_ms
+        timings["profileMs"] = profile_ms
+        timings["goalsMs"] = goals_ms
+        timings["memoryMs"] = memory_ms
+        timings["metaMs"] = meta_ms
+        timings["yesterdaySummaryMs"] = yesterday_summary_ms
+        timings["weekSummaryMs"] = week_summary_ms
+
+        chat_turn_count = int(meta.get("chatTurnCount", 0)) if isinstance(meta, dict) else 0
+        tier: Tier = _coerce_tier(meta.get("tier")) if isinstance(meta, dict) else "free"
+        timings["prepMs"] = tick()
+
+        usage_machine = UsageStateMachine.from_inputs(
+            UsageInputs(
+                user_state=machine.current(),
+                chat_count=chat_turn_count,
+                tier=tier,
+            )
+        )
+        usage_policy = usage_machine.policy()
+
+        has_interacted_today = _session_has_user_interaction(existing_session)
+        location_ctx: LocationCtx | None = LocationCtx(coord=coord) if coord else None
+
+        instruction_ctx = InstructionContext(
+            now=deps.now(),
+            timezone=timezone if isinstance(timezone, str) else None,
+            user_state=machine.current(),
+            location=location_ctx,
+            weather=weather,
+            air_quality=air_quality,
+            holidays=holidays or [],
+            calendar_density=calendar_density,
+            user_profile=user_profile if isinstance(user_profile, dict) else None,
+            recent_goal_updates=recent_goal_updates or [],
+            nearby_places=nearby_places or [],
+            memories=memories or [],
+            memory_enabled=(
+                deps.memory_enabled if deps.memory_enabled is not None else deps.memory is not None
+            ),
+            nudge_mode=usage_policy.nudge_mode,
+            has_interacted_today=has_interacted_today,
+            yesterday_summary=yesterday_summary,
+            week_summary=week_summary,
+        )
+
+        # Log the rendered prompt once — useful for prompt-engineering bug
+        # triage. Matches `chat.prompt` in the TS server.
+        try:
+            prompt_text = build_instruction(instruction_ctx)
+            print(
+                json.dumps(
+                    {
+                        "msg": "chat.prompt",
+                        "uid": effective_user_id,
+                        "sessionId": session_id,
+                        "length": len(prompt_text),
+                        "instruction": prompt_text,
+                    }
+                )
+            )
+        except Exception as err:  # noqa: BLE001
+            logger.exception("chat.prompt log build failed: %s", err)
+
+        runner = deps.runner_for(
+            RunnerForParams(ctx=instruction_ctx, uid=effective_user_id, usage_policy=usage_policy)
+        )
+
+        # SSE stream ----------------------------------------------------
+        async def stream() -> AsyncIterator[bytes]:
+            tool_invocations: list[dict[str, Any]] = []
+            pending_by_id: dict[str, dict[str, Any]] = {}
+            retried = False
+            first_text_ms: int | None = None
+            choice_shown = False
+            turn_ending_tools = {
+                "ask_single_choice_question",
+                "ask_multiple_choice_question",
+                "auth_user",
+                "connect_workspace",
+                "upgrade_to_pro",
+            }
+
+            # Flush past Cloud Run / GFE buffer immediately.
+            yield (b": " + (b" " * 4096) + b"\n\n")
+            try:
+                t_session0 = _now_ms()
+                runner_session = existing_session
+                if runner_session is None:
+                    try:
+                        runner_session = await runner.session_service.get_session(
+                            app_name=runner.app_name,
+                            user_id=effective_user_id,
+                            session_id=session_id,
+                        )
+                    except Exception:  # noqa: BLE001
+                        runner_session = None
+                if runner_session is None:
+                    runner_session = await runner.session_service.create_session(
+                        app_name=runner.app_name,
+                        user_id=effective_user_id,
+                        session_id=session_id,
+                    )
+                timings["sessionMs"] = _now_ms() - t_session0
+
+                from google.adk.agents.run_config import RunConfig, StreamingMode
+                from google.genai import types as genai_types
+
+                new_message = genai_types.Content(
+                    role="user", parts=[genai_types.Part(text=message)]
+                )
+                run_cfg = RunConfig(streaming_mode=StreamingMode.SSE)
+                t_stream0 = _now_ms()
+                first_event_ms: int | None = None
+
+                async def _drive(msg: Any) -> bool:
+                    """Run the model once with `msg`; yield events into the
+                    SSE stream. Returns True if a turn-ending choice
+                    fired (caller should stop early)."""
+                    nonlocal first_event_ms, first_text_ms, choice_shown
+                    async for event in runner.run_async(
+                        user_id=effective_user_id,
+                        session_id=session_id,
+                        new_message=msg,
+                        run_config=run_cfg,
+                    ):
+                        if first_event_ms is None:
+                            first_event_ms = _now_ms() - t_stream0
+                        if first_text_ms is None and _event_has_text(event):
+                            first_text_ms = _now_ms() - t_stream0
+                        for call in _function_calls(event):
+                            cid = call.get("id") or ""
+                            if cid:
+                                pending_by_id[cid] = {
+                                    "name": call.get("name") or "?",
+                                    "args": call.get("args"),
+                                    "started_at": _now_ms(),
+                                }
+                        for resp in _function_responses(event):
+                            rid = resp.get("id") or ""
+                            pending = pending_by_id.get(rid) if rid else None
+                            name = (pending or {}).get("name") or resp.get("name") or "?"
+                            resp_obj = resp.get("response") or {}
+                            status_val = (
+                                resp_obj.get("status") if isinstance(resp_obj, dict) else None
+                            )
+                            ok = None if status_val is None else status_val != "error"
+                            latency_ms = _now_ms() - pending["started_at"] if pending else None
+                            tool_invocations.append(
+                                {
+                                    "name": name,
+                                    "args": (pending or {}).get("args"),
+                                    "ok": ok,
+                                    "latencyMs": latency_ms,
+                                }
+                            )
+                            if rid:
+                                pending_by_id.pop(rid, None)
+                            if name in turn_ending_tools and status_val in (
+                                "shown",
+                                "auth_prompted",
+                                "oauth_prompted",
+                                "upgrade_prompted",
+                            ):
+                                choice_shown = True
+                        yield_payload = (
+                            f"data: {json.dumps(_event_to_dict(event), default=str)}\n\n"
+                        )
+                        # We can't yield from a nested async function in
+                        # Python the way TS yields — buffer through a
+                        # queue. Instead, we collect events into a queue
+                        # in the outer scope.
+                        await _outer_queue.put(yield_payload.encode("utf-8"))
+                        if choice_shown:
+                            return True
+                    return False
+
+                # We can't `yield` from inside `_drive` (it's a coroutine,
+                # not a generator). Use a queue + a background task so the
+                # outer generator stays the only yielder.
+                _outer_queue: asyncio.Queue[bytes | None] = asyncio.Queue()
+
+                async def _drive_then_signal(msg: Any) -> bool:
+                    try:
+                        return await _drive(msg)
+                    finally:
+                        # Sentinel so the consumer wakes up and moves on.
+                        await _outer_queue.put(None)
+
+                drive_task = asyncio.create_task(_drive_then_signal(new_message))
+                while True:
+                    chunk = await _outer_queue.get()
+                    if chunk is None:
+                        break
+                    yield chunk
+                first_pass_choice = await drive_task
+                timings["streamMs"] = _now_ms() - t_stream0
+                timings["ttfbMs"] = first_event_ms if first_event_ms is not None else -1
+                timings["ttftMs"] = first_text_ms if first_text_ms is not None else -1
+
+                # Empty-turn re-invoke (issue #40 option B).
+                if first_text_ms is None and not choice_shown and not first_pass_choice:
+                    retried = True
+                    t_retry0 = _now_ms()
+                    nudge_message = genai_types.Content(
+                        role="user", parts=[genai_types.Part(text=CONTINUE_SENTINEL)]
+                    )
+                    try:
+                        retry_task = asyncio.create_task(_drive_then_signal(nudge_message))
+                        while True:
+                            chunk = await _outer_queue.get()
+                            if chunk is None:
+                                break
+                            yield chunk
+                        await retry_task
+                    except Exception:  # noqa: BLE001
+                        pass
+                    timings["retryMs"] = _now_ms() - t_retry0
+
+                # Recovery stub (only if retry also produced no text and
+                # no choice tool fired in either pass).
+                if first_text_ms is None and not choice_shown:
+                    recovery = pick_recovery_text(tool_invocations)
+                    yield (
+                        b"data: "
+                        + json.dumps(
+                            {
+                                "author": "lifecoach",
+                                "partial": True,
+                                "content": {
+                                    "role": "model",
+                                    "parts": [{"text": recovery}],
+                                },
+                            }
+                        ).encode("utf-8")
+                        + b"\n\n"
+                    )
+                    synth_event = make_recovery_event(
+                        recovery, f"recovery-{session_id}-{_now_ms()}"
+                    )
+                    append = getattr(runner.session_service, "append_event", None)
+                    if append is not None and runner_session is not None:
+                        with contextlib.suppress(Exception):
+                            await append(session=runner_session, event=synth_event)
+                    print(
+                        json.dumps(
+                            {
+                                "msg": "chat.empty_after_tool_recovery",
+                                "uid": effective_user_id,
+                                "sessionId": session_id,
+                                "tools": [t["name"] for t in tool_invocations],
+                            }
+                        )
+                    )
+                    capture_chat_event(
+                        "chat.empty_turn_recovered",
+                        {
+                            "uid": effective_user_id,
+                            "sessionId": session_id,
+                            "toolCount": len(tool_invocations),
+                            "tools": [t["name"] for t in tool_invocations],
+                            "streamMs": timings.get("streamMs"),
+                        },
+                    )
+
+                yield b"event: done\ndata: {}\n\n"
+            except Exception as err:  # noqa: BLE001
+                err_msg = str(err)
+                yield (
+                    b"event: error\ndata: "
+                    + json.dumps({"message": err_msg}).encode("utf-8")
+                    + b"\n\n"
+                )
+                capture_chat_event(
+                    "chat.stream_error",
+                    {"uid": effective_user_id, "sessionId": session_id, "error": err_msg},
+                    "error",
+                )
+            finally:
+                # Per-turn structured log line.
+                aq_aqi = (
+                    air_quality.aqi
+                    if air_quality is not None and hasattr(air_quality, "aqi")
+                    else None
+                )
+                today_count = calendar_density.today.count if calendar_density is not None else None
+                tomorrow_count = (
+                    calendar_density.tomorrow.count if calendar_density is not None else None
+                )
+                print(
+                    json.dumps(
+                        {
+                            "msg": "chat.turn",
+                            "uid": effective_user_id,
+                            "sessionId": session_id,
+                            "state": machine.current(),
+                            "authenticated": claims is not None,
+                            "hasLocation": coord is not None,
+                            "hasWeather": weather is not None,
+                            "airQualityAqi": aq_aqi,
+                            "holidayCount": len(holidays or []),
+                            "todayEventCount": today_count,
+                            "tomorrowEventCount": tomorrow_count,
+                            "hasProfile": user_profile is not None,
+                            "nearbyPlacesCount": len(nearby_places or []),
+                            "memoriesCount": len(memories or []),
+                            "hasYesterdaySummary": bool(yesterday_summary),
+                            "hasWeekSummary": bool(week_summary),
+                            "emptyTurnRetried": retried,
+                            "emptyTurnRetrySucceeded": retried and first_text_ms is not None,
+                            "recentGoalCount": len(recent_goal_updates or []),
+                            "toolCount": len(tool_invocations),
+                            "tools": tool_invocations,
+                            "chatTurnCount": chat_turn_count,
+                            "tier": tier,
+                            "usageState": usage_policy.state,
+                            "model": usage_policy.model,
+                            "nudgeMode": usage_policy.nudge_mode,
+                            "totalMs": tick(),
+                            "timings": timings,
+                        },
+                        default=str,
+                    )
+                )
+
+        return StreamingResponse(
+            stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache, no-transform",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
+    return app
+
+
+# --- Event shape helpers --------------------------------------------------
+
+
+def _event_to_dict(event: Any) -> Any:
+    """Convert an ADK Event (Pydantic model) to a JSON-serialisable dict.
+    Tolerant of both the real `Event` class and dict-shaped fakes."""
+    if isinstance(event, dict):
+        return event
+    dump = getattr(event, "model_dump", None)
+    if callable(dump):
+        try:
+            return dump(mode="json", exclude_none=True)
+        except Exception:  # noqa: BLE001
+            try:
+                return dump()
+            except Exception:  # noqa: BLE001
+                pass
+    # Last resort: best-effort attribute scrape.
+    out: dict[str, Any] = {}
+    for k in ("author", "content", "partial", "id", "timestamp"):
+        v = getattr(event, k, None)
+        if v is not None:
+            out[k] = v
+    return out
+
+
+def _event_has_text(event: Any) -> bool:
+    content = event.get("content") if isinstance(event, dict) else getattr(event, "content", None)
+    if content is None:
+        return False
+    parts = (
+        content.get("parts")
+        if isinstance(content, dict)
+        else (getattr(content, "parts", None) or [])
+    ) or []
+    for p in parts:
+        text = p.get("text") if isinstance(p, dict) else getattr(p, "text", None)
+        if isinstance(text, str) and text:
+            return True
+    return False
+
+
+def _function_calls(event: Any) -> list[dict[str, Any]]:
+    """Pull function calls off an event. Uses ADK's helper when available
+    (real Event objects); falls back to walking `content.parts` for
+    dict-shaped fakes."""
+    helper = getattr(event, "get_function_calls", None)
+    if callable(helper):
+        try:
+            calls = helper() or []
+        except Exception:  # noqa: BLE001
+            calls = []
+        out: list[dict[str, Any]] = []
+        for c in calls:
+            if isinstance(c, dict):
+                out.append(c)
+            else:
+                out.append(
+                    {
+                        "id": getattr(c, "id", None),
+                        "name": getattr(c, "name", None),
+                        "args": getattr(c, "args", None),
+                    }
+                )
+        return out
+    return _walk_function_parts(event, "functionCall")
+
+
+def _function_responses(event: Any) -> list[dict[str, Any]]:
+    helper = getattr(event, "get_function_responses", None)
+    if callable(helper):
+        try:
+            resps = helper() or []
+        except Exception:  # noqa: BLE001
+            resps = []
+        out: list[dict[str, Any]] = []
+        for r in resps:
+            if isinstance(r, dict):
+                out.append(r)
+            else:
+                out.append(
+                    {
+                        "id": getattr(r, "id", None),
+                        "name": getattr(r, "name", None),
+                        "response": getattr(r, "response", None),
+                    }
+                )
+        return out
+    return _walk_function_parts(event, "functionResponse")
+
+
+def _walk_function_parts(event: Any, key: str) -> list[dict[str, Any]]:
+    content = event.get("content") if isinstance(event, dict) else getattr(event, "content", None)
+    if content is None:
+        return []
+    parts = (
+        content.get("parts")
+        if isinstance(content, dict)
+        else (getattr(content, "parts", None) or [])
+    ) or []
+    out: list[dict[str, Any]] = []
+    for p in parts:
+        v = p.get(key) if isinstance(p, dict) else getattr(p, key, None)
+        if v is None:
+            continue
+        if isinstance(v, dict):
+            out.append(v)
+        else:
+            out.append(
+                {
+                    "id": getattr(v, "id", None),
+                    "name": getattr(v, "name", None),
+                    "args": getattr(v, "args", None),
+                    "response": getattr(v, "response", None),
+                }
+            )
+    return out

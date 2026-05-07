@@ -6,7 +6,10 @@ Tracks per-module status of the rebuild. Update as we go.
 |--------------------------------------------------------|-----------------------------------------------------|-------|--------|
 | `apps/agent/src/agent.ts`                              | `lifecoach_agent/agent.py`                          | 0/9   | bootstrapped (hello-world) |
 | `packages/shared-types/src/*`                          | `lifecoach_agent/contracts/models.py`               | 1     | done |
-| `apps/agent/src/server.ts`                             | `lifecoach_agent/server.py`                         | 9     | — |
+| `apps/agent/src/server.ts`                             | `lifecoach_agent/server.py`                         | 9     | done |
+| `apps/agent/src/agent.ts`                              | `lifecoach_agent/agent.py`                          | 9     | done (per-turn factory + RunnerLike Protocol) |
+| `apps/agent/src/sentry.ts`                             | `lifecoach_agent/sentry_setup.py`                   | 9     | done |
+| —                                                      | `lifecoach_agent/main.py`                           | 9     | new (production wiring: env → real GCP clients) |
 | `apps/agent/src/auth.ts`                               | `lifecoach_agent/auth.py`                           | 5     | — |
 | `apps/agent/src/sentry.ts`                             | `lifecoach_agent/sentry_setup.py`                   | 0     | — |
 | `apps/agent/src/chat/emptyTurnGuard.ts`                | `lifecoach_agent/chat/empty_turn_guard.py`          | 8     | done |
