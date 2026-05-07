@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ExecFileLike, ExecFileResult } from '../agents/workspaceAgent/gwsExec.js';
 import { ScopeRequiredError, type WorkspaceTokensStore } from '../storage/workspaceTokens.js';
-import type { ExecFileLike, ExecFileResult } from '../tools/callWorkspace.js';
 import { createCalendarDensityClient } from './calendarDensity.js';
 
 function fakeStore(token = 'fake-access-token'): WorkspaceTokensStore {

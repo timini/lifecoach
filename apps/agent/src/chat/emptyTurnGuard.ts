@@ -25,10 +25,18 @@ import type { Event } from '@google/adk';
 export const CONTINUE_SENTINEL = '__continue__';
 
 /** Tool names that mutate user state — recovery copy acknowledges the save. */
-const WRITE_TOOLS = new Set(['update_user_profile', 'log_goal_update', 'memory_save']);
+const WRITE_TOOLS = new Set([
+  'update_user_profile',
+  'log_goal_update',
+  'memory_save',
+  'archive_messages',
+  'add_calendar_event',
+  'add_task',
+  'complete_task',
+]);
 
 /** Tool names that read external data — recovery copy invites a follow-up. */
-const READ_TOOLS = new Set(['call_workspace', 'google_search']);
+const READ_TOOLS = new Set(['triage_inbox', 'find_workspace', 'google_search']);
 
 export interface ToolSummary {
   name: string;

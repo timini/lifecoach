@@ -155,8 +155,8 @@ export const RunningToolCall: Story = {
           {
             kind: 'tool-call',
             id: 'tc1',
-            name: 'call_workspace',
-            label: 'checking your gmail',
+            name: 'triage_inbox',
+            label: 'triaging your inbox',
             done: false,
           },
         ],
@@ -165,6 +165,6 @@ export const RunningToolCall: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByText(/checking your gmail/i)).toBeInTheDocument();
+    await expect(canvas.getByText(/triaging your inbox/i)).toBeInTheDocument();
   },
 };

@@ -105,7 +105,13 @@ export function normaliseEventTimestamp(t: number | undefined): number {
  * surface a confusing badge.
  */
 const REPLAYABLE_TOOLS = new Set<string>([
-  'call_workspace',
+  // Workspace surface — main agent's tools when workspace_connected
+  'triage_inbox',
+  'find_workspace',
+  'archive_messages',
+  'add_calendar_event',
+  'add_task',
+  'complete_task',
   'update_user_profile',
   'log_goal_update',
   'memory_save',

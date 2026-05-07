@@ -1054,7 +1054,7 @@ async function main(): Promise<void> {
     { createAuthUserTool },
     { createMemorySaveTool },
     { createConnectWorkspaceTool },
-    { createCallWorkspaceTool },
+    { createWorkspaceTools },
     { createUpgradeToProTool },
     { Storage },
     { Firestore },
@@ -1083,7 +1083,7 @@ async function main(): Promise<void> {
     import('./tools/authUser.js'),
     import('./tools/memorySave.js'),
     import('./tools/connectWorkspace.js'),
-    import('./tools/callWorkspace.js'),
+    import('./agents/workspaceAgent/index.js'),
     import('./tools/upgradeToPro.js'),
     import('@google-cloud/storage'),
     import('@google-cloud/firestore'),
@@ -1214,19 +1214,25 @@ async function main(): Promise<void> {
           (ctx.userState === 'google_linked' || ctx.userState === 'workspace_connected')
             ? [createConnectWorkspaceTool()]
             : []),
-          // call_workspace binds auth server-side; only registered when
-          // tokens exist (workspace_connected state).
+          // The full Google Workspace tool surface — 2 AgentTools
+          // (triage_inbox, find_workspace) wrapping the read sub-agent
+          // plus 4 narrow write FunctionTools (archive_messages,
+          // add_calendar_event, add_task, complete_task). All gws
+          // plumbing is encapsulated in the workspace module; main only
+          // sees these 6 tools, and only when tokens exist.
           ...(workspaceEnabled && workspaceTokensStore && ctx.userState === 'workspace_connected'
-            ? [
-                createCallWorkspaceTool({
-                  store: workspaceTokensStore,
-                  uid,
-                  log: (event) => {
-                    // eslint-disable-next-line no-console
-                    console.log(JSON.stringify({ msg: 'tool.call_workspace', ...event }));
-                  },
-                }),
-              ]
+            ? createWorkspaceTools({
+                store: workspaceTokensStore,
+                uid,
+                log: (event) => {
+                  // eslint-disable-next-line no-console
+                  console.log(JSON.stringify({ msg: `tool.${event.name}`, ...event }));
+                },
+                subAgentLog: (event) => {
+                  // eslint-disable-next-line no-console
+                  console.log(JSON.stringify({ msg: `workspace_agent.${event.name}`, ...event }));
+                },
+              })
             : []),
           // upgrade_to_pro is a UI directive available only when the
           // UsageStateMachine says so (free user past PRO_NUDGE_AFTER turns).

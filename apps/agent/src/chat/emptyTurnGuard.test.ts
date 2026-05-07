@@ -48,7 +48,10 @@ describe('pickRecoveryText', () => {
   });
 
   it('invites a follow-up when only read tools fired', () => {
-    expect(pickRecoveryText([{ name: 'call_workspace' }])).toBe(
+    expect(pickRecoveryText([{ name: 'triage_inbox' }])).toBe(
+      'All set — anything jump out, or want me to dig in?',
+    );
+    expect(pickRecoveryText([{ name: 'find_workspace' }])).toBe(
       'All set — anything jump out, or want me to dig in?',
     );
     expect(pickRecoveryText([{ name: 'google_search' }])).toBe(
@@ -57,8 +60,16 @@ describe('pickRecoveryText', () => {
   });
 
   it('falls back to the generic copy when reads and writes mix', () => {
-    expect(pickRecoveryText([{ name: 'call_workspace' }, { name: 'update_user_profile' }])).toBe(
+    expect(pickRecoveryText([{ name: 'triage_inbox' }, { name: 'archive_messages' }])).toBe(
       'Done. What next?',
+    );
+  });
+
+  it('treats workspace write tools as writes', () => {
+    expect(pickRecoveryText([{ name: 'archive_messages' }])).toBe('Got it — saved.');
+    expect(pickRecoveryText([{ name: 'add_calendar_event' }])).toBe('Got it — saved.');
+    expect(pickRecoveryText([{ name: 'add_task' }, { name: 'complete_task' }])).toBe(
+      'Got it — saved.',
     );
   });
 
@@ -76,8 +87,8 @@ describe('findEmptyTurnGaps', () => {
   it('finds nothing when a tool call is followed by model text', () => {
     const events = [
       userText('search emails'),
-      modelCall('call_workspace'),
-      toolResponse('call_workspace'),
+      modelCall('triage_inbox'),
+      toolResponse('triage_inbox'),
       modelText("here's what I found"),
     ];
     expect(findEmptyTurnGaps(events)).toEqual([]);
@@ -86,8 +97,8 @@ describe('findEmptyTurnGaps', () => {
   it('flags a gap before a fresh user message that arrives without text in between', () => {
     const events = [
       userText('search emails'),
-      modelCall('call_workspace'),
-      toolResponse('call_workspace'),
+      modelCall('triage_inbox'),
+      toolResponse('triage_inbox'),
       userText('any luck?'),
     ];
     // [3] = before 'any luck?' (model owed a reply to the tool result).
@@ -98,8 +109,8 @@ describe('findEmptyTurnGaps', () => {
   it('flags a gap at the END of the array when the trailing turn never recovered', () => {
     const events = [
       userText('search emails'),
-      modelCall('call_workspace'),
-      toolResponse('call_workspace'),
+      modelCall('triage_inbox'),
+      toolResponse('triage_inbox'),
     ];
     expect(findEmptyTurnGaps(events)).toEqual([events.length]);
   });
@@ -107,8 +118,8 @@ describe('findEmptyTurnGaps', () => {
   it('treats an empty-text model event as still pending', () => {
     const events = [
       userText('search emails'),
-      modelCall('call_workspace'),
-      toolResponse('call_workspace'),
+      modelCall('triage_inbox'),
+      toolResponse('triage_inbox'),
       modelText(''),
       userText('any luck?'),
     ];
@@ -146,11 +157,11 @@ describe('findEmptyTurnGaps', () => {
   it('finds multiple gaps across multiple poisoned turns', () => {
     const events = [
       userText('search'),
-      modelCall('call_workspace'),
-      toolResponse('call_workspace'),
+      modelCall('triage_inbox'),
+      toolResponse('triage_inbox'),
       userText('again'),
-      modelCall('call_workspace'),
-      toolResponse('call_workspace'),
+      modelCall('triage_inbox'),
+      toolResponse('triage_inbox'),
       userText('hello?'),
     ];
     // Two interior gaps + one trailing — 'hello?' also never got a reply.
@@ -169,8 +180,8 @@ describe('injectRecoveryEvents', () => {
   it('splices a synthetic event before the next user message at each gap', () => {
     const events = [
       userText('search'),
-      modelCall('call_workspace'),
-      toolResponse('call_workspace'),
+      modelCall('triage_inbox'),
+      toolResponse('triage_inbox'),
       userText('any luck?'),
     ];
     const out = injectRecoveryEvents(events);
@@ -182,11 +193,7 @@ describe('injectRecoveryEvents', () => {
   });
 
   it('appends a synthetic event when the trailing turn never recovered', () => {
-    const events = [
-      userText('search'),
-      modelCall('call_workspace'),
-      toolResponse('call_workspace'),
-    ];
+    const events = [userText('search'), modelCall('triage_inbox'), toolResponse('triage_inbox')];
     const out = injectRecoveryEvents(events);
     expect(out).toHaveLength(events.length + 1);
     expect((out[3].content?.parts as Array<{ text?: string }>)[0].text).toBe('Done. What next?');
@@ -195,8 +202,8 @@ describe('injectRecoveryEvents', () => {
   it('is idempotent — running twice produces the same result', () => {
     const events = [
       userText('search'),
-      modelCall('call_workspace'),
-      toolResponse('call_workspace'),
+      modelCall('triage_inbox'),
+      toolResponse('triage_inbox'),
       userText('any luck?'),
     ];
     const once = injectRecoveryEvents(events);
@@ -232,8 +239,8 @@ describe('injectRecoveryEvents', () => {
   it('does not mutate the input array', () => {
     const events = [
       userText('search'),
-      modelCall('call_workspace'),
-      toolResponse('call_workspace'),
+      modelCall('triage_inbox'),
+      toolResponse('triage_inbox'),
       userText('any luck?'),
     ];
     const snapshot = events.slice();

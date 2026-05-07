@@ -107,7 +107,7 @@ describe('POST /chat', () => {
         content: {
           role: 'model',
           parts: [
-            { functionCall: { id: 'fc-1', name: 'call_workspace', args: { service: 'gmail' } } },
+            { functionCall: { id: 'fc-1', name: 'triage_inbox', args: { service: 'gmail' } } },
           ],
         },
       },
@@ -119,7 +119,7 @@ describe('POST /chat', () => {
             {
               functionResponse: {
                 id: 'fc-1',
-                name: 'call_workspace',
+                name: 'triage_inbox',
                 response: { status: 'ok' },
               },
             },
@@ -182,7 +182,7 @@ describe('POST /chat', () => {
         content: {
           role: 'model',
           parts: [
-            { functionCall: { id: 'fc-1', name: 'call_workspace', args: {} } },
+            { functionCall: { id: 'fc-1', name: 'triage_inbox', args: {} } },
             { text: 'Looking now…' },
           ],
         },
@@ -193,7 +193,7 @@ describe('POST /chat', () => {
           role: 'user',
           parts: [
             {
-              functionResponse: { id: 'fc-1', name: 'call_workspace', response: { status: 'ok' } },
+              functionResponse: { id: 'fc-1', name: 'triage_inbox', response: { status: 'ok' } },
             },
           ],
         },

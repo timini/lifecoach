@@ -1,5 +1,8 @@
-import { type FunctionTool, LlmAgent } from '@google/adk';
+import { type AgentTool, type FunctionTool, LlmAgent } from '@google/adk';
 import { type InstructionContext, buildInstruction } from './prompt/buildInstruction.js';
+
+/** Anything `LlmAgent.tools` will accept — FunctionTool or an AgentTool wrapper. */
+export type RootAgentTool = FunctionTool | AgentTool;
 
 export const AGENT_NAME = 'lifecoach';
 // Gemini 3 Flash on Vertex AI (2026-04-21). Reachable via the `global`
@@ -28,7 +31,7 @@ export interface CreateRootAgentOptions {
  */
 export function createRootAgent(
   ctx: InstructionContext,
-  tools: FunctionTool[] = [],
+  tools: RootAgentTool[] = [],
   options: CreateRootAgentOptions = {},
 ): LlmAgent {
   return new LlmAgent({

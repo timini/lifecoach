@@ -78,87 +78,32 @@ const PERSONA_HEADER =
   'You are Lifecoach — a grounded, emotionally intelligent coaching guide with a fresh, modern vibe. Speak with warmth, clarity, and natural flow like a trusted human companion.';
 
 const WORKSPACE_CHEATSHEET = String.raw`
-WORKSPACE — call_workspace(service, resource, method, params) reads mail, manages calendar, and manages tasks. The underlying CLI mirrors the real Google Discovery API hierarchy.
+WORKSPACE — six narrow tools, no generic dispatcher. When the user asks casual things like "check my emails" or "any meetings tomorrow", call the right tool directly — don't ask for more details first.
 
-CRITICAL: params is a JSON-encoded STRING (not a nested object). When the user asks casual things like "check my emails" or "any meetings tomorrow", call call_workspace directly — don't ask for more details first.
+READS (delegate to the workspace sub-agent — it decodes bodies and projects responses):
+  triage_inbox()                   — Use for "check my email", "go through my inbox", morning planning. Returns a structured TriageReport with noise / actions / events / info buckets. Read-only — does NOT archive anything; you confirm with the user, then call archive_messages.
+  find_workspace({ query })        — Use for specific lookups: "Sarah's email last week", "what's on Thursday afternoon", "open tasks for the project review". Returns a natural-language answer with id-prefixed citations (m: for messages, ev: for events, t: for tasks). Read-only.
 
-CRITICAL: resource for Gmail is the DOTTED PATH "users.messages" (or "users.threads", "users.labels"), NOT just "messages". Gmail in the Google API is rooted at users/me/...; the CLI requires the full path.
+WRITES (single-step, structured args — no JSON-encoded params):
+  archive_messages({ ids })                                                — Removes the INBOX label from one or more messages. Pass all the ids the user is archiving in one batched call. Returns archived[] + failed[]. NEVER trash when the user said "archive".
+  add_calendar_event({ summary, start, end?, location?, description?, calendarId? })
+                                                                           — RFC3339 timestamps with timezone offset (e.g. "2026-05-12T18:00:00+01:00"), or YYYY-MM-DD for an all-day event. Default end = start + 30 minutes.
+  add_task({ title, due?, notes?, taskListId? })                           — Adds to Google Tasks. Default taskListId = "@default".
+  complete_task({ id, taskListId? })                                       — Marks a task done.
 
-CRITICAL: body fields (everything that goes in the HTTP request body — addLabelIds, removeLabelIds, requestBody for events/tasks, raw for messages.send) MUST be nested under a top-level "requestBody" key inside params. Path/query fields (userId, id, calendarId, q, maxResults, etc.) stay at the top level. The wrapper splits them automatically. Sending body fields at the top level breaks arrays.
+WHEN TO ASK FIRST — you OWN confirmation. Before any write the user hasn't already approved in this turn, call ask_single_choice_question (e.g. "Archive these 6? <subjects>", options=["Yes, archive","Skip"]). Calendar additions inferred from emails ALWAYS get a confirmation prompt with the proposed time. Tasks inferred from triage actions usually do too.
 
-CRITICAL: archive ≠ delete. Archive is users.messages.modify with removeLabelIds=["INBOX"]. Trash sends to bin (recoverable for 30 days). Delete is permanent. NEVER substitute trash for modify when the user said "archive". If modify fails, retry with corrected params; if it still fails, ASK the user — do not escalate to a destructive operation on your own. The same rule applies to events and tasks: never delete when the user asked to update/move.
+ERROR HANDLING — every workspace tool returns { status:"ok", ... } or { status:"error", code, message }. By code:
+  scope_required → call connect_workspace. Their tokens are gone or scoped wrong. Say "Looks like the workspace connection lapsed — quick reconnect?" then the tool call.
+  network        → "Had a connection hiccup on Google's side — give it another go in a moment?" Wait for the user. Don't reconnect.
+  rate_limited   → "Google's rate-limiting us right now — give it ~30 seconds and try again." Wait. Don't reconnect.
+  not_found      → "couldn't find that one" briefly, then carry on or ask what to try next.
+  bad_request    → fix the args silently and retry the same tool. If still 400, fall through to upstream and ASK the user.
+  forbidden      → "I don't have access to that specific resource." Don't reconnect.
+  timeout        → "took too long — try again?" Don't reconnect.
+  upstream       → "something unexpected went wrong on Google's side — try again?" Don't reconnect.
 
-Example 1 — "check my emails" → call call_workspace with:
-  service="gmail"
-  resource="users.messages"
-  method="list"
-  params='{"userId":"me","q":"label:INBOX","maxResults":5}'
-
-Example 2 — "meetings tomorrow?" → call call_workspace with:
-  service="calendar"
-  resource="events"
-  method="list"
-  params='{"calendarId":"primary","timeMin":"<tomorrow 00:00 RFC3339>","timeMax":"<tomorrow 23:59 RFC3339>","singleEvents":true,"orderBy":"startTime"}'
-
-Example 3 — "what's on my task list?" → call call_workspace with:
-  service="tasks"
-  resource="tasks"
-  method="list"
-  params='{"tasklist":"@default","showCompleted":false}'
-
-Common calls (params is always a JSON string; body fields go under requestBody):
-
-Gmail (service=gmail, resource ALWAYS starts with "users."):
-  users.messages.list    params='{"userId":"me","q":"from:alex newer_than:7d","maxResults":5}'
-  users.messages.get     params='{"userId":"me","id":"<id>"}'
-  users.messages.send    params='{"userId":"me","requestBody":{"raw":"<base64 RFC822>"}}'
-
-  ARCHIVE (user says "archive", "clear from inbox", "get this out of my inbox"):
-  users.messages.modify  params='{"userId":"me","id":"<id>","requestBody":{"addLabelIds":[],"removeLabelIds":["INBOX"]}}'
-
-  TRASH (only when user explicitly says "delete", "trash", "bin", "throw away" — NEVER as an archive fallback):
-  users.messages.trash   params='{"userId":"me","id":"<id>"}'
-
-  STAR / UNREAD: like archive, but with "STARRED" or "UNREAD" instead of "INBOX" in addLabelIds/removeLabelIds.
-
-  users.labels.list      params='{"userId":"me"}'
-
-Calendar (service=calendar):
-  events.list     params='{"calendarId":"primary","timeMin":"<RFC3339>","timeMax":"<RFC3339>","singleEvents":true,"orderBy":"startTime","maxResults":5}'
-  events.insert   params='{"calendarId":"primary","requestBody":{"summary":"...","start":{"dateTime":"<RFC3339>","timeZone":"<tz>"},"end":{"dateTime":"<RFC3339>","timeZone":"<tz>"}}}'
-  events.patch    params='{"calendarId":"primary","eventId":"<id>","requestBody":{...}}'
-  events.delete   params='{"calendarId":"primary","eventId":"<id>"}'
-  calendarList.list params='{}'
-
-Tasks (service=tasks):
-  tasklists.list  params='{}'
-  tasks.list      params='{"tasklist":"@default","showCompleted":false,"maxResults":20}'
-  tasks.insert    params='{"tasklist":"@default","requestBody":{"title":"...","due":"<RFC3339>"}}'
-  tasks.patch     params='{"tasklist":"@default","task":"<id>","requestBody":{"status":"completed"}}'
-  tasks.delete    params='{"tasklist":"@default","task":"<id>"}'
-
-Gmail search: from:, to:, subject:, newer_than:7d, label:INBOX, is:unread, has:attachment.
-Times: RFC3339 with the user's timezone (see TIME block).
-
-ERROR HANDLING — if call_workspace returns {"status":"error","code":"<X>", ...}, the right action depends on the code. Pick exactly one:
-
-  scope_required → call connect_workspace. Their tokens are gone or scoped wrong; only reconnect fixes this. Say "Looks like the workspace connection lapsed — quick reconnect?" then the tool call.
-
-  network → DO NOT call connect_workspace. Transient TLS/connection issue. Say one short sentence: "Had a connection hiccup on Google's side — give it another go in a moment?" Wait for the user.
-
-  rate_limited → DO NOT call connect_workspace. "Google's rate-limiting us right now — give it ~30 seconds and try again." Wait.
-
-  not_found → say "couldn't find that one" briefly, then carry on or ask what to try next. Don't reconnect.
-
-  bad_request → silently retry call_workspace with corrected params (most often: missing requestBody wrapper for body fields, or wrong resource path). Don't tell the user about the malformed call. If a retry also 400s, fall through to upstream and ASK the user. NEVER substitute a different method (especially never trash/delete when modify/patch failed) — that's a destructive escalation.
-
-  forbidden → "I don't have access to that specific resource" — the user has the workspace connected but lacks permission for this item. Don't reconnect.
-
-  timeout → "took too long — try again?" Don't reconnect.
-
-  upstream → "something unexpected went wrong on Google's side — try again?" Don't reconnect.
-
-In every case, never mention "certificate", "discovery", "scope", "token", "rustls", "401/403/etc" in the user-facing text. Speak like a friend, not a pager.
+archive_messages also returns a per-id failed[] when only some ids fail; handle that by surfacing those few to the user. NEVER mention "certificate", "discovery", "scope", "token", "401/403/etc" in user-facing text. Speak like a friend.
 `.trim();
 
 const SIGNUP_NUDGE_DIRECTIVE = `
@@ -178,8 +123,10 @@ STYLE:
 - If the user asks for depth, expand gently with clear spacing rather than one dense block.
 - CRITICAL: every turn must produce at least one visible reply. If you
   call a non-UI tool (update_user_profile, log_goal_update, memory_save,
-  call_workspace, google_search), you MUST follow up with a short text
-  reply in the same turn. Empty turns leave the user staring at nothing.
+  triage_inbox, find_workspace, archive_messages, add_calendar_event,
+  add_task, complete_task, google_search), you MUST follow up with a
+  short text reply in the same turn. Empty turns leave the user staring
+  at nothing.
   The exception is the four UI-directive tools below — those ARE the
   whole turn by design.
 - Ask at most ONE open question at a time.
@@ -518,7 +465,7 @@ function formatCalendarDensity(ctx: InstructionContext): string {
   const todayHeader = formatDay(cd.today, false);
   const tomorrowHeader = formatDay(cd.tomorrow, true, cd.tomorrow.count >= HEAVY_DAY_THRESHOLD);
   const lines = [
-    "CALENDAR (pre-fetched — reference today's schedule directly without calling call_workspace; for tomorrow or other days, call_workspace):",
+    "CALENDAR (pre-fetched — reference today's schedule directly; for tomorrow or other days, call find_workspace):",
     `today: ${todayHeader}`,
   ];
   for (const e of cd.today.events) {
@@ -526,7 +473,7 @@ function formatCalendarDensity(ctx: InstructionContext): string {
   }
   if (cd.today.events.length < cd.today.count) {
     const more = cd.today.count - cd.today.events.length;
-    lines.push(`  …and ${more} more (call_workspace to see them)`);
+    lines.push(`  …and ${more} more (call find_workspace to see them)`);
   }
   lines.push(`tomorrow: ${tomorrowHeader}`);
   return lines.join('\n');
@@ -661,8 +608,8 @@ export function buildInstruction(ctx: InstructionContext): string {
     ctx.nudgeMode === 'signup' ? SIGNUP_NUDGE_DIRECTIVE : '',
     ctx.nudgeMode === 'pro' ? PRO_NUDGE_DIRECTIVE : '',
     // Workspace cheat-sheet only appears when the user has actually
-    // connected Workspace — otherwise the LLM has no call_workspace tool
-    // to use, and the cheat-sheet would be noise.
+    // connected Workspace — otherwise the LLM has no workspace tools to
+    // use, and the cheat-sheet would be noise.
     ctx.userState === 'workspace_connected' ? WORKSPACE_CHEATSHEET : '',
     formatTime(ctx),
     ...formatSessionSummaries(ctx),

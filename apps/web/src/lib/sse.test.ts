@@ -88,7 +88,7 @@ describe('parseSseAssistant', () => {
           {
             functionCall: {
               id: 'tc-1',
-              name: 'call_workspace',
+              name: 'triage_inbox',
               args: { service: 'gmail', resource: 'messages', method: 'list' },
             },
           },
@@ -102,7 +102,7 @@ describe('parseSseAssistant', () => {
           {
             functionResponse: {
               id: 'tc-1',
-              name: 'call_workspace',
+              name: 'triage_inbox',
               response: { status: 'ok', body: {} },
             },
           },
@@ -168,8 +168,8 @@ describe('parseSseBlock (streaming reducer)', () => {
             {
               functionCall: {
                 id: 'tc-1',
-                name: 'call_workspace',
-                args: { service: 'gmail', resource: 'messages', method: 'list' },
+                name: 'triage_inbox',
+                args: {},
               },
             },
           ],
@@ -179,10 +179,10 @@ describe('parseSseBlock (streaming reducer)', () => {
     expect(fcOps).toHaveLength(1);
     expect(fcOps[0]).toMatchObject({
       op: 'push',
-      element: { kind: 'tool-call', id: 'tc-1', name: 'call_workspace', done: false },
+      element: { kind: 'tool-call', id: 'tc-1', name: 'triage_inbox', done: false },
     });
     const el = (fcOps[0] as { element: { label: string } }).element;
-    expect(el.label).toContain('gmail');
+    expect(el.label).toContain('inbox');
 
     const frOps = parseSseBlock(
       blockFor({
@@ -192,7 +192,7 @@ describe('parseSseBlock (streaming reducer)', () => {
             {
               functionResponse: {
                 id: 'tc-1',
-                name: 'call_workspace',
+                name: 'triage_inbox',
                 response: { status: 'ok', body: {} },
               },
             },
@@ -214,7 +214,7 @@ describe('parseSseBlock (streaming reducer)', () => {
             {
               functionResponse: {
                 id: 'tc-err',
-                name: 'call_workspace',
+                name: 'find_workspace',
                 response: { status: 'error', code: 'upstream', message: 'quota' },
               },
             },
@@ -262,28 +262,13 @@ describe('parseSseBlock (streaming reducer)', () => {
 });
 
 describe('labelForToolCall', () => {
-  it('describes call_workspace by service + resource.method', () => {
-    expect(
-      labelForToolCall('call_workspace', {
-        service: 'gmail',
-        resource: 'messages',
-        method: 'list',
-      }),
-    ).toContain('gmail');
-    expect(
-      labelForToolCall('call_workspace', {
-        service: 'calendar',
-        resource: 'events',
-        method: 'insert',
-      }),
-    ).toContain('creating');
-    expect(
-      labelForToolCall('call_workspace', {
-        service: 'tasks',
-        resource: 'tasks',
-        method: 'delete',
-      }),
-    ).toContain('removing');
+  it('describes triage_inbox + find_workspace as user-facing reads', () => {
+    expect(labelForToolCall('triage_inbox', {})).toContain('inbox');
+    expect(labelForToolCall('find_workspace', { query: "Sarah's email last week" })).toContain(
+      "Sarah's email",
+    );
+    // No query → still produces a sane label.
+    expect(labelForToolCall('find_workspace', {})).toContain('workspace');
   });
 
   it('has friendly labels for the other common tools', () => {
@@ -314,33 +299,26 @@ describe('labelForToolCall', () => {
     expect(labelForToolCall('log_goal_update', {})).toBe('logging goal');
   });
 
-  it('covers every call_workspace method verb + service fallback', () => {
+  it('describes the workspace write tools by their action', () => {
+    expect(labelForToolCall('archive_messages', { ids: ['m1'] })).toContain('1 message');
+    expect(labelForToolCall('archive_messages', { ids: ['m1', 'm2', 'm3'] })).toContain(
+      '3 messages',
+    );
+    // No ids array yet (pending invocation) → still readable.
+    expect(labelForToolCall('archive_messages', {})).toContain('messages');
+
     expect(
-      labelForToolCall('call_workspace', { service: 'gmail', resource: 'messages', method: 'get' }),
-    ).toContain('reading');
-    expect(
-      labelForToolCall('call_workspace', {
-        service: 'gmail',
-        resource: 'messages',
-        method: 'send',
+      labelForToolCall('add_calendar_event', {
+        summary: 'Maya parent-teacher',
+        start: '2026-05-12T18:00:00+01:00',
       }),
-    ).toContain('sending');
-    expect(
-      labelForToolCall('call_workspace', {
-        service: 'calendar',
-        resource: 'events',
-        method: 'patch',
-      }),
-    ).toContain('updating');
-    expect(
-      labelForToolCall('call_workspace', {
-        service: 'unknown-service',
-        resource: 'x',
-        method: 'weird',
-      }),
-    ).toContain('using workspace');
-    // No args at all — still produces a sane label.
-    expect(labelForToolCall('call_workspace', undefined)).toContain('workspace');
+    ).toContain('Maya parent-teacher');
+    expect(labelForToolCall('add_calendar_event', {})).toContain('calendar event');
+
+    expect(labelForToolCall('add_task', { title: 'Reply to Sarah' })).toContain('Reply to Sarah');
+    expect(labelForToolCall('add_task', {})).toContain('task');
+
+    expect(labelForToolCall('complete_task', { id: 't1' })).toContain('done');
   });
 });
 
@@ -480,7 +458,7 @@ describe('parseSseBlock — extra branches', () => {
             {
               functionResponse: {
                 id: 't1',
-                name: 'call_workspace',
+                name: 'triage_inbox',
                 response: { status: 'error', code: 'scope_required' },
               },
             },

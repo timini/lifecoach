@@ -15,8 +15,8 @@
  * when null. Never blocks a turn.
  */
 
+import { type ExecFileLike, defaultExecFile } from '../agents/workspaceAgent/gwsExec.js';
 import { ScopeRequiredError, type WorkspaceTokensStore } from '../storage/workspaceTokens.js';
-import { type ExecFileLike, defaultExecFile } from '../tools/callWorkspace.js';
 
 export interface TodayEvent {
   /** Event summary/title. Empty events fall back to '(no title)'. */

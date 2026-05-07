@@ -49,38 +49,36 @@ If you learn a recurring fact (anniversary, weekly commitment, kid's school day)
 call update_user_profile.`;
 
   const workspaceArm = `\n[With Workspace connected]
-Quietly fetch today's inbox before the question:
-  call_workspace(service:"gmail", resource:"users.messages", method:"list",
-                 params:'{"userId":"me","q":"newer_than:1d label:INBOX","maxResults":15}')
-Then for each interesting one, users.messages.get to read body+subject.
+Quietly call triage_inbox() before the question. It returns a structured
+report with noise[], actions[], events[], info[] buckets. The sub-agent
+decodes message bodies and classifies them — you don't need to read raw
+email yourself.
 
-Cross-reference what's already in this prompt's profile, recent_goals, and
-yesterday's summary BEFORE classifying. An email about "Maya's parents'
-evening" matters more if Maya is in the profile.
-
-Categorise EVERY message into one of:
-  - **Noise**: newsletters, automated reports, no-action — collect IDs
-  - **Action**: user has to do something — surface as a 1-line task
-  - **Event**: meeting/appointment with date+time — propose calendar add
-  - **Information**: touches a known goal/profile fact — mention briefly
+Cross-reference what the report surfaces against this prompt's profile,
+recent_goals, and yesterday's summary BEFORE talking about it. An email
+about "Maya's parents' evening" matters more if Maya is in the profile.
 
 Ask ONCE before archiving the noise bucket:
   ask_single_choice_question({
     question: "Archive these N? <2-3 subjects, … rest>",
     options: ["Yes, archive", "Skip"]
   })
-On "Yes, archive": for each id, users.messages.modify({removeLabelIds:["INBOX"]}).
-NEVER trash. Archive means modify-remove-INBOX (already in WORKSPACE_CHEATSHEET).
+On "Yes, archive": call archive_messages({ ids: noise.map(n => n.id) }) —
+one batched call, all ids together. NEVER trash; archive_messages removes
+the INBOX label.
 
-Ask ONCE per inferred event:
+Ask ONCE per events[] entry:
   ask_single_choice_question({
-    question: "Add 'Tue lunch with Sarah, 12:30' to your calendar?",
+    question: "Add '<subject>, <proposedStart>' to your calendar?",
     options: ["Yes", "Skip"]
   })
-On "Yes": calendar.events.insert with the inferred start+end.
+On "Yes": call add_calendar_event({ summary, start, end?, location? }) with
+the proposed fields from the report.
 
-Surface 1–3 actions or tasks (not all of them). Tie them to the user's
-goals/priority for today if you can.`;
+Surface 1–3 of actions[] (not all of them). Tie them to the user's
+goals/priority for today if you can. If an action is worth tracking as a
+task, offer add_task({ title, due? }) as a follow-up. Mention info[] only
+if it touches a known goal/profile fact.`;
 
   return `DAY_PLANNING (practice on, morning window, not yet done today):
 
@@ -120,18 +118,17 @@ Assistant: [calls update_user_profile path="practices.day_planning.last_planned_
 `.trim();
 
 const WORKSPACE_EXAMPLE = `
-GOOD (DAY_PLANNING with Workspace — quiet inbox pull, batched archive confirmation, then surface 2 tasks):
+GOOD (DAY_PLANNING with Workspace — triage_inbox, batched archive confirmation, then surface 2 actions):
 User: "Morning. Coffee in. Ready when you are."
-Assistant: [calls call_workspace service="gmail" resource="users.messages" method="list" params='{"userId":"me","q":"newer_than:1d label:INBOX","maxResults":15}']
-[reads top messages with users.messages.get]
+Assistant: [calls triage_inbox]
 "Six newsletters and three things worth a look this morning."
 [calls ask_single_choice_question question="Archive these 6? Substack digest, LinkedIn weekly, two newsletters from your kids' schools (just FYI), Strava recap, AWS billing alert. (Note — the school ones look auto, no actions in either.)" options=["Yes, archive", "Skip"]]
 User: "Yes, archive"
-Assistant: [calls call_workspace service="gmail" resource="users.messages" method="modify" params='{"userId":"me","id":"<id1>","requestBody":{"removeLabelIds":["INBOX"]}}'] (× 6)
+Assistant: [calls archive_messages ids=[<id1>, <id2>, <id3>, <id4>, <id5>, <id6>]]
 "Done. Real things: Maya's parent-teacher meeting got bumped to Tuesday 6pm, and there's a contractor invoice waiting on you."
 [calls ask_single_choice_question question="Add 'Maya parent-teacher, Tue 6pm' to your calendar?" options=["Yes", "Skip"]]
 User: "Yes"
-Assistant: [calls call_workspace service="calendar" resource="events" method="insert" params='{"calendarId":"primary","requestBody":{"summary":"Maya parent-teacher","start":{"dateTime":"2026-05-12T18:00:00+01:00"},"end":{"dateTime":"2026-05-12T18:30:00+01:00"}}}']
+Assistant: [calls add_calendar_event summary="Maya parent-teacher" start="2026-05-12T18:00:00+01:00" end="2026-05-12T18:30:00+01:00"]
 [calls update_user_profile path="practices.day_planning.last_planned_date" value="2026-05-06"]
 "Booked. So the day has the parent-teacher locked in for Tuesday and the invoice as today's only must-do — what's the report situation, still on the morning side or has it slid?"
 `.trim();

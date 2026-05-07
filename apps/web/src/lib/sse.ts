@@ -317,34 +317,28 @@ export function parseSseBlock(block: string): AssistantOp[] {
 export function labelForToolCall(name: string, args: unknown): string {
   const a = (args ?? {}) as Record<string, unknown>;
   switch (name) {
-    case 'call_workspace': {
-      const service = typeof a.service === 'string' ? a.service : 'workspace';
-      const resource = typeof a.resource === 'string' ? a.resource : '';
-      const method = typeof a.method === 'string' ? a.method : '';
-      const verb =
-        method === 'list'
-          ? 'checking'
-          : method === 'get'
-            ? 'reading'
-            : method === 'send'
-              ? 'sending'
-              : method === 'insert' || method === 'create'
-                ? 'creating'
-                : method === 'patch' || method === 'modify' || method === 'update'
-                  ? 'updating'
-                  : method === 'delete' || method === 'trash'
-                    ? 'removing'
-                    : 'using';
-      const subject =
-        service === 'gmail'
-          ? 'your gmail'
-          : service === 'calendar'
-            ? 'your calendar'
-            : service === 'tasks'
-              ? 'your tasks'
-              : 'workspace';
-      return `${verb} ${subject}${resource ? ` · ${resource}.${method || '*'}` : ''}`;
+    case 'triage_inbox':
+      return 'triaging your inbox';
+    case 'find_workspace': {
+      const query = typeof a.query === 'string' ? a.query : '';
+      return query ? `looking up: ${query.slice(0, 60)}` : 'looking up workspace';
     }
+    case 'archive_messages': {
+      const ids = Array.isArray(a.ids) ? a.ids : [];
+      return ids.length === 1
+        ? 'archiving 1 message'
+        : `archiving ${ids.length || 'some'} messages`;
+    }
+    case 'add_calendar_event': {
+      const summary = typeof a.summary === 'string' ? a.summary : '';
+      return summary ? `adding event: ${summary.slice(0, 60)}` : 'adding a calendar event';
+    }
+    case 'add_task': {
+      const title = typeof a.title === 'string' ? a.title : '';
+      return title ? `adding task: ${title.slice(0, 60)}` : 'adding a task';
+    }
+    case 'complete_task':
+      return 'marking task done';
     case 'update_user_profile': {
       const path = typeof a.path === 'string' ? a.path : '';
       return path ? `remembering ${path}` : 'remembering that';

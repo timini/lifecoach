@@ -67,7 +67,7 @@ describe('eventsToMessages', () => {
             {
               functionCall: {
                 id: 'tc-1',
-                name: 'call_workspace',
+                name: 'triage_inbox',
                 args: { service: 'gmail', resource: 'messages', method: 'list' },
               },
             },
@@ -83,7 +83,7 @@ describe('eventsToMessages', () => {
             {
               functionResponse: {
                 id: 'tc-1',
-                name: 'call_workspace',
+                name: 'triage_inbox',
                 response: { status: 'ok' },
               },
             },
@@ -102,8 +102,8 @@ describe('eventsToMessages', () => {
     expect(msgs[0].elements[0]).toMatchObject({
       kind: 'tool-call',
       id: 'tc-1',
-      name: 'call_workspace',
-      label: expect.stringContaining('gmail'),
+      name: 'triage_inbox',
+      label: expect.stringContaining('inbox'),
       done: true,
       ok: true,
     });
@@ -173,7 +173,7 @@ describe('eventsToMessages', () => {
             {
               functionCall: {
                 id: 'tc-err',
-                name: 'call_workspace',
+                name: 'triage_inbox',
                 args: { service: 'gmail', resource: 'messages', method: 'list' },
               },
             },
@@ -189,7 +189,7 @@ describe('eventsToMessages', () => {
             {
               functionResponse: {
                 id: 'tc-err',
-                name: 'call_workspace',
+                name: 'triage_inbox',
                 response: { status: 'error', code: 'upstream' },
               },
             },
@@ -213,7 +213,7 @@ describe('eventsToMessages', () => {
             {
               functionCall: {
                 id: 't1',
-                name: 'call_workspace',
+                name: 'triage_inbox',
                 args: { service: 'gmail', resource: 'messages', method: 'list' },
               },
             },
@@ -229,7 +229,7 @@ describe('eventsToMessages', () => {
             {
               functionResponse: {
                 id: 't1',
-                name: 'call_workspace',
+                name: 'triage_inbox',
                 response: { status: 'error', code: 'scope_required' },
               },
             },

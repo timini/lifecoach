@@ -420,7 +420,7 @@ describe('buildInstruction', () => {
         tomorrow: { count: 0, firstStart: null, lastEnd: null },
       },
     });
-    expect(s).toMatch(/…and 2 more \(call_workspace to see them\)/);
+    expect(s).toMatch(/…and 2 more \(call find_workspace to see them\)/);
   });
 
   it('flags tomorrow as a heavy day when count >= 7', () => {
@@ -672,19 +672,29 @@ describe('buildInstruction — DAY_PHASE', () => {
 describe('buildInstruction — workspace cheat-sheet gating', () => {
   it('omits the WORKSPACE cheat-sheet when state is not workspace_connected', () => {
     const s = buildInstruction({ ...BASE, userState: 'google_linked' });
-    expect(s).not.toMatch(/WORKSPACE — call_workspace/);
-    expect(s).not.toMatch(/messages\.list/);
+    // The cheat-sheet's lead heading must not appear pre-connect.
+    expect(s).not.toMatch(/WORKSPACE — six narrow tools/);
+    // Tool-call form `triage_inbox()` is cheat-sheet-only; the bare token
+    // `triage_inbox` may appear in the persona's "non-UI tools" list, so
+    // we use the parenthesised form to discriminate.
+    expect(s).not.toMatch(/triage_inbox\(\)/);
+    expect(s).not.toMatch(/archive_messages\(\{ ids \}\)/);
   });
 
   it('includes the WORKSPACE cheat-sheet when state is workspace_connected', () => {
     const s = buildInstruction({ ...BASE, userState: 'workspace_connected' });
-    expect(s).toMatch(/WORKSPACE — call_workspace/);
-    expect(s).toMatch(/messages\.list/);
-    expect(s).toMatch(/events\.list/);
-    expect(s).toMatch(/tasks\.list/);
-    // params is a JSON-encoded STRING — must be explicit to the LLM.
-    expect(s).toMatch(/JSON-encoded STRING/);
-    // And tell it the recovery path on scope_required.
+    // The new cheatsheet leads with the heading and lists the 6 tools.
+    expect(s).toMatch(/WORKSPACE — six narrow tools/);
+    expect(s).toMatch(/triage_inbox\(\)/);
+    expect(s).toMatch(/find_workspace\(\{ query \}\)/);
+    expect(s).toMatch(/archive_messages\(\{ ids \}\)/);
+    expect(s).toMatch(/add_calendar_event/);
+    expect(s).toMatch(/add_task/);
+    expect(s).toMatch(/complete_task/);
+    // The generic dispatcher is gone — these markers must NOT appear.
+    expect(s).not.toMatch(/call_workspace/);
+    expect(s).not.toMatch(/JSON-encoded STRING/);
+    // Tell it the recovery path on scope_required.
     expect(s).toMatch(/connect_workspace/);
   });
 });

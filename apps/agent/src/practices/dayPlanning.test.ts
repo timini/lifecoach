@@ -64,14 +64,17 @@ describe('dayPlanning.directive — workspace arm vs light arm', () => {
   it('returns the workspace arm when userState is workspace_connected', () => {
     const out = dayPlanning.directive?.(ctx({ userState: 'workspace_connected' }));
     expect(out).toMatch(/Archive these/);
-    expect(out).toMatch(/call_workspace/);
-    expect(out).toMatch(/calendar\.events\.insert/);
+    expect(out).toMatch(/triage_inbox/);
+    expect(out).toMatch(/archive_messages/);
+    expect(out).toMatch(/add_calendar_event/);
+    // Generic dispatcher gone.
+    expect(out).not.toMatch(/call_workspace/);
   });
 
   it('returns the light arm when userState is google_linked (no workspace)', () => {
     const out = dayPlanning.directive?.(ctx({ userState: 'google_linked' }));
     expect(out).toMatch(/most important thing/);
-    expect(out).not.toMatch(/call_workspace/);
+    expect(out).not.toMatch(/triage_inbox/);
     expect(out).not.toMatch(/Archive these/);
   });
 
