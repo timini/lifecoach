@@ -8,8 +8,8 @@
  * to label it and what description to show.
  *
  * Adding a new practice: append a metadata entry here AND add a Practice
- * implementation under apps/agent/src/practices/ — the agent's startup-
- * time parity check rejects the build if these two diverge.
+ * implementation under apps/agent_py/src/lifecoach_agent/practices/ — the
+ * agent's startup-time parity check rejects the build if these two diverge.
  */
 
 export interface PracticeMetadata {

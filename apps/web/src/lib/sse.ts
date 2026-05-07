@@ -122,8 +122,8 @@ export function parseSseAssistant(raw: string): AssistantElement[] {
 
       // Workspace connect prompt — LLM emits `connect_workspace` as a UI
       // directive; the client renders the actual OAuth popup button. The
-      // response payload has no auth values (see apps/agent/src/tools/
-      // connectWorkspace.ts).
+      // response payload has no auth values (see
+      // apps/agent_py/src/lifecoach_agent/tools/connect_workspace.py).
       if (resp?.status === 'oauth_prompted' && fr.name === 'connect_workspace') {
         if (pendingText.trim()) {
           out.push({ kind: 'text', text: pendingText });

@@ -2,10 +2,10 @@
 
 A warm, conversational AI life coach. Chats like a friend texting, not a robot writing an email. Remembers you across sessions, knows what's on your calendar, can read your inbox and your task list, and never asks twice for things you've already told it.
 
-The repo is a TypeScript monorepo with two deployables:
+The repo is a polyglot monorepo with two deployables:
 
 - **apps/web** — Next.js 15 (App Router, React 19) on Cloud Run, behind Firebase Auth
-- **apps/agent** — A [Google ADK](https://github.com/google/adk-python) agent (Node port) running Gemini 3 Flash on Vertex AI, served from Cloud Run as an Express HTTP/SSE service
+- **apps/agent_py** — A [Google ADK](https://github.com/google/adk-python) Python agent running Gemini 3 Flash on Vertex AI, served from Cloud Run as a FastAPI HTTP/SSE service. (Replaced the original TS port at PR #56's cutover — see `apps/agent_py/_PORTING.md` for the migration story.)
 
 Shared code lives in `packages/*`. Infrastructure is Terraform in `infra/`. CI gates the whole thing on **90% line + branch coverage**.
 
@@ -201,21 +201,27 @@ stateDiagram-v2
 ```
 .
 ├── apps/
-│   ├── agent/                    Express + ADK runtime, Cloud Run
-│   │   ├── src/
-│   │   │   ├── server.ts         /chat (SSE), /history, /profile, /goals, /workspace/*
-│   │   │   ├── agent.ts          createRootAgent(ctx, tools, {model})
-│   │   │   ├── auth.ts           verifyIdToken (firebase-admin)
+│   ├── agent_py/                 FastAPI + Python ADK, Cloud Run
+│   │   ├── src/lifecoach_agent/
+│   │   │   ├── server.py         /chat (SSE), /history, /profile, /goals, /workspace/*
+│   │   │   ├── agent.py          build_root_agent_for(ctx, tools, model)
+│   │   │   ├── auth.py           verify_id_token (firebase-admin)
 │   │   │   ├── prompt/
-│   │   │   │   └── buildInstruction.ts   system-prompt assembly
-│   │   │   ├── context/          weather, places, memory (mem0)
-│   │   │   ├── storage/          userProfile, goalUpdates (GCS),
-│   │   │   │                     userMeta, workspaceTokens,
-│   │   │   │                     firestoreSession (Firestore)
-│   │   │   ├── tools/            askChoice, authUser, connectWorkspace,
-│   │   │   │                     callWorkspace, logGoalUpdate, memorySave,
-│   │   │   │                     updateUserProfile, upgradeToPro
-│   │   │   └── oauth/            workspaceClient.ts (google-auth-library)
+│   │   │   │   └── build_instruction.py  system-prompt assembly
+│   │   │   ├── context/          weather, places, holidays, air_quality,
+│   │   │   │                     calendar_density, session_summary,
+│   │   │   │                     memory (Vertex Memory Bank)
+│   │   │   ├── storage/          user_profile, profile_history,
+│   │   │   │                     goal_updates (GCS), user_meta,
+│   │   │   │                     workspace_tokens, firestore_session
+│   │   │   ├── tools/            ask_choice, auth_user, connect_workspace,
+│   │   │   │                     log_goal_update, memory_save,
+│   │   │   │                     update_user_profile, upgrade_to_pro
+│   │   │   ├── workspace_agent/  call_workspace dispatcher (drops gws CLI;
+│   │   │   │                     uses google-api-python-client directly)
+│   │   │   └── oauth/            workspace_client.py (httpx, no
+│   │   │                         google-auth-library)
+│   │   ├── tests/evals/          ADK eval harness + 6 flagship cases
 │   │   └── Dockerfile
 │   └── web/                      Next.js 15 App Router, React 19
 │       ├── src/

@@ -23,8 +23,8 @@ dev:
 dev-web:
     pnpm --filter @lifecoach/web dev
 
-dev-agent:
-    pnpm --filter @lifecoach/agent dev
+# The TS agent (`apps/agent/`) was deleted at PR #56's cutover. The Python
+# replacement lives at `apps/agent_py/`; use `just dev-py` to run it.
 
 dev-ui-book:
     pnpm --filter @lifecoach/ui-book dev
@@ -192,19 +192,12 @@ e2e-preview pr:
     pnpm --filter @lifecoach/web exec playwright test
 
 # --- Ops -------------------------------------------------------------------
-
-seed-user uid:
-    pnpm --filter @lifecoach/agent exec tsx scripts/seed-user.ts {{uid}}
-
-# Idempotent: creates / updates the dedicated e2e test user and stores its
-# password in Secret Manager (E2E_TEST_PASSWORD). See apps/agent/scripts/
-# provision-e2e-user.ts for prerequisites (firebaseauth.admin + secretmanager
-# .admin on the caller's gcloud ADC).
-provision-e2e-user env="dev":
-    #!/usr/bin/env bash
-    set -eu
-    project=$(cd infra/envs/{{env}} && terraform output -raw project_id)
-    pnpm --filter @lifecoach/agent exec tsx scripts/provision-e2e-user.ts --project="$project"
+#
+# `seed-user` and `provision-e2e-user` previously ran TS scripts under
+# `apps/agent/scripts/`. PR #56 deleted the TS agent; both ops are filed
+# as follow-ups to port to Python (see `apps/agent_py/_PORTING.md`). The
+# E2E user already exists in dev/prod and its password is in Secret
+# Manager — no immediate re-provisioning needed.
 
 # Runs the chat-persistence Playwright spec against an environment. Reads
 # baseURL + creds from the deployed Cloud Run web URL and Secret Manager.
