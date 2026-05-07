@@ -108,7 +108,14 @@ docker_auth() {
 
 build_and_push() {
   local name="$1"
-  local context_dockerfile="apps/${name}/Dockerfile"
+  # Map service name → Dockerfile path. The Python agent rebuild (PR #56)
+  # ships under apps/agent_py/; we keep the Cloud Run service + image name
+  # `lifecoach-agent` so Terraform / DNS / IAM stay unchanged.
+  local dockerfile_dir="apps/${name}"
+  if [[ "${name}" == "agent" ]]; then
+    dockerfile_dir="apps/agent_py"
+  fi
+  local context_dockerfile="${dockerfile_dir}/Dockerfile"
   local image="${REPO_URL}/lifecoach-${name}:${TAG}"
   log "Building ${image}"
   # Only the web image needs Firebase build-args (NEXT_PUBLIC_* are inlined
