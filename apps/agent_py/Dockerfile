@@ -55,4 +55,9 @@ EXPOSE 8080
 
 # Cloud Run respects $PORT; uvicorn picks up via shell expansion. Single
 # worker — Cloud Run scales horizontally, not via multi-worker uvicorn.
-CMD ["sh", "-c", "uvicorn lifecoach_agent.server:app --host 0.0.0.0 --port ${PORT:-8080}"]
+#
+# `--factory` lets uvicorn call `build_app()` at startup, which is what
+# wires the real Firestore / GCS / Workspace clients from env. The
+# server module exports `create_app(deps)` — a factory taking deps —
+# and main.build_app() supplies the prod deps. No top-level `app`.
+CMD ["sh", "-c", "uvicorn lifecoach_agent.main:build_app --factory --host 0.0.0.0 --port ${PORT:-8080}"]
