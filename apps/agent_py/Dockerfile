@@ -18,8 +18,11 @@ ENV UV_LINK_MODE=copy \
 
 WORKDIR /app
 
-# Install dependencies first (cacheable) — only invalidated when lockfile changes.
-COPY apps/agent_py/pyproject.toml apps/agent_py/uv.lock ./
+# Install dependencies first (cacheable) — only invalidated when lockfile
+# changes. README.md is copied in this layer too because hatchling reads it
+# at editable-install time even with `--no-install-project` (the project
+# metadata is validated regardless).
+COPY apps/agent_py/pyproject.toml apps/agent_py/uv.lock apps/agent_py/README.md ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-project --no-dev
 

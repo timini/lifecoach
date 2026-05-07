@@ -1,0 +1,42 @@
+{
+  "eval_set_id": "empty_turn_recovery_kicks_in",
+  "name": "Recovery from empty post-tool turn",
+  "description": "Asserts the model produces text after a tool call. This is the PR #54 / issue #40 regression class — the gemini-3-flash-preview thought-only STOP failure mode. Detection method differs from the other cases: instead of comparing tool trajectories we lean on `final_response_match_v2` to assert that the assistant's last message contains a substantive reply (not the empty/whitespace turn that the chat-handler's recovery stub would mask in production). If the model emits no text post-tool, this case fails LOUDLY and points at exactly the regression we just shipped.",
+  "eval_cases": [
+    {
+      "eval_id": "case_01_post_tool_must_reply",
+      "session_input": {
+        "app_name": "lifecoach",
+        "user_id": "test-user-empty-turn",
+        "state": {
+          "_lifecoach_user_state": "email_verified",
+          "_lifecoach_now": "2026-05-12T09:30:00+01:00"
+        }
+      },
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [{ "text": "I started running again last week." }],
+            "role": "user"
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "log_goal_update",
+                "args": { "goal": "Running", "status": "started" }
+              }
+            ]
+          },
+          "final_response": {
+            "parts": [
+              {
+                "text": "Nice — even one consistent week is the part that compounds. How's the body feeling so far?"
+              }
+            ],
+            "role": "model"
+          }
+        }
+      ]
+    }
+  ]
+}
