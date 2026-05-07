@@ -10,6 +10,7 @@ Tracks per-module status of the rebuild. Update as we go.
 | `apps/agent/src/agent.ts`                              | `lifecoach_agent/agent.py`                          | 9     | done (per-turn factory + RunnerLike Protocol) |
 | `apps/agent/src/sentry.ts`                             | `lifecoach_agent/sentry_setup.py`                   | 9     | done |
 | —                                                      | `lifecoach_agent/main.py`                           | 9     | new (production wiring: env → real GCP clients) |
+| —                                                      | `tests/evals/` (harness + 1 flagship eval-set)      | 10    | done (5 remaining cases filed as follow-up) |
 | `apps/agent/src/auth.ts`                               | `lifecoach_agent/auth.py`                           | 5     | — |
 | `apps/agent/src/sentry.ts`                             | `lifecoach_agent/sentry_setup.py`                   | 0     | — |
 | `apps/agent/src/chat/emptyTurnGuard.ts`                | `lifecoach_agent/chat/empty_turn_guard.py`          | 8     | done |
