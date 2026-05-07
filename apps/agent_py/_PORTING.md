@@ -38,13 +38,13 @@ Tracks per-module status of the rebuild. Update as we go.
 | `apps/agent/src/storage/workspaceTokens.ts`            | `lifecoach_agent/storage/workspace_tokens.py`       | 5     | done |
 | `apps/agent/src/oauth/workspaceClient.ts`              | `lifecoach_agent/oauth/workspace_client.py`         | 5     | done |
 | `apps/agent/src/auth.ts`                               | `lifecoach_agent/auth.py`                           | 5     | done |
-| `apps/agent/src/tools/authUser.ts`                     | `lifecoach_agent/tools/auth_user.py`                | 6     | — |
-| `apps/agent/src/tools/connectWorkspace.ts`             | `lifecoach_agent/tools/connect_workspace.py`        | 6     | — |
-| `apps/agent/src/tools/updateUserProfile.ts`            | `lifecoach_agent/tools/update_user_profile.py`      | 6     | — |
-| `apps/agent/src/tools/logGoalUpdate.ts`                | `lifecoach_agent/tools/log_goal_update.py`          | 6     | — |
-| `apps/agent/src/tools/askChoice.ts`                    | `lifecoach_agent/tools/ask_choice.py`               | 6     | — |
-| `apps/agent/src/tools/memorySave.ts`                   | `lifecoach_agent/tools/memory_save.py`              | 6     | — |
-| `apps/agent/src/tools/upgradeToPro.ts`                 | `lifecoach_agent/tools/upgrade_to_pro.py`           | 6     | — |
+| `apps/agent/src/tools/authUser.ts`                     | `lifecoach_agent/tools/auth_user.py`                | 6     | done |
+| `apps/agent/src/tools/connectWorkspace.ts`             | `lifecoach_agent/tools/connect_workspace.py`        | 6     | done |
+| `apps/agent/src/tools/updateUserProfile.ts`            | `lifecoach_agent/tools/update_user_profile.py`      | 6     | done |
+| `apps/agent/src/tools/logGoalUpdate.ts`                | `lifecoach_agent/tools/log_goal_update.py`          | 6     | done |
+| `apps/agent/src/tools/askChoice.ts`                    | `lifecoach_agent/tools/ask_choice.py`               | 6     | done |
+| `apps/agent/src/tools/memorySave.ts`                   | `lifecoach_agent/tools/memory_save.py`              | 6     | done |
+| `apps/agent/src/tools/upgradeToPro.ts`                 | `lifecoach_agent/tools/upgrade_to_pro.py`           | 6     | done |
 | `apps/agent/src/agents/workspaceAgent/gwsExec.ts`      | DELETED (subsumed by `gws_client.py`)               | 7     | — |
 | `apps/agent/src/agents/workspaceAgent/runGws.ts`       | DELETED (subsumed by `gws_client.py`)               | 7     | — |
 | —                                                      | `lifecoach_agent/workspace_agent/gws_client.py`     | 7     | new (google-api-python-client) |
