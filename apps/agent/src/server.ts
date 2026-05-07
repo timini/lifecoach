@@ -972,7 +972,21 @@ export function createApp(deps: CreateAppDeps): Express {
       res.write('event: done\ndata: {}\n\n');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      const stack = err instanceof Error ? err.stack : undefined;
       res.write(`event: error\ndata: ${JSON.stringify({ message: msg })}\n\n`);
+      // Also surface in Cloud Logging so we can see exceptions without
+      // pulling Sentry — especially during preview-deploy debugging where
+      // the SSE error event may be invisible to the user.
+      // eslint-disable-next-line no-console
+      console.log(
+        JSON.stringify({
+          msg: 'chat.stream_error',
+          uid: effectiveUserId,
+          sessionId,
+          error: msg,
+          stack: stack?.split('\n').slice(0, 8).join(' | '),
+        }),
+      );
       captureChatEvent(
         'chat.stream_error',
         { uid: effectiveUserId, sessionId, error: msg },
