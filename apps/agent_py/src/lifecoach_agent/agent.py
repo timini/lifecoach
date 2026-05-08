@@ -46,7 +46,7 @@ def build_root_agent_for(
     """
     instruction = build_instruction(ctx)
     return Agent(
-        name="lifecoach_agent",
+        name="lifecoach",
         model=model,
         description="Lifecoach — daily-practice coaching agent.",
         instruction=instruction,
@@ -59,7 +59,7 @@ def build_root_agent() -> Agent:
     goes through `build_root_agent_for`, which materialises the full
     instruction + tool list per turn."""
     return Agent(
-        name="lifecoach_agent",
+        name="lifecoach",
         model=DEFAULT_MODEL,
         description="Lifecoach — daily-practice coaching agent.",
         instruction=(
