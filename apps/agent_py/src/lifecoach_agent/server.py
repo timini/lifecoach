@@ -1050,18 +1050,28 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
 
 def _event_to_dict(event: Any) -> Any:
     """Convert an ADK Event (Pydantic model) to a JSON-serialisable dict.
-    Tolerant of both the real `Event` class and dict-shaped fakes."""
+    Tolerant of both the real `Event` class and dict-shaped fakes.
+
+    Serialised with camelCase aliases so the wire shape matches what
+    the web client's `parseSseBlock` expects (`functionCall`,
+    `functionResponse`, etc.) — a contract carried over verbatim from
+    the TS service. Without `by_alias=True`, snake_case keys would
+    silently drop every tool-driven turn on the FE.
+    """
     if isinstance(event, dict):
         return event
     dump = getattr(event, "model_dump", None)
     if callable(dump):
         try:
-            return dump(mode="json", exclude_none=True)
+            return dump(mode="json", by_alias=True, exclude_none=True)
         except Exception:  # noqa: BLE001
             try:
-                return dump()
+                return dump(by_alias=True)
             except Exception:  # noqa: BLE001
-                pass
+                try:
+                    return dump()
+                except Exception:  # noqa: BLE001
+                    pass
     # Last resort: best-effort attribute scrape.
     out: dict[str, Any] = {}
     for k in ("author", "content", "partial", "id", "timestamp"):

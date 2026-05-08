@@ -1,5 +1,5 @@
 import { type Page, expect, test } from '@playwright/test';
-import { sendChat, waitForAssistantReply } from './fixtures';
+import { sendChat } from './fixtures';
 import { type JudgeTurn, judgeTranscript } from './judge';
 
 /**
@@ -44,22 +44,67 @@ test.setTimeout(240_000);
 const ASSISTANT_CONTENT_SEL =
   '[data-from="assistant"], [data-testid="choice-prompt"], [data-testid="auth-prompt"], [data-testid="workspace-prompt"]';
 
-async function captureNewAssistantText(page: Page, beforeContents: string[]): Promise<string> {
-  const after = await page.locator(ASSISTANT_CONTENT_SEL).allTextContents();
-  if (after.length <= beforeContents.length) return '<NO ASSISTANT REPLY>';
-  return after.slice(beforeContents.length).join('\n').trim() || '<NO ASSISTANT REPLY>';
-}
-
 async function runConversation(page: Page, turns: string[]): Promise<JudgeTurn[]> {
   const transcript: JudgeTurn[] = [];
-  for (const userMsg of turns) {
-    const before = await page.locator(ASSISTANT_CONTENT_SEL).allTextContents();
+  for (let i = 0; i < turns.length; i++) {
+    const userMsg = turns[i];
+    const beforeCount = await page.locator(ASSISTANT_CONTENT_SEL).count();
     await sendChat(page, userMsg);
-    await waitForAssistantReply(page);
-    const assistant = await captureNewAssistantText(page, before);
+
+    // Wait for BOTH `data-busy="false"` AND a new piece of assistant
+    // content (text bubble or choice/auth/workspace prompt). The /chat
+    // SSE on Cloud Run can take >30s end-to-end (cold instance + LLM
+    // tokens + stream flushing through GFE) — keying purely on the
+    // existing `waitForAssistantReply` (busy=false) and a short
+    // follow-up wait races the FE's retry loop in useChatStream.ts,
+    // which can momentarily re-flip busy without yet pushing content.
+    // 60s is comfortably above the observed worst case.
+    let assistant = '<NO ASSISTANT REPLY>';
+    try {
+      await page.waitForFunction(
+        ([sel, prev]) => {
+          const ws = document.querySelector('[data-testid="chat-window-state"]');
+          const busy = ws?.getAttribute('data-busy');
+          if (busy !== 'false') return false;
+          return document.querySelectorAll(sel).length > prev;
+        },
+        [ASSISTANT_CONTENT_SEL, beforeCount] as const,
+        { timeout: 60_000 },
+      );
+      const after = await page.locator(ASSISTANT_CONTENT_SEL).allTextContents();
+      const newOnes = after
+        .slice(beforeCount)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (newOnes.length > 0) assistant = newOnes.join('\n');
+    } catch {
+      // Timed out — dump what's actually on screen so a CI reader can
+      // tell whether the agent went silent vs the FE just hadn't
+      // rendered yet.
+      const snapshot = await page.evaluate(() => {
+        const out: string[] = [];
+        const userBubbles = document.querySelectorAll('[data-from="user"]');
+        out.push(`user-bubbles=${userBubbles.length}`);
+        userBubbles.forEach((el, idx) => out.push(`  [${idx}] ${el.textContent?.slice(0, 80)}`));
+        const asstBubbles = document.querySelectorAll('[data-from="assistant"]');
+        out.push(`assistant-bubbles=${asstBubbles.length}`);
+        asstBubbles.forEach((el, idx) => out.push(`  [${idx}] ${el.textContent?.slice(0, 200)}`));
+        const choices = document.querySelectorAll('[data-testid="choice-prompt"]');
+        out.push(`choice-prompts=${choices.length}`);
+        choices.forEach((el, idx) => out.push(`  [${idx}] ${el.textContent?.slice(0, 200)}`));
+        const ws = document.querySelector('[data-testid="chat-window-state"]');
+        out.push(
+          `chat-window-state busy=${ws?.getAttribute('data-busy')} sid=${ws?.getAttribute('data-session-id')?.slice(0, 30)} uid=${ws?.getAttribute('data-uid')?.slice(0, 8)}`,
+        );
+        return out.join('\n');
+      });
+      // eslint-disable-next-line no-console
+      console.log(`[chat-quality][turn-${i + 1}] page snapshot:\n${snapshot}\n---`);
+    }
+
     transcript.push({ user: userMsg, assistant });
-    // Surface in the test log so a reader of the CI output can see what
-    // the agent said even if the judge passes.
+    // Surface in the test log so a reader of CI output can see what the
+    // agent said even when the judge passes.
     // eslint-disable-next-line no-console
     console.log(`[chat-quality] user: ${userMsg}\n[chat-quality] assistant: ${assistant}\n---`);
   }
