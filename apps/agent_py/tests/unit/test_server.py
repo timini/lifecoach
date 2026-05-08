@@ -438,9 +438,16 @@ async def test_chat_400_when_required_fields_missing() -> None:
 
 
 @pytest.mark.asyncio
-async def test_chat_empty_turn_recovery_emits_stub_when_retry_also_empty() -> None:
-    """Two empty passes → recovery stub + persistence call."""
-    runner = FakeRunner(events_per_call=[[], []])  # both passes empty
+async def test_chat_silent_model_emits_no_synthetic_recovery() -> None:
+    """When the model emits zero text and no UI-tool fires, the SSE
+    stream ends cleanly with `event: done` and NO synthetic assistant
+    event. This is the explicit replacement for the old empty-turn
+    guard, which papered over silent turns by inserting a fake
+    "Done. What next?" model event AND persisting it — which then
+    poisoned subsequent turns. Silent turns are now visible failures
+    the chat-quality e2e judge catches loudly.
+    """
+    runner = FakeRunner(events_per_call=[[]])  # one empty pass, no retry
     app = _make_app(runner=runner)
     async with (
         _client(app) as c,
@@ -451,18 +458,18 @@ async def test_chat_empty_turn_recovery_emits_stub_when_retry_also_empty() -> No
         ) as res,
     ):
         text = await _drain(res)
-    # Recovery copy is one of `pick_recovery_text`'s outputs for an
-    # empty tool list — "Done. What next?".
-    assert "Done. What next?" in text
+    assert "Done. What next?" not in text
+    assert "Got it" not in text
+    assert "All set" not in text
     assert "event: done" in text
-    # The synthetic event is also persisted via append_event.
-    assert len(runner.session_service.appended) == 1
+    # Nothing synthetic gets persisted.
+    assert runner.session_service.appended == []
 
 
 @pytest.mark.asyncio
-async def test_chat_retry_pass_succeeds_and_no_stub_appears() -> None:
-    """First pass empty, retry produces text → no recovery stub."""
-    runner = FakeRunner(events_per_call=[[], [_model_text("recovered with text")]])
+async def test_chat_streams_text_when_model_responds() -> None:
+    """Sanity counterpart — happy path still works."""
+    runner = FakeRunner(events_per_call=[[_model_text("hi back")]])
     app = _make_app(runner=runner)
     async with (
         _client(app) as c,
@@ -473,9 +480,8 @@ async def test_chat_retry_pass_succeeds_and_no_stub_appears() -> None:
         ) as res,
     ):
         text = await _drain(res)
-    assert "recovered with text" in text
-    # Stub copy must NOT appear when retry succeeded.
-    assert "Done. What next?" not in text
+    assert "hi back" in text
+    assert "event: done" in text
 
 
 @pytest.mark.asyncio

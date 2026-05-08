@@ -127,6 +127,64 @@ async def test_firestore_session_create_get_delete() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_session_strips_legacy_recovery_events() -> None:
+    """Sessions written by the now-removed empty-turn guard contain
+    `recovery-*`-id model events that poisoned subsequent turns
+    (Gemini mimicked the user→"Done. What next?" pattern). The current
+    `FirestoreSessionService.get_session` strips them on rehydrate so
+    existing sessions self-heal once the guard is gone.
+    """
+    fs = FakeFirestore()
+    svc = create_firestore_session_service(firestore=fs)
+    await svc.create_session(app_name="lifecoach", user_id="u1", session_id="legacy-day")
+    # Inject a poisoned events list straight into storage to mirror the
+    # Firestore docs the legacy guard wrote.
+    poisoned_events = [
+        {
+            "id": "real-1",
+            "author": "user",
+            "content": {"role": "user", "parts": [{"text": "check my emails"}]},
+            "timestamp": 1,
+        },
+        {
+            "id": "recovery-legacy-day-12345-abc",
+            "author": "lifecoach",
+            "content": {"role": "model", "parts": [{"text": "Done. What next?"}]},
+            "timestamp": 2,
+        },
+        {
+            "id": "real-2",
+            "author": "user",
+            "content": {"role": "user", "parts": [{"text": "hello?"}]},
+            "timestamp": 3,
+        },
+        {
+            "id": "recovery-gap-end-deadbeef",
+            "author": "lifecoach",
+            "content": {"role": "model", "parts": [{"text": "Done. What next?"}]},
+            "timestamp": 4,
+        },
+    ]
+    await fs.doc("apps/lifecoach/users/u1/sessions/legacy-day").set(
+        {
+            "id": "legacy-day",
+            "appName": "lifecoach",
+            "userId": "u1",
+            "state": {},
+            "events": poisoned_events,
+            "lastUpdateTime": 5,
+        }
+    )
+
+    fetched = await svc.get_session(app_name="lifecoach", user_id="u1", session_id="legacy-day")
+    assert fetched is not None
+    ids = [e.id for e in fetched.events]
+    assert ids == ["real-1", "real-2"], (
+        f"recovery-* ids should be filtered out on load; got: {ids}"
+    )
+
+
+@pytest.mark.asyncio
 async def test_save_session_summary_merges_into_state() -> None:
     fs = FakeFirestore()
     svc = create_firestore_session_service(firestore=fs)

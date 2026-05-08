@@ -91,6 +91,15 @@ def _to_event(d: Any) -> Event | None:
         return None
 
 
+def _is_legacy_recovery_event(d: Any) -> bool:
+    """Identify events written by the now-removed empty-turn guard so
+    we can strip them from rehydrated history. They had ids of the form
+    `recovery-<session>-<ts>-<hex>`, `recovery-recovery-...`, or
+    `recovery-gap-end-...`. Match on the prefix."""
+    eid = d.get("id") if isinstance(d, dict) else getattr(d, "id", None)
+    return isinstance(eid, str) and eid.startswith("recovery-")
+
+
 def _event_to_storage_dict(event: Event) -> dict[str, Any]:
     """Event → JSON-friendly dict using camelCase aliases so a roundtrip
     matches the on-disk shape the TS service has been writing."""
@@ -160,11 +169,11 @@ class FirestoreSessionService(BaseSessionService):
                 raw_events = [
                     e for e in raw_events if (e.get("timestamp") or 0) > config.after_timestamp
                 ]
-        # Splice synthetic recovery events for already-poisoned sessions
-        # so the model never sees its own broken pattern in history.
-        from lifecoach_agent.chat.empty_turn_guard import inject_recovery_events
-
-        raw_events = inject_recovery_events(raw_events)
+        # Drop any leftover recovery events from sessions written by the
+        # old empty-turn guard. They poisoned the model context — the
+        # whole subsystem is gone now (see chore/strip-empty-turn-recovery)
+        # but existing sessions still carry these stamps.
+        raw_events = [e for e in raw_events if not _is_legacy_recovery_event(e)]
         events: list[Event] = []
         for d in raw_events:
             ev = _to_event(d)
