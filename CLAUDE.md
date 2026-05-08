@@ -145,3 +145,29 @@ Don't invent new scripts in root `package.json` for one-off work — add a recip
 ## Secrets
 
 Never commit secrets. Local dev uses `.env.local` (gitignored). Production uses GCP Secret Manager, wired through Terraform. If a test needs a credential, it uses a fake in `packages/testing`.
+
+## Documentation maintenance
+
+`ARCHITECTURE.md` is the system spec — system topology, the chat-turn sequence, state machines, every HTTP endpoint, every tool, every storage doc shape, the SSE wire contract, infra layout, testing strategy, and the invariants. **Keep it in sync as the code changes.**
+
+The mechanical rule: **if a PR changes any of the following, the same PR updates `ARCHITECTURE.md`.** No drive-by updates in a separate "docs" PR — they fall behind.
+
+Change-triggers (mirrored in `ARCHITECTURE.md` §14 so future work can be checked against it):
+
+- A new HTTP endpoint, or a change to an existing one's auth / body / response → §7.1 + §10
+- A new tool, or a change to a tool's args / side effect → §7.4
+- A new context provider, or a change to a cache key / TTL / source → §7.5
+- A new Firestore collection, GCS path, or document field crossing web↔agent → §7.6 + §10.2 / §10.3
+- A new state in any state machine, a new transition, or a policy change → §4
+- A new practice → §7.8
+- A change to the system-prompt section list or order → §7.3
+- A change to the SSE wire format (event shape, header, padding, terminator) → §10.1
+- A new Cloud Run service, a new Terraform module, or a change to per-PR preview behaviour → §11
+- A new test surface, a new eval fixture, or a change to the coverage gate → §12
+- Anything that adds or modifies an invariant → §13
+
+When in doubt, read `ARCHITECTURE.md` first to ground yourself in the current shape, *then* write code; if the change you're making invalidates a section, draft the doc update before you finish the implementation. Treat a stale `ARCHITECTURE.md` as a real bug — file an issue or fix it inline.
+
+Don't proactively rewrite `ARCHITECTURE.md` unless the user asks or you are making changes the rule above demands. Drive-by edits introduce drift; targeted updates that mirror code changes don't.
+
+A follow-up will mechanise this with bidirectional spec↔test linking (BDD-style tags, coverage report). Until that lands the rule is unmechanised — read the file, update it as you change things.
