@@ -37,16 +37,23 @@ const TURNS = [
 // a cold Cloud Run instance.
 test.setTimeout(240_000);
 
-async function captureNewAssistantText(page: Page, beforeBubbles: string[]): Promise<string> {
-  const after = await page.locator('[data-from="assistant"]').allTextContents();
-  if (after.length <= beforeBubbles.length) return '<NO ASSISTANT REPLY>';
-  return after.slice(beforeBubbles.length).join('\n').trim() || '<NO ASSISTANT REPLY>';
+// Selector matches both plain text bubbles and choice / auth / workspace
+// prompt cards. A turn that ends in a `choice` element (e.g. agent calls
+// `ask_single_choice_question`) is still a valid substantive response —
+// it's just not a text bubble.
+const ASSISTANT_CONTENT_SEL =
+  '[data-from="assistant"], [data-testid="choice-prompt"], [data-testid="auth-prompt"], [data-testid="workspace-prompt"]';
+
+async function captureNewAssistantText(page: Page, beforeContents: string[]): Promise<string> {
+  const after = await page.locator(ASSISTANT_CONTENT_SEL).allTextContents();
+  if (after.length <= beforeContents.length) return '<NO ASSISTANT REPLY>';
+  return after.slice(beforeContents.length).join('\n').trim() || '<NO ASSISTANT REPLY>';
 }
 
 async function runConversation(page: Page, turns: string[]): Promise<JudgeTurn[]> {
   const transcript: JudgeTurn[] = [];
   for (const userMsg of turns) {
-    const before = await page.locator('[data-from="assistant"]').allTextContents();
+    const before = await page.locator(ASSISTANT_CONTENT_SEL).allTextContents();
     await sendChat(page, userMsg);
     await waitForAssistantReply(page);
     const assistant = await captureNewAssistantText(page, before);

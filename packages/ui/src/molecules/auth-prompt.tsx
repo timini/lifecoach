@@ -31,6 +31,7 @@ export function AuthPrompt({
 
   return (
     <div
+      data-testid="auth-prompt"
       className={cn(
         'flex max-w-[90%] flex-col gap-3 self-start rounded-[var(--radius-bubble)] border border-border bg-muted p-3',
         className,
