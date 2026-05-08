@@ -292,7 +292,20 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                 if isinstance(session, dict)
                 else getattr(session, "events", [])
             )
-            events = list(raw_events or [])
+            for ev in raw_events or []:
+                if isinstance(ev, dict):
+                    events.append(ev)
+                    continue
+                # ADK Event → JSON-friendly dict using camelCase aliases
+                # so the wire shape matches what the FE expects.
+                dump = getattr(ev, "model_dump", None)
+                if callable(dump):
+                    try:
+                        events.append(dump(mode="json", by_alias=True, exclude_none=True))
+                        continue
+                    except Exception:  # noqa: BLE001
+                        pass
+                events.append(ev)
         return JSONResponse({"events": events})
 
     # ---- /sessions -------------------------------------------------------
@@ -311,17 +324,37 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
         if reader is None:
             return JSONResponse({"sessions": []})
         try:
-            session_list = await reader.list_sessions(
+            list_resp = await reader.list_sessions(
                 app_name=reader.app_name, user_id=effective_user_id
             )
         except Exception:  # noqa: BLE001
-            session_list = []
+            list_resp = None
+        # ADK's BaseSessionService returns ListSessionsResponse (Pydantic
+        # with `.sessions: list[Session]`). Tolerate the older list shape
+        # for any in-tree fakes that haven't been updated.
+        if list_resp is None:
+            session_list: list[Any] = []
+        elif hasattr(list_resp, "sessions"):
+            session_list = list(list_resp.sessions)
+        else:
+            session_list = list(list_resp)
         items: list[dict[str, Any]] = []
-        for s in session_list or []:
-            sid = s.get("id") if isinstance(s, dict) else getattr(s, "id", None)
-            ts_raw = (
-                s.get("lastUpdateTime") if isinstance(s, dict) else getattr(s, "lastUpdateTime", 0)
-            )
+        for s in session_list:
+            if isinstance(s, dict):
+                sid = s.get("id")
+                ts_raw = s.get("lastUpdateTime") or s.get("last_update_time") or 0
+            else:
+                sid = getattr(s, "id", None)
+                # ADK Session uses snake_case; older fakes may use camelCase.
+                lut = getattr(s, "last_update_time", None)
+                if lut is None:
+                    lut = getattr(s, "lastUpdateTime", 0)
+                # Session.last_update_time is in seconds (float); the wire
+                # format here is unix-ms.
+                if isinstance(lut, float) and lut < 1e11:
+                    ts_raw = int(lut * 1000)
+                else:
+                    ts_raw = lut
             ts = int(ts_raw) if isinstance(ts_raw, int | float) else 0
             items.append({"sessionId": sid, "lastUpdateTime": ts})
         items.sort(key=lambda x: cast(int, x["lastUpdateTime"]), reverse=True)
@@ -898,13 +931,26 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                         ).encode("utf-8")
                         + b"\n\n"
                     )
-                    synth_event = make_recovery_event(
+                    synth_event_dict = make_recovery_event(
                         recovery, f"recovery-{session_id}-{_now_ms()}"
                     )
                     append = getattr(runner.session_service, "append_event", None)
                     if append is not None and runner_session is not None:
+                        # ADK's BaseSessionService.append_event takes a real
+                        # Event; convert from the dict shape that
+                        # `make_recovery_event` returns. Older in-tree fakes
+                        # accept the dict directly — try the typed call
+                        # first, fall back to the dict.
                         with contextlib.suppress(Exception):
-                            await append(session=runner_session, event=synth_event)
+                            from google.adk.events import Event as _AdkEvent
+
+                            try:
+                                synth = _AdkEvent.model_validate(synth_event_dict)
+                                await append(runner_session, synth)
+                            except Exception:  # noqa: BLE001
+                                await append(
+                                    session=runner_session, event=synth_event_dict
+                                )
                     print(
                         json.dumps(
                             {

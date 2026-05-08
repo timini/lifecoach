@@ -112,9 +112,14 @@ async def test_firestore_session_create_get_delete() -> None:
     fs = FakeFirestore()
     svc = create_firestore_session_service(firestore=fs)
     session = await svc.create_session(app_name="lifecoach", user_id="u1", session_id="2026-05-06")
-    assert session["id"] == "2026-05-06"
+    # The service now extends ADK's BaseSessionService and returns a real
+    # `Session` (PR #56 cutover — TS-style dict return broke the runtime
+    # `session.events` access path the runner uses).
+    assert session.id == "2026-05-06"
+    assert session.app_name == "lifecoach"
+    assert session.user_id == "u1"
     fetched = await svc.get_session(app_name="lifecoach", user_id="u1", session_id="2026-05-06")
-    assert fetched is not None and fetched["id"] == "2026-05-06"
+    assert fetched is not None and fetched.id == "2026-05-06"
     await svc.delete_session(app_name="lifecoach", user_id="u1", session_id="2026-05-06")
     assert (
         await svc.get_session(app_name="lifecoach", user_id="u1", session_id="2026-05-06") is None
@@ -141,10 +146,10 @@ async def test_save_session_summary_merges_into_state() -> None:
     )
     fetched = await svc.get_session(app_name="lifecoach", user_id="u1", session_id="2026-05-05")
     assert fetched is not None
-    assert fetched["state"]["summary"] == "they reflected on a good run"
-    assert fetched["state"]["summaryGeneratedAt"] == 1746522000000
+    assert fetched.state["summary"] == "they reflected on a good run"
+    assert fetched.state["summaryGeneratedAt"] == 1746522000000
     # Pre-existing state is preserved.
-    assert fetched["state"]["turn_count"] == 3
+    assert fetched.state["turn_count"] == 3
 
 
 # --- workspace_tokens ---
