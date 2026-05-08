@@ -93,15 +93,38 @@ def _build_real_firestore() -> Any:
     from google.cloud import firestore
 
     client = firestore.AsyncClient()
-    # The async client implements `document()` not `doc()`. The
-    # storage layer expects `doc()` and `collection()`. Wrap once.
+    # The async client implements `document()` not `doc()`, and its
+    # snapshots expose `to_dict()` not `data()` (and a collection get
+    # returns a list of snapshots, not a wrapper with `.docs`). The
+    # storage layer's Protocol mirrors the JS-firestore-admin shape.
+    # Bridge both calls + snapshot accessors here.
+
+    class _DocSnapAdapter:
+        def __init__(self, snap: Any) -> None:
+            self._snap = snap
+
+        @property
+        def exists(self) -> bool:
+            return bool(self._snap.exists)
+
+        def data(self) -> dict[str, Any] | None:
+            d = self._snap.to_dict()
+            return d if d is None else dict(d)
+
+    class _CollSnapAdapter:
+        def __init__(self, items: Any) -> None:
+            self._items = list(items)
+
+        @property
+        def docs(self) -> list[Any]:
+            return [_DocSnapAdapter(d) for d in self._items]
 
     class _DocAdapter:
         def __init__(self, ref: Any) -> None:
             self._ref = ref
 
         async def get(self) -> Any:
-            return await self._ref.get()
+            return _DocSnapAdapter(await self._ref.get())
 
         async def set(self, value: dict[str, Any], *, merge: bool = False) -> Any:
             return await self._ref.set(value, merge=merge)
@@ -114,7 +137,7 @@ def _build_real_firestore() -> Any:
             self._ref = ref
 
         async def get(self) -> Any:
-            return await self._ref.get()
+            return _CollSnapAdapter(await self._ref.get())
 
     class _FsAdapter:
         def doc(self, path: str) -> Any:
