@@ -75,8 +75,9 @@ test('first load fires the day-of greeting and lists the session in the drawer',
   await expect(page.locator('[data-from="assistant"]').first()).toBeVisible({ timeout: 45_000 });
 
   // Open the sidebar drawer; the Today group label shows up because the
-  // kickoff just wrote today's session doc.
+  // kickoff just wrote today's session doc. Match the heading role to
+  // disambiguate from the date-strip "Today" button which also renders.
   await page.getByLabel(/open sessions/i).click();
   await expect(page.getByRole('heading', { name: /previous chats/i })).toBeVisible();
-  await expect(page.getByText(/^Today$/)).toBeVisible();
+  await expect(page.getByRole('heading', { name: /^Today$/ })).toBeVisible();
 });
