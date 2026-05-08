@@ -93,11 +93,12 @@ async function currentUid(page: Page): Promise<string> {
 }
 
 /**
- * Find the chat input. ChatWindow uses a single text input with placeholder
- * "Type a message…" — match on the placeholder which is stable copy.
+ * Find the chat input. ChatComposer stamps `data-testid="chat-input"` on
+ * the underlying <input> so the selector survives placeholder copy /
+ * i18n changes.
  */
 export function chatInput(page: Page): Locator {
-  return page.getByPlaceholder('Type a message…');
+  return page.getByTestId('chat-input');
 }
 
 export async function sendChat(page: Page, text: string): Promise<void> {
@@ -105,7 +106,7 @@ export async function sendChat(page: Page, text: string): Promise<void> {
   await expect(input).toBeVisible();
   await expect(input).toBeEnabled();
   await input.fill(text);
-  await page.getByRole('button', { name: 'Send' }).click();
+  await page.getByTestId('chat-send').click();
   // Wait until ChatWindow has re-rendered with busy=true so subsequent
   // waitForAssistantReply observes the true→false transition rather than
   // the stale `false` from before submit.

@@ -64,6 +64,7 @@ export function ChatComposer({
       )}
     >
       <Input
+        data-testid="chat-input"
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder={placeholder}
@@ -71,6 +72,7 @@ export function ChatComposer({
         className="flex-1 border-0 bg-transparent shadow-none focus-visible:border-transparent"
       />
       <IconButton
+        data-testid="chat-send"
         type="submit"
         variant="solid"
         size="md"
