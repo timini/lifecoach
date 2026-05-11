@@ -100,3 +100,55 @@ def test_daily_flow_lunch_directive_does_not_leak_today() -> None:
         "Anything the user-facing text wants to render literally as {x} must "
         "either use no braces or break `isidentifier()`."
     )
+
+
+def _scan_for_leaks(text: str) -> list[tuple[str, str]]:
+    """Return [(match_text, variable_name_adk_tries_to_resolve)]."""
+    leaks: list[tuple[str, str]] = []
+    for m in _ADK_PLACEHOLDER_RE.finditer(text):
+        var = _adk_would_fail(m.group())
+        if var is not None:
+            leaks.append((m.group(), var))
+    return leaks
+
+
+# --- sub-agent instructions ----------------------------------------------
+#
+# The sub-agent instructions (`triage_inbox`, `find_workspace`, the base
+# `WORKSPACE_AGENT_INSTRUCTION`) go through the SAME ADK template
+# substitution as the main agent's instruction — anything that looks
+# like {name} fails the inner LLM call with `Context variable not
+# found`. This bit us live on 2026-05-11 with `{ since }` and `{ id }`
+# in the triage instruction text, surfacing as a hanging "triaging your
+# inbox" pill with no reply (the AgentTool wraps a runner whose
+# instruction substitution throws; the outer runner's catch was added
+# in PR #59 but the inner runner is a separate error path).
+
+
+def test_triage_inbox_instruction_has_no_placeholders() -> None:
+    from lifecoach_agent.workspace_agent.agent_tools.triage_inbox import (
+        TRIAGE_INBOX_INSTRUCTION,
+    )
+
+    leaks = _scan_for_leaks(TRIAGE_INBOX_INSTRUCTION)
+    assert not leaks, (
+        f"TRIAGE_INBOX_INSTRUCTION has bare ADK placeholders: {leaks}. "
+        "Rewrite without single-braced identifiers — these get resolved "
+        "against session state and crash the inner sub-agent."
+    )
+
+
+def test_find_workspace_instruction_has_no_placeholders() -> None:
+    from lifecoach_agent.workspace_agent.agent_tools.find_workspace import (
+        _FIND_INSTRUCTION,
+    )
+
+    leaks = _scan_for_leaks(_FIND_INSTRUCTION)
+    assert not leaks, f"_FIND_INSTRUCTION has bare ADK placeholders: {leaks}."
+
+
+def test_workspace_agent_base_instruction_has_no_placeholders() -> None:
+    from lifecoach_agent.workspace_agent.agent import WORKSPACE_AGENT_INSTRUCTION
+
+    leaks = _scan_for_leaks(WORKSPACE_AGENT_INSTRUCTION)
+    assert not leaks, f"WORKSPACE_AGENT_INSTRUCTION has bare ADK placeholders: {leaks}."

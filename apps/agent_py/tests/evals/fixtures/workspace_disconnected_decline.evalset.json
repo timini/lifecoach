@@ -1,7 +1,7 @@
 {
   "eval_set_id": "workspace_disconnected_decline",
-  "name": "google_linked user → connect_workspace, not call_workspace",
-  "description": "User is signed in with Google but has not granted Workspace scopes (`google_linked` state). They ask something that needs Gmail/Calendar/Tasks. The agent must call `connect_workspace` (UI directive — pure, no auth handling) and MUST NOT attempt `call_workspace` (which isn't even registered for this state). Trips loudly if the agent hallucinates a tool that isn't in its surface.",
+  "name": "google_linked user → connect_workspace, not workspace tools",
+  "description": "User is signed in with Google but has not granted Workspace scopes (`google_linked` state). They ask something that needs Gmail/Calendar/Tasks. The agent must call `connect_workspace` (UI directive — pure, no auth handling) and MUST NOT attempt triage_inbox / find_workspace / etc (none are registered for this state). Trips loudly if the agent hallucinates a tool that isn't in its surface.",
   "eval_cases": [
     {
       "eval_id": "case_01_check_email_not_connected",

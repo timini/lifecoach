@@ -2,7 +2,7 @@
  * Converts a Firestore-backed ADK event stream (as returned from
  * GET /api/chat/history) into the chat-UI message shape.
  *
- * Tool-call pills for *informational* tools (call_workspace, profile/goal
+ * Tool-call pills for *informational* tools (workspace, profile/goal
  * writes, memory ops, search) are emitted with `done: true` so they
  * persist across page navigations. Their `ok` reflects the matched
  * functionResponse (errored vs. successful), with `scope_required`
@@ -105,7 +105,13 @@ export function normaliseEventTimestamp(t: number | undefined): number {
  * surface a confusing badge.
  */
 const REPLAYABLE_TOOLS = new Set<string>([
-  'call_workspace',
+  // Workspace surface — main agent's tools when workspace_connected
+  'triage_inbox',
+  'find_workspace',
+  'archive_messages',
+  'add_calendar_event',
+  'add_task',
+  'complete_task',
   'update_user_profile',
   'log_goal_update',
   'memory_save',

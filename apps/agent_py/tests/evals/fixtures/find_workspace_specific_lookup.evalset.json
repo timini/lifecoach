@@ -1,7 +1,7 @@
 {
   "eval_set_id": "find_workspace_specific_lookup",
   "name": "Targeted inbox search",
-  "description": "User asks about a specific person's recent email. Agent should call call_workspace with a Gmail query using `from:` syntax — NOT pull the whole inbox and filter post-hoc. Catches a class of bug where the model dumps the entire inbox into the prompt instead of using Google's search.",
+  "description": "User asks about a specific person's recent email. Agent should call find_workspace with a natural-language query — NOT triage_inbox (which is for morning routines, not targeted lookups). Catches a class of bug where the model picks the wrong workspace AgentTool.",
   "eval_cases": [
     {
       "eval_id": "case_01_find_alex_thread",
@@ -22,12 +22,9 @@
           "intermediate_data": {
             "tool_uses": [
               {
-                "name": "call_workspace",
+                "name": "find_workspace",
                 "args": {
-                  "service": "gmail",
-                  "resource": "users.messages",
-                  "method": "list",
-                  "params": "{\"userId\":\"me\",\"q\":\"from:alex newer_than:7d\",\"maxResults\":5}"
+                  "query": "did Alex email me about the project this week?"
                 }
               }
             ]

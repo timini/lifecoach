@@ -27,6 +27,21 @@ ALL_FIXTURES: list[str] = sorted(
     p.name.removesuffix(".evalset.json") for p in FIXTURES.glob("*.evalset.json")
 )
 
+# Fixtures whose `eval_set_id` starts with `subagent_triage_` target the
+# triage_inbox sub-agent directly (its own LlmAgent + stubbed list_inbox /
+# get_message). Anything else runs against the main coach agent stub.
+_AGENT_MODULES: dict[str, str] = {
+    "subagent_triage_": "tests.evals.eval_triage_inbox_agent",
+}
+_DEFAULT_AGENT_MODULE = "tests.evals.eval_agent"
+
+
+def _agent_module_for(fixture: str) -> str:
+    for prefix, mod in _AGENT_MODULES.items():
+        if fixture.startswith(prefix):
+            return mod
+    return _DEFAULT_AGENT_MODULE
+
 
 # --- Tier-0 fixture-shape smoke tests (free, deterministic) ---------------
 
@@ -44,13 +59,15 @@ def test_eval_fixture_parses(fixture: str) -> None:
 
 
 def test_eval_agent_module_imports() -> None:
-    """Sanity: the stub agent module the eval harness loads must
+    """Sanity: every eval agent module the harness can target must
     import cleanly (no broken `before_tool_callback`, no missing tool
     factories)."""
     import importlib
 
-    mod = importlib.import_module("tests.evals.eval_agent")
-    assert hasattr(mod, "root_agent")
+    modules = {_DEFAULT_AGENT_MODULE, *_AGENT_MODULES.values()}
+    for mod_name in modules:
+        mod = importlib.import_module(mod_name)
+        assert hasattr(mod, "root_agent"), f"{mod_name} missing root_agent"
 
 
 # --- Tier-1 real-LLM eval cases (gated) -----------------------------------
@@ -71,6 +88,6 @@ async def test_eval_case_against_real_llm(fixture: str) -> None:
     from google.adk.evaluation.agent_evaluator import AgentEvaluator
 
     await AgentEvaluator.evaluate(
-        agent_module="tests.evals.eval_agent",
+        agent_module=_agent_module_for(fixture),
         eval_dataset_file_path_or_dir=str(FIXTURES / f"{fixture}.evalset.json"),
     )

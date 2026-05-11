@@ -47,13 +47,42 @@ def _tool_stubs() -> dict[str, Any]:
     short-circuits on (`shown` / `oauth_prompted`) so the runner ends
     the turn — matches the production server behaviour."""
     return {
-        # ---- workspace dispatcher ----
-        "call_workspace": {
+        # ---- workspace AgentTools (read flows) ----
+        "triage_inbox": {
             "status": "ok",
-            "body": {
-                "messages": [{"id": "m1"}, {"id": "m2"}, {"id": "m3"}],
-                "items": [{"id": "evt-1"}],  # for events.insert / tasks.patch responses
-                "resultSizeEstimate": 3,
+            "report": {
+                "noise": [{"id": "m1", "from": "n@x", "subject": "Newsletter"}],
+                "actions": [],
+                "events": [],
+                "info": [],
+            },
+        },
+        "find_workspace": {
+            "status": "ok",
+            "answer": "Nothing notable matched.",
+        },
+        # ---- workspace narrow writes ----
+        "archive_messages": {"status": "ok", "archived": ["m1"], "failed": []},
+        "add_calendar_event": {
+            "status": "ok",
+            "event": {"id": "ev1", "summary": "(stub)", "start": {}, "end": {}},
+        },
+        "add_task": {
+            "status": "ok",
+            "task": {
+                "id": "t1",
+                "taskListId": "@default",
+                "title": "(stub)",
+                "status": "needsAction",
+            },
+        },
+        "complete_task": {
+            "status": "ok",
+            "task": {
+                "id": "t1",
+                "taskListId": "@default",
+                "title": "(stub)",
+                "status": "completed",
             },
         },
         # ---- choice tools (turn-ending) ----
@@ -127,12 +156,43 @@ def _build_eval_root_agent() -> Agent:
 
     from google.adk.tools import FunctionTool
 
-    # --- workspace dispatcher stub (covers gmail / calendar / tasks) ----
-    async def call_workspace(
-        service: str, resource: str, method: str, params: str | None = None
+    # --- workspace surface stubs (2 AgentTools + 4 narrow writes) ------
+    async def triage_inbox(since: str | None = None) -> dict[str, Any]:
+        """Inbox triage AgentTool — eval stub."""
+        return {"status": "stubbed"}
+
+    async def find_workspace(query: str) -> dict[str, Any]:
+        """Workspace search AgentTool — eval stub."""
+        return {"status": "stubbed"}
+
+    async def archive_messages(ids: list[str]) -> dict[str, Any]:
+        """Batched archive — eval stub."""
+        return {"status": "stubbed"}
+
+    async def add_calendar_event(
+        summary: str,
+        start: str,
+        end: str | None = None,
+        location: str | None = None,
+        description: str | None = None,
+        calendarId: str = "primary",  # noqa: N803
     ) -> dict[str, Any]:
-        """Generic Google Workspace dispatch — eval stub. The real
-        body is short-circuited by `before_tool_callback`."""
+        """Calendar insert — eval stub."""
+        return {"status": "stubbed"}
+
+    async def add_task(
+        title: str,
+        due: str | None = None,
+        notes: str | None = None,
+        taskListId: str = "@default",  # noqa: N803
+    ) -> dict[str, Any]:
+        """Tasks insert — eval stub."""
+        return {"status": "stubbed"}
+
+    async def complete_task(
+        id: str, taskListId: str = "@default"  # noqa: N803
+    ) -> dict[str, Any]:
+        """Tasks patch — eval stub."""
         return {"status": "stubbed"}
 
     # --- profile / goal / memory write stubs ---------------------------
@@ -164,7 +224,12 @@ def _build_eval_root_agent() -> Agent:
         return {"status": "stubbed"}
 
     tools: list[Any] = [
-        FunctionTool(call_workspace),
+        FunctionTool(triage_inbox),
+        FunctionTool(find_workspace),
+        FunctionTool(archive_messages),
+        FunctionTool(add_calendar_event),
+        FunctionTool(add_task),
+        FunctionTool(complete_task),
         FunctionTool(update_user_profile),
         FunctionTool(log_goal_update),
         FunctionTool(memory_save),
