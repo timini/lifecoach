@@ -21,7 +21,6 @@ Shared code lives in `packages/*`. Infrastructure is Terraform in `infra/`. CI g
 - **Browser-only geolocation.** Location comes from `navigator.geolocation`. If you deny permission, location is `null` and the coach operates without weather/places. **No IP-based geolocation, ever** — there's a CI guard that fails the build if anyone adds `geoip-lite`, `cf-connecting-ip`, etc.
 - **Real Google Workspace integration** — once connected, the agent can read your Gmail, manage your Calendar, and triage your Tasks via natural language. OAuth tokens never touch the LLM.
 - **Long-term memory** via [mem0](https://mem0.ai) — important facts (kids' names, fitness goals, what you don't like) survive across sessions.
-- **Turn recovery** — if the network drops mid-stream, the browser silently re-fetches the canonical transcript from Firestore so you don't lose the agent's reply.
 - **Markdown rendering** in assistant bubbles (lists, bold, inline code).
 - **Cost-tier nudges** — anonymous heavy users get a gentle "create an account?" suggestion; signed-in heavy users get an organic "want to try Pro?" pitch. The LLM never sees billing state — tier decisions happen server-side.
 

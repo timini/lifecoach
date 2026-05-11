@@ -74,9 +74,9 @@ class FakeSessionService:
 class FakeRunner:
     """Yields whatever events are passed in — once per `run_async` call.
 
-    `events_per_call` is consumed left-to-right: first call returns the
-    first list, second call (the empty-turn retry) returns the next.
-    """
+    `events_per_call` is consumed left-to-right; entries beyond the
+    first are no-ops today but kept for tests that need multi-call
+    runners in future."""
 
     events_per_call: list[list[dict[str, Any]]]
     raise_on_call: int | None = None
@@ -438,37 +438,10 @@ async def test_chat_400_when_required_fields_missing() -> None:
 
 
 @pytest.mark.asyncio
-async def test_chat_silent_model_emits_no_synthetic_recovery() -> None:
-    """When the model emits zero text and no UI-tool fires, the SSE
-    stream ends cleanly with `event: done` and NO synthetic assistant
-    event. This is the explicit replacement for the old empty-turn
-    guard, which papered over silent turns by inserting a fake
-    "Done. What next?" model event AND persisting it — which then
-    poisoned subsequent turns. Silent turns are now visible failures
-    the chat-quality e2e judge catches loudly.
-    """
-    runner = FakeRunner(events_per_call=[[]])  # one empty pass, no retry
-    app = _make_app(runner=runner)
-    async with (
-        _client(app) as c,
-        c.stream(
-            "POST",
-            "/chat",
-            json={"userId": "u1", "sessionId": "s1", "message": "hi"},
-        ) as res,
-    ):
-        text = await _drain(res)
-    assert "Done. What next?" not in text
-    assert "Got it" not in text
-    assert "All set" not in text
-    assert "event: done" in text
-    # Nothing synthetic gets persisted.
-    assert runner.session_service.appended == []
-
-
-@pytest.mark.asyncio
 async def test_chat_streams_text_when_model_responds() -> None:
-    """Sanity counterpart — happy path still works."""
+    """Happy-path sanity — model emits text, FE receives it, `event:
+    done` terminates. The only chat-level test we need; everything else
+    around silent turns is the judged chat-quality e2e's problem."""
     runner = FakeRunner(events_per_call=[[_model_text("hi back")]])
     app = _make_app(runner=runner)
     async with (

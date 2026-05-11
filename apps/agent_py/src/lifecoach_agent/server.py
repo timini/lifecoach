@@ -32,12 +32,8 @@ Per-turn behaviour mirrored from the TS:
      timing each branch.
   5. Build `InstructionContext`, log the rendered prompt at length, and
      call `runnerFor(ctx, uid, usagePolicy)` to mint a Runner.
-  6. Stream the model's events to the client. If the model goes
-     silent (no text, no UI-tool fired), the turn ends with no
-     assistant content — by design. The earlier `__continue__` retry
-     + recovery stub were removed because persisted recovery events
-     poisoned subsequent turns; the chat-quality e2e judge catches
-     silent turns loudly.
+  6. Stream the model's events to the client. Silent turns produce
+     no assistant content — the chat-quality e2e judge catches them.
   7. Log the `chat.turn` line in `finally`.
 """
 
@@ -890,14 +886,8 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                 timings["ttfbMs"] = first_event_ms if first_event_ms is not None else -1
                 timings["ttftMs"] = first_text_ms if first_text_ms is not None else -1
 
-                # NOTE: empty-turn retry + synthetic recovery stub were
-                # removed. They papered over silent model turns by emitting
-                # a fake "Done. What next?" model event AND persisting it
-                # into the session — which Gemini then mimicked next turn,
-                # creating a poisoning spiral. The chat-quality e2e judge
-                # surfaces silent turns loudly; let real silent turns be
-                # visible failures instead of papering them over.
-
+                # Silent turns end here. No synthetic assistant event,
+                # no retry. Forward-fix path: capture as eval + tune prompt.
                 yield b"event: done\ndata: {}\n\n"
             except Exception as err:  # noqa: BLE001
                 err_msg = str(err)

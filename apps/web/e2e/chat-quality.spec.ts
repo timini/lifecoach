@@ -8,11 +8,10 @@ import { type JudgeTurn, judgeTranscript } from './judge';
  * judge whether each turn is substantive.
  *
  * Why this exists: `chat-persistence.spec.ts` only checks that *some*
- * assistant bubble appears; it would happily pass on the recovery-text
- * regressions we keep shipping ("Hmm, I missed that — could you say
- * it again?") and on /chat 500s where the user message persists but
- * no agent reply lands. This spec asserts the content of each turn,
- * not just presence.
+ * assistant bubble appears; it would happily pass on the silent-turn
+ * regressions we keep shipping and on /chat 500s where the user
+ * message persists but no agent reply lands. This spec asserts the
+ * content of each turn, not just presence.
  *
  * Runs against a fresh anonymous user (Playwright's per-test isolated
  * browser context produces a fresh Firebase anon uid each run), so the
@@ -54,11 +53,8 @@ async function runConversation(page: Page, turns: string[]): Promise<JudgeTurn[]
     // Wait for BOTH `data-busy="false"` AND a new piece of assistant
     // content (text bubble or choice/auth/workspace prompt). The /chat
     // SSE on Cloud Run can take >30s end-to-end (cold instance + LLM
-    // tokens + stream flushing through GFE) — keying purely on the
-    // existing `waitForAssistantReply` (busy=false) and a short
-    // follow-up wait races the FE's retry loop in useChatStream.ts,
-    // which can momentarily re-flip busy without yet pushing content.
-    // 60s is comfortably above the observed worst case.
+    // tokens + stream flushing through GFE). 60s is comfortably above
+    // the observed worst case.
     let assistant = '<NO ASSISTANT REPLY>';
     try {
       await page.waitForFunction(

@@ -1,7 +1,7 @@
 {
   "eval_set_id": "morning_triage_full_flow",
   "name": "Morning triage end-to-end",
-  "description": "Workspace-connected user, morning window, day_planning practice on. Expects the agent to (a) call call_workspace to list inbox, (b) ask before archiving the noise bucket, (c) emit at least one substantive reply (not the empty-turn pattern). This is the PR #54 regression class — if the agent goes silent after a tool call this case fails the response-match evaluator loudly.",
+  "description": "Workspace-connected user, morning window, day_planning practice on. Expects the agent to (a) call call_workspace to list inbox, (b) ask before archiving the noise bucket, (c) emit at least one substantive reply. This is the PR #54 regression class — if the agent goes silent after a tool call this case fails the response-match evaluator loudly.",
   "eval_cases": [
     {
       "eval_id": "case_01_morning_check_in",

@@ -309,7 +309,7 @@ Every `/chat` turn builds a fresh `Runner` from `RunnerForParams(ctx, uid, usage
 2. **Agent factory:** `agent = build_root_agent_for(ctx, tools, model=usage_policy.model)` — `name="lifecoach"`, system instruction = `build_instruction(ctx)` materialised string.
 3. **Runner:** `Runner(app_name="lifecoach", agent=agent, session_service=FirestoreSessionService(...))`.
 
-> **Wire contract gotcha:** the agent's `name` is on the SSE wire as `event.author`. The web client renders text events only when `author === "lifecoach"`. **Do not rename the agent without coordinating with `apps/web/src/lib/sse.ts`.** Recovery stubs author themselves as `"lifecoach"` directly to sidestep this.
+> **Wire contract gotcha:** the agent's `name` is on the SSE wire as `event.author`. The web client renders text events only when `author === "lifecoach"`. **Do not rename the agent without coordinating with `apps/web/src/lib/sse.ts`.**
 
 ### 7.3 System prompt (`prompt/build_instruction.py`)
 
@@ -434,7 +434,7 @@ Today's behaviour:
 
 - A silent turn ends cleanly with `event: done` and **no** assistant content.
 - Nothing synthetic is persisted to the session, so the next turn loads clean history.
-- `FirestoreSessionService.get_session` strips `recovery-*`-id events on load to self-heal sessions written by the legacy guard (the user can keep using sessions that were poisoned in the May 2026 incident).
+- Sessions written by the legacy guard (recovery model events + `__continue__` user events) are NOT filtered in code — they get cleaned up by a one-off Firestore script. We don't carry backwards-compat shims for a system that's gone.
 - The `chat-quality` e2e judge ([§12.2](#122-e2e--llm-judge)) flags silent turns as failures with a per-turn diagnostic, so silence is loud at the test boundary.
 
 If silent turns become a real production pattern again, the right fix is to address the root cause (prompt structure, tool design, model choice), not to re-introduce a stamp-collecting machine that contaminates the model's own context.
