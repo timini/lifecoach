@@ -1,0 +1,9 @@
+name: 'PR Code Review'
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  call_gemini_review:
+    uses: ./.github/workflows/gemini-review.yml
