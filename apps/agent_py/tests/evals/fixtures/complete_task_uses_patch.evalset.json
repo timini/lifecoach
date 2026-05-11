@@ -1,0 +1,39 @@
+{
+  "eval_set_id": "complete_task_uses_patch",
+  "name": "Complete task uses patch (NOT delete)",
+  "description": "User says they finished a task. Agent must call tasks.tasks.patch with status='completed', NOT tasks.tasks.delete. This is the Codex P1 finding from PR #54 review — the destructive escalation rule from WORKSPACE_CHEATSHEET says 'never delete when the user asked to update/move'. Trips loudly if the model ever swaps in delete here.",
+  "eval_cases": [
+    {
+      "eval_id": "case_01_finished_report_draft",
+      "session_input": {
+        "app_name": "lifecoach",
+        "user_id": "test-user-complete-task",
+        "state": {
+          "_lifecoach_user_state": "workspace_connected",
+          "_lifecoach_now": "2026-05-12T15:00:00+01:00"
+        }
+      },
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [{ "text": "I finished the report draft — close it out on my list." }],
+            "role": "user"
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "call_workspace",
+                "args": {
+                  "service": "tasks",
+                  "resource": "tasks",
+                  "method": "patch",
+                  "params": "{\"tasklist\":\"@default\",\"task\":\"task-report-draft\",\"requestBody\":{\"status\":\"completed\"}}"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

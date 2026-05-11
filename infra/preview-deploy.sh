@@ -82,6 +82,14 @@ gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet >/dev/null
 
 build_and_push() {
   local name="$1"
+  # Map service name → Dockerfile path. PR #56 swaps the agent runtime
+  # from TS (`apps/agent/`) to Python ADK (`apps/agent_py/`); the Cloud
+  # Run service + image name `lifecoach-agent` are kept so Terraform /
+  # DNS / IAM stay unchanged.
+  local dockerfile_dir="${REPO_ROOT}/apps/${name}"
+  if [[ "${name}" == "agent" ]]; then
+    dockerfile_dir="${REPO_ROOT}/apps/agent_py"
+  fi
   local image="${REPO_URL}/lifecoach-${name}:${TAG}"
   log "Building ${image}"
   local -a build_args=()
@@ -99,7 +107,7 @@ build_and_push() {
   docker build \
     --platform=linux/amd64 \
     "${build_args[@]}" \
-    -f "${REPO_ROOT}/apps/${name}/Dockerfile" \
+    -f "${dockerfile_dir}/Dockerfile" \
     -t "${image}" \
     "${REPO_ROOT}" >&2
   log "Pushing ${image}"

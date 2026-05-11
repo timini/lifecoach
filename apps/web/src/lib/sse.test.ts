@@ -163,6 +163,7 @@ describe('parseSseBlock (streaming reducer)', () => {
     const fcOps = parseSseBlock(
       blockFor({
         author: 'lifecoach',
+        partial: true,
         content: {
           parts: [
             {
@@ -360,6 +361,7 @@ describe('parseSseBlock — extra branches', () => {
     const ops = parseSseBlock(
       blockFor({
         author: 'lifecoach',
+        partial: true,
         content: { parts: [{ functionCall: { name: 'log_goal_update', args: {} } }] },
       }),
     );
@@ -367,6 +369,43 @@ describe('parseSseBlock — extra branches', () => {
       op: 'push',
       element: { kind: 'tool-call', id: 'log_goal_update' },
     });
+  });
+
+  it('drops the trailing partial=false aggregate functionCall event (no duplicate badge)', () => {
+    // Python ADK emits the function_call in BOTH a streaming
+    // partial:true event AND a trailing partial:false aggregate that
+    // re-carries the same call. Without dedup the FE renders two
+    // tool-call badges with the same id — visible in the UI as
+    // "showing a choice · showing a choice" before each turn that
+    // calls a tool. We rely on the partial=true gate to drop the
+    // aggregate.
+    const streaming = parseSseBlock(
+      blockFor({
+        author: 'lifecoach',
+        partial: true,
+        content: {
+          parts: [{ functionCall: { id: 'tc-9', name: 'log_goal_update', args: { goal: 'x' } } }],
+        },
+      }),
+    );
+    const aggregate = parseSseBlock(
+      blockFor({
+        author: 'lifecoach',
+        partial: false,
+        content: {
+          parts: [
+            { functionCall: { id: 'tc-9', name: 'log_goal_update', args: { goal: 'x' } } },
+            { text: '' },
+          ],
+        },
+      }),
+    );
+    expect(streaming).toHaveLength(1);
+    expect(streaming[0]).toMatchObject({
+      op: 'push',
+      element: { kind: 'tool-call', id: 'tc-9' },
+    });
+    expect(aggregate).toEqual([]);
   });
 
   it('pushes an auth element from auth_user functionResponse', () => {

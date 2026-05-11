@@ -122,8 +122,8 @@ export function parseSseAssistant(raw: string): AssistantElement[] {
 
       // Workspace connect prompt — LLM emits `connect_workspace` as a UI
       // directive; the client renders the actual OAuth popup button. The
-      // response payload has no auth values (see apps/agent/src/tools/
-      // connectWorkspace.ts).
+      // response payload has no auth values (see
+      // apps/agent_py/src/lifecoach_agent/tools/connect_workspace.py).
       if (resp?.status === 'oauth_prompted' && fr.name === 'connect_workspace') {
         if (pendingText.trim()) {
           out.push({ kind: 'text', text: pendingText });
@@ -211,22 +211,28 @@ export function parseSseBlock(block: string): AssistantOp[] {
   }
 
   // functionCall events — emitted when the model decides to run a tool.
-  // We push a tool-call element with done=false so the UI can show a
-  // running pill.
-  for (const part of parts) {
-    const fc = part.functionCall;
-    if (!fc || typeof fc.name !== 'string') continue;
-    out.push({
-      op: 'push',
-      element: {
-        kind: 'tool-call',
-        id: fc.id ?? fc.name,
-        name: fc.name,
-        label: labelForToolCall(fc.name, fc.args),
-        done: false,
-        args: fc.args,
-      },
-    });
+  // Same dedup concern as the text path above: Python ADK emits the
+  // function_call in a `partial: true` streaming event AND re-emits it
+  // in the trailing `partial: false` aggregate. Without this guard the
+  // FE pushes TWO tool-call elements with the same id and the UI shows
+  // duplicate badges ("showing a choice · showing a choice"). Gate on
+  // partial === true to drop the aggregate, matching the text handler.
+  if (parsed.partial === true) {
+    for (const part of parts) {
+      const fc = part.functionCall;
+      if (!fc || typeof fc.name !== 'string') continue;
+      out.push({
+        op: 'push',
+        element: {
+          kind: 'tool-call',
+          id: fc.id ?? fc.name,
+          name: fc.name,
+          label: labelForToolCall(fc.name, fc.args),
+          done: false,
+          args: fc.args,
+        },
+      });
+    }
   }
 
   // functionResponse events — one per tool completion. We flip the

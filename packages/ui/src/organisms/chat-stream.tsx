@@ -50,11 +50,11 @@ export type ChatStreamMessage = ChatStreamUserMessage | ChatStreamAssistantMessa
 export interface ChatStreamProps {
   messages: ChatStreamMessage[];
   /**
-   * Show a "thinking…" / "retrying…" indicator below the last message. Caller
-   * decides when (typically: busy && last assistant bubble has no content).
+   * Show a "thinking…" indicator below the last message. Caller decides
+   * when (typically: busy && last assistant bubble has no content).
    */
   pending?: boolean;
-  /** Optional copy override for the pending row (e.g. "retrying… (1)"). */
+  /** Optional copy override for the pending row. */
   pendingLabel?: string;
   onChoice: (msgId: string, answer: string) => void;
   onGoogleSignIn: () => void;

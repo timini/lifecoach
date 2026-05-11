@@ -14,6 +14,7 @@ export interface WorkspacePromptProps {
 export function WorkspacePrompt({ onConnect, disabled, className }: WorkspacePromptProps) {
   return (
     <div
+      data-testid="workspace-prompt"
       className={cn(
         'flex max-w-[90%] flex-col gap-3 self-start rounded-[var(--radius-bubble)] border border-border bg-muted p-3',
         className,

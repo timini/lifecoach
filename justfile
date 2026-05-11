@@ -9,6 +9,7 @@ default:
 install:
     pnpm install
     pnpm lefthook install
+    cd apps/agent_py && uv sync
 
 clean:
     pnpm clean
@@ -22,8 +23,8 @@ dev:
 dev-web:
     pnpm --filter @lifecoach/web dev
 
-dev-agent:
-    pnpm --filter @lifecoach/agent dev
+# The TS agent (`apps/agent/`) was deleted at PR #56's cutover. The Python
+# replacement lives at `apps/agent_py/`; use `just dev-py` to run it.
 
 dev-ui-book:
     pnpm --filter @lifecoach/ui-book dev
@@ -77,6 +78,45 @@ check: lint-ci typecheck test guard-no-ip-geolocation
 
 build:
     pnpm turbo run build
+
+# --- Python agent (apps/agent_py) -----------------------------------------
+#
+# The TS service in apps/agent/ is being phased out in favour of a Python
+# ADK rebuild — see apps/agent_py/README.md and ~/.claude/plans/.
+
+dev-py:
+    cd apps/agent_py && uv run uvicorn lifecoach_agent.server:app --reload --port 8080
+
+test-py:
+    cd apps/agent_py && uv run pytest
+
+test-py-cov:
+    cd apps/agent_py && uv run pytest --cov=lifecoach_agent --cov-report=term-missing
+
+lint-py:
+    cd apps/agent_py && uv run ruff check . && uv run ruff format --check .
+
+lint-py-fix:
+    cd apps/agent_py && uv run ruff check --fix . && uv run ruff format .
+
+typecheck-py:
+    cd apps/agent_py && uv run mypy src
+
+# Run the Tier-1 eval suite (fully stubbed, deterministic, fast).
+eval:
+    cd apps/agent_py && uv run pytest tests/evals/
+
+# Run Tier-2 evals against real Gemini. Costs $$ — manual / nightly only.
+eval-real:
+    cd apps/agent_py && LIFECOACH_EVAL_REAL_LLM=1 uv run pytest -m real_llm tests/evals/
+
+# Pydantic contracts in apps/agent_py/src/lifecoach_agent/contracts/ are a
+# hand-maintained mirror of packages/shared-types. Drift is caught by
+# `tests/unit/test_contracts.py`, which ports the TS test cases verbatim
+# — if a Zod schema gains a constraint, regenerate that test by porting
+# the matching `.test.ts` change.
+
+check-py: lint-py typecheck-py test-py
 
 # --- E2E -------------------------------------------------------------------
 
@@ -152,19 +192,12 @@ e2e-preview pr:
     pnpm --filter @lifecoach/web exec playwright test
 
 # --- Ops -------------------------------------------------------------------
-
-seed-user uid:
-    pnpm --filter @lifecoach/agent exec tsx scripts/seed-user.ts {{uid}}
-
-# Idempotent: creates / updates the dedicated e2e test user and stores its
-# password in Secret Manager (E2E_TEST_PASSWORD). See apps/agent/scripts/
-# provision-e2e-user.ts for prerequisites (firebaseauth.admin + secretmanager
-# .admin on the caller's gcloud ADC).
-provision-e2e-user env="dev":
-    #!/usr/bin/env bash
-    set -eu
-    project=$(cd infra/envs/{{env}} && terraform output -raw project_id)
-    pnpm --filter @lifecoach/agent exec tsx scripts/provision-e2e-user.ts --project="$project"
+#
+# `seed-user` and `provision-e2e-user` previously ran TS scripts under
+# `apps/agent/scripts/`. PR #56 deleted the TS agent; both ops are filed
+# as follow-ups to port to Python (see `apps/agent_py/_PORTING.md`). The
+# E2E user already exists in dev/prod and its password is in Secret
+# Manager — no immediate re-provisioning needed.
 
 # Runs the chat-persistence Playwright spec against an environment. Reads
 # baseURL + creds from the deployed Cloud Run web URL and Secret Manager.

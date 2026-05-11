@@ -1,0 +1,39 @@
+{
+  "eval_set_id": "find_workspace_specific_lookup",
+  "name": "Targeted inbox search",
+  "description": "User asks about a specific person's recent email. Agent should call call_workspace with a Gmail query using `from:` syntax — NOT pull the whole inbox and filter post-hoc. Catches a class of bug where the model dumps the entire inbox into the prompt instead of using Google's search.",
+  "eval_cases": [
+    {
+      "eval_id": "case_01_find_alex_thread",
+      "session_input": {
+        "app_name": "lifecoach",
+        "user_id": "test-user-find-workspace",
+        "state": {
+          "_lifecoach_user_state": "workspace_connected",
+          "_lifecoach_now": "2026-05-12T11:30:00+01:00"
+        }
+      },
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [{ "text": "did Alex email me about the project this week?" }],
+            "role": "user"
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "call_workspace",
+                "args": {
+                  "service": "gmail",
+                  "resource": "users.messages",
+                  "method": "list",
+                  "params": "{\"userId\":\"me\",\"q\":\"from:alex newer_than:7d\",\"maxResults\":5}"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

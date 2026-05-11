@@ -1,0 +1,40 @@
+{
+  "eval_set_id": "morning_triage_full_flow",
+  "name": "Morning triage end-to-end",
+  "description": "Workspace-connected user, morning window, day_planning practice on. Expects the agent to (a) call call_workspace to list inbox, (b) ask before archiving the noise bucket, (c) emit at least one substantive reply. This is the PR #54 regression class — if the agent goes silent after a tool call this case fails the response-match evaluator loudly.",
+  "eval_cases": [
+    {
+      "eval_id": "case_01_morning_check_in",
+      "session_input": {
+        "app_name": "lifecoach",
+        "user_id": "test-user-morning-triage",
+        "state": {
+          "_lifecoach_user_state": "workspace_connected",
+          "_lifecoach_now": "2026-05-12T09:00:00+01:00",
+          "_lifecoach_practices_enabled": ["day_planning"]
+        }
+      },
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [{ "text": "morning" }],
+            "role": "user"
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "call_workspace",
+                "args": {
+                  "service": "gmail",
+                  "resource": "users.messages",
+                  "method": "list",
+                  "params": "{\"userId\":\"me\",\"q\":\"newer_than:1d label:INBOX\",\"maxResults\":15}"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

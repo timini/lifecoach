@@ -6,7 +6,7 @@ This document is for AI coding assistants (Claude Code, etc.) working in this re
 
 AI life coaching web app. Two deployables:
 - `apps/web` — Next.js 15 on Firebase App Hosting
-- `apps/agent` — Google ADK for TypeScript agent (Gemini 3.1 Pro) on Cloud Run
+- `apps/agent_py` — Google ADK Python agent (Gemini 3 Flash, FastAPI + uvicorn) on Cloud Run. Replaced the TS service (`apps/agent/`) at PR #56's cutover; the Python rebuild ships first-class evals (`adk eval` / `AgentEvaluator`) and Vertex Memory Bank, and dropped the `gws` CLI subprocess in favour of `google-api-python-client`.
 
 Plus one developer-only app:
 - `apps/ui-book` — Storybook 9 host for the `@lifecoach/ui` design system. Stories are the test surface — every component under `packages/ui/src/{atoms,molecules,organisms,templates}/` has a sibling `*.stories.tsx` whose `play()` runs as a vitest test via `@storybook/addon-vitest` (Chromium browser mode). `scripts/check-stories.mjs` (lefthook + CI) enforces "every tier `.tsx` has a story".
@@ -114,8 +114,10 @@ Local commands: `just deploy-preview <n>`, `just teardown-preview <n>`, `just e2
 
 - `apps/web/src/lib/*` — client-safe utilities (can import from `packages/shared-types`, `packages/user-state`).
 - `apps/web/src/app/api/*/route.ts` — server-only Next.js route handlers. Never import browser-only modules here.
-- `apps/agent/src/tools/*` — one tool per file. Pure functions over injected dependencies (GCS client, clock, fetcher). Never `new GoogleCloudStorage()` inside a tool; accept it as a constructor argument.
-- `apps/agent/src/context/*` — cached context providers (weather, places). Cache keys are documented at the top of each file.
+- `apps/agent_py/src/lifecoach_agent/tools/*` — one tool per file. Bound to per-uid stores via factory (`create_*_tool({ store, uid })`). Wrapped as ADK `FunctionTool` from a clean async callable so eval / unit tests exercise the callable directly.
+- `apps/agent_py/src/lifecoach_agent/context/*` — cached HTTP context providers (weather, places, holidays, air-quality, calendar density, session summary, Vertex Memory Bank). Cache keys + TTLs are documented at the top of each file.
+- `apps/agent_py/src/lifecoach_agent/practices/*` — one Practice per file (Plan-the-day, Evening gratitude, Journaling). Each contributes a prompt directive when ON and zero or more tools.
+- `apps/agent_py/src/lifecoach_agent/state/*` — UserState / UsageState / DailyFlow machines (port of `packages/user-state/`).
 - `packages/*/src/index.ts` — each package has one barrel export.
 
 ## Running things
@@ -123,13 +125,19 @@ Local commands: `just deploy-preview <n>`, `just teardown-preview <n>`, `just e2
 All routine tasks go through `just`:
 
 ```bash
-just install         # pnpm install
-just dev             # web + agent concurrently
-just test            # all tests
-just coverage        # enforce 90% gate
-just lint            # biome --write
-just typecheck       # tsc -b
-just e2e             # playwright
+just install         # pnpm install + uv sync (apps/agent_py)
+just dev-web         # web only
+just dev-py          # Python agent (uvicorn)
+just test            # TS tests (web + packages)
+just test-py         # Python agent tests
+just lint-py         # ruff check + format-check
+just typecheck-py    # mypy on apps/agent_py/src
+just eval            # Tier-0 eval-set fixture-shape smoke (free, deterministic)
+just eval-real       # Tier-1 evals against real Gemini (gated by LIFECOACH_EVAL_REAL_LLM=1)
+just coverage        # enforce 90% gate (TS)
+just lint            # biome --write (TS)
+just typecheck       # tsc -b (TS — web + packages)
+just e2e             # playwright (web e2e)
 ```
 
 Don't invent new scripts in root `package.json` for one-off work — add a recipe to the Justfile if it's routine, otherwise just type the command.
@@ -137,3 +145,29 @@ Don't invent new scripts in root `package.json` for one-off work — add a recip
 ## Secrets
 
 Never commit secrets. Local dev uses `.env.local` (gitignored). Production uses GCP Secret Manager, wired through Terraform. If a test needs a credential, it uses a fake in `packages/testing`.
+
+## Documentation maintenance
+
+`ARCHITECTURE.md` is the system spec — system topology, the chat-turn sequence, state machines, every HTTP endpoint, every tool, every storage doc shape, the SSE wire contract, infra layout, testing strategy, and the invariants. **Keep it in sync as the code changes.**
+
+The mechanical rule: **if a PR changes any of the following, the same PR updates `ARCHITECTURE.md`.** No drive-by updates in a separate "docs" PR — they fall behind.
+
+Change-triggers (mirrored in `ARCHITECTURE.md` §14 so future work can be checked against it):
+
+- A new HTTP endpoint, or a change to an existing one's auth / body / response → §7.1 + §10
+- A new tool, or a change to a tool's args / side effect → §7.4
+- A new context provider, or a change to a cache key / TTL / source → §7.5
+- A new Firestore collection, GCS path, or document field crossing web↔agent → §7.6 + §10.2 / §10.3
+- A new state in any state machine, a new transition, or a policy change → §4
+- A new practice → §7.8
+- A change to the system-prompt section list or order → §7.3
+- A change to the SSE wire format (event shape, header, padding, terminator) → §10.1
+- A new Cloud Run service, a new Terraform module, or a change to per-PR preview behaviour → §11
+- A new test surface, a new eval fixture, or a change to the coverage gate → §12
+- Anything that adds or modifies an invariant → §13
+
+When in doubt, read `ARCHITECTURE.md` first to ground yourself in the current shape, *then* write code; if the change you're making invalidates a section, draft the doc update before you finish the implementation. Treat a stale `ARCHITECTURE.md` as a real bug — file an issue or fix it inline.
+
+Don't proactively rewrite `ARCHITECTURE.md` unless the user asks or you are making changes the rule above demands. Drive-by edits introduce drift; targeted updates that mirror code changes don't.
+
+A follow-up will mechanise this with bidirectional spec↔test linking (BDD-style tags, coverage report). Until that lands the rule is unmechanised — read the file, update it as you change things.
