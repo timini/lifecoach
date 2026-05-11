@@ -63,9 +63,7 @@ def create_archive_messages_tool(deps: WorkspaceToolDeps) -> Any:
         # left in a broken state. Scan ALL failures (not just failed[0])
         # because partial-success batches can hide the scope_required
         # entry anywhere in the list.
-        scope_failure = next(
-            (f for f in failed if f["code"] == "scope_required"), None
-        )
+        scope_failure = next((f for f in failed if f["code"] == "scope_required"), None)
         if scope_failure is not None:
             return {
                 "status": "error",

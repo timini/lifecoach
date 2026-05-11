@@ -397,32 +397,6 @@ Assistant: [calls memory_save text="User wants to divide morning tasks more clea
 "That's the kind of agreement that pays back every morning — even one well-placed handoff cuts a lot of friction. Want to draft the actual split together, or sleep on it first?\""""
 
 
-# Inline the OpenUI Lang prompt fragment from the TS shared-types package so
-# the Python build doesn't reach back across the boundary at import time.
-OPEN_UI_SYSTEM_PROMPT = """GENERATIVE_UI:
-You may use OpenUI Lang to render richer interactive UI *inline* in your
-response when it clearly helps the user pick an answer. OpenUI Lang tags
-render as real React components in the browser.
-
-Available components:
-
-<Picker question="..." options="a,b,c" single="true" />
-  - Renders a single-choice radio picker (single="true") or multi-select
-    checkboxes (single="false").
-  - 'options' is a comma-separated list, 2–8 items, each non-empty.
-  - When the user picks, their selection becomes the next user message;
-    DO NOT rephrase the question as text around the tag.
-
-Rules:
-- Only use <Picker/> when the answer space is 2–8 clear options and
-  selecting is faster than typing. Otherwise, write plain text.
-- When you emit a <Picker/>, write nothing else that turn — the picker is
-  the whole response.
-- Never invent tags not listed above. Unknown tags will fail to render.
-- If you're unsure whether a picker fits, just write text. Plain text
-  always works."""
-
-
 # --- Per-turn formatters --------------------------------------------------
 
 
@@ -728,7 +702,6 @@ def build_instruction(ctx: InstructionContext) -> str:
         format_info_capture(ctx),
         format_post_tool_reflection(ctx),
         format_examples(ctx),
-        OPEN_UI_SYSTEM_PROMPT,
         f"USER_STATE: {ctx.user_state}",
         f"STATE_DIRECTIVE: {directive}",
         # Tier-driven nudges. At most one fires per turn; UsageStateMachine

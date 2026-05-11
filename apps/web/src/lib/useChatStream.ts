@@ -191,15 +191,29 @@ export function useChatStream({
     sendTextRef.current = sendText;
   }, [sendText]);
 
-  // Initial transcript load + first-of-day kickoff. Clears stale state from a
-  // previous uid before the new history lands. Deliberately omits sendText
-  // from the deps — see sendTextRef above.
+  // Same shape for fetchAndApplyHistory — it's memoised on [user, sessionId],
+  // and the firebase User reference can flip on token refresh even when the
+  // uid hasn't changed. If we put fetchAndApplyHistory in the load-effect's
+  // deps directly, a token-refresh-driven user-ref flip retriggers the
+  // effect, `setMessages([])` wipes the in-flight transcript, and the
+  // /history refetch races the agent's just-completed turn — the streamed
+  // reply visibly "flashes" then disappears. Route via a ref + key the
+  // effect on stable primitives (uid + sessionId + viewMode) instead.
+  const fetchHistoryRef = useRef(fetchAndApplyHistory);
   useEffect(() => {
-    if (!user) return;
+    fetchHistoryRef.current = fetchAndApplyHistory;
+  }, [fetchAndApplyHistory]);
+
+  // Initial transcript load + first-of-day kickoff. Clears stale state from a
+  // previous uid before the new history lands. Keyed on uid (not the full
+  // User object) so token refresh doesn't clobber the in-flight reply.
+  const uid = user?.uid;
+  useEffect(() => {
+    if (!uid) return;
     let cancelled = false;
     setMessages([]);
     (async () => {
-      const rehydrated = await fetchAndApplyHistory();
+      const rehydrated = await fetchHistoryRef.current();
       if (cancelled) return;
       if (rehydrated && rehydrated.length > 0) {
         setMessages(rehydrated);
@@ -218,7 +232,7 @@ export function useChatStream({
     return () => {
       cancelled = true;
     };
-  }, [user, fetchAndApplyHistory, sessionId, viewMode]);
+  }, [uid, sessionId, viewMode]);
 
   const appendAssistantText = useCallback((text: string) => {
     setMessages((prev) => [

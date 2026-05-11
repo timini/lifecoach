@@ -35,7 +35,6 @@ from lifecoach_agent.workspace_agent.agent_tools.triage_inbox import (
 )
 from lifecoach_agent.workspace_agent.tools._deps import WorkspaceToolDeps
 
-
 # Mocked inbox — id → list_inbox summary + full message projection.
 # Body text is intentionally vivid enough that classification is
 # unambiguous even for a smaller model.
@@ -96,8 +95,7 @@ def _list_inbox_response() -> dict[str, Any]:
     return {
         "status": "ok",
         "messages": [
-            {"id": m["id"], "threadId": m["threadId"], "snippet": m["snippet"]}
-            for m in _INBOX
+            {"id": m["id"], "threadId": m["threadId"], "snippet": m["snippet"]} for m in _INBOX
         ],
     }
 

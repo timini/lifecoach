@@ -1,18 +1,38 @@
-"""Stub agent module used by Tier-1 evals.
+"""Stub agent module(s) used by Tier-1 evals.
 
-The eval framework imports this module and constructs an `Agent` from
-`root_agent`. We register the same root agent shape the production
-`server.py` does, but every external dependency is stubbed:
+ADK's `AgentEvaluator` imports a `root_agent` from the module named in
+`agent_module=`. The agent is built ONCE at import time — its
+instruction string and tool list are fixed for every case in every
+fixture that routes to that module. **Session state on the fixture
+(`_lifecoach_user_state`) does NOT rebuild the agent**: it only seeds
+runtime session state, which is too late to change the system prompt
+or which tools the model can see.
 
-- Tools have a `before_tool_callback` that returns canned responses
-  keyed by `(tool_name, args)`.
-- The HTTP-based context fetchers are not invoked (the prompt builder
-  receives an `InstructionContext` with all fetch-derived fields set
-  to None / empty).
+Codex P2 on PR #63 caught this: my new TRIGGER fixtures set
+`_lifecoach_user_state: "google_linked"` etc., but the eval was
+running under the original `workspace_connected` agent with the full
+tool surface — covering the regression for the wrong reason or not at
+all.
 
-The model (Gemini) is still called by the runner — Tier 1 is "all I/O
-stubbed", not "model stubbed". See `README.md` for the trade-off and
-when to run `just eval-real` instead.
+The fix is one agent module per UserState we want to test. Each
+module exports a `root_agent` built with the right state's prompt +
+tool list (mirroring what the production runner registers in
+`main.py`). Fixtures declare `agent_module` at the top level; the
+test dispatcher reads that and routes accordingly.
+
+`tests.evals.eval_agent` (this file) keeps exporting `root_agent` for
+`workspace_connected` — the default — so existing fixtures and the
+no-`agent_module` fallback in `test_eval_cases.py` continue to work.
+
+Per-state companion modules live alongside this one:
+
+  - `eval_anonymous_agent.py`         — anonymous user (auth_user only)
+  - `eval_email_verified_agent.py`    — email_verified (auth_user only)
+  - `eval_google_linked_agent.py`     — google_linked (connect_workspace only)
+  - `eval_triage_inbox_agent.py`      — workspace sub-agent (separate)
+
+The tool factory below is parametrised; the per-state modules import
+`build_eval_root_agent(state)` from here and re-export.
 """
 
 from __future__ import annotations
@@ -29,6 +49,7 @@ from google.adk.tools.tool_context import ToolContext
 from lifecoach_agent.agent import build_root_agent_for
 from lifecoach_agent.context.memory import noop_memory_client
 from lifecoach_agent.prompt.build_instruction import InstructionContext
+from lifecoach_agent.state import UserState
 from lifecoach_agent.tools.ask_choice import (
     create_ask_multiple_choice_tool,
     create_ask_single_choice_tool,
@@ -130,79 +151,37 @@ def _stub_before_tool(
     return canned
 
 
-def _build_instruction_ctx(now: datetime) -> InstructionContext:
-    """Use `workspace_connected` as the eval default — the broadest tool
-    surface. Cases that test other states (e.g.
-    `workspace_disconnected_decline`) override `_lifecoach_user_state`
-    in their `session_input.state`; the agent factory still registers
-    the full superset of tools, but `before_tool_callback` forces
-    deterministic responses regardless."""
+def _build_instruction_ctx(now: datetime, *, user_state: UserState) -> InstructionContext:
     return InstructionContext(
         now=now,
         timezone="Europe/London",
-        user_state="workspace_connected",
+        user_state=user_state,
         memory_enabled=False,
     )
 
 
-def _build_eval_root_agent() -> Agent:
-    """Build the root agent for evals. Registers the full tool surface
-    that any of the 6 fixtures exercises; the `before_tool_callback`
-    short-circuits actual side effects with canned responses from
-    `_tool_stubs()`. The model still emits the same call shape so
-    trajectory evaluators work."""
-    now = datetime(2026, 5, 12, 9, 0, tzinfo=ZoneInfo("Europe/London"))
-    ctx = _build_instruction_ctx(now)
+def _make_stub_tools_for_state(state: UserState) -> list[Any]:
+    """Return the tool list the production runner would register for
+    `state`. Mirrors `main.py`'s per-state branches so the model sees
+    the same surface area in eval as in prod. Tools the state doesn't
+    expose are simply absent — same as production.
 
+    Mapping (matches `main.py:404-422` + `state/policies.py`):
+      - Always: update_user_profile, log_goal_update,
+        ask_single_choice_question, ask_multiple_choice_question.
+      - anonymous / email_pending / email_verified: + auth_user
+      - google_linked / workspace_connected: + connect_workspace
+        (reconnect path stays available)
+      - workspace_connected: + the six workspace tools
+    """
     from google.adk.tools import FunctionTool
 
-    # --- workspace surface stubs (2 AgentTools + 4 narrow writes) ------
-    async def triage_inbox(since: str | None = None) -> dict[str, Any]:
-        """Inbox triage AgentTool — eval stub."""
-        return {"status": "stubbed"}
-
-    async def find_workspace(query: str) -> dict[str, Any]:
-        """Workspace search AgentTool — eval stub."""
-        return {"status": "stubbed"}
-
-    async def archive_messages(ids: list[str]) -> dict[str, Any]:
-        """Batched archive — eval stub."""
-        return {"status": "stubbed"}
-
-    async def add_calendar_event(
-        summary: str,
-        start: str,
-        end: str | None = None,
-        location: str | None = None,
-        description: str | None = None,
-        calendarId: str = "primary",  # noqa: N803
-    ) -> dict[str, Any]:
-        """Calendar insert — eval stub."""
-        return {"status": "stubbed"}
-
-    async def add_task(
-        title: str,
-        due: str | None = None,
-        notes: str | None = None,
-        taskListId: str = "@default",  # noqa: N803
-    ) -> dict[str, Any]:
-        """Tasks insert — eval stub."""
-        return {"status": "stubbed"}
-
-    async def complete_task(
-        id: str, taskListId: str = "@default"  # noqa: N803
-    ) -> dict[str, Any]:
-        """Tasks patch — eval stub."""
-        return {"status": "stubbed"}
-
-    # --- profile / goal / memory write stubs ---------------------------
+    # --- core: always present ---------------------------------------
     async def update_user_profile(path: str, value: str | None) -> dict[str, Any]:
         """Profile write — eval stub."""
         return {"status": "stubbed"}
 
-    async def log_goal_update(
-        goal: str, status: str, note: str | None = None
-    ) -> dict[str, Any]:
+    async def log_goal_update(goal: str, status: str, note: str | None = None) -> dict[str, Any]:
         """Goal-update log — eval stub."""
         return {"status": "stubbed"}
 
@@ -210,43 +189,114 @@ def _build_eval_root_agent() -> Agent:
         """Memory save — eval stub."""
         return {"status": "stubbed"}
 
-    # --- UI-directive tools (no args; status routes through _STUBS) ----
-    async def connect_workspace() -> dict[str, Any]:
-        """Surface the workspace-connect UI prompt. Eval stub."""
-        return {"status": "stubbed"}
-
-    async def auth_user(mode: str, email: str | None = None) -> dict[str, Any]:
-        """Surface the sign-in UI prompt. Eval stub."""
-        return {"status": "stubbed"}
-
     async def upgrade_to_pro() -> dict[str, Any]:
         """Surface the upgrade-to-Pro UI prompt. Eval stub."""
         return {"status": "stubbed"}
 
     tools: list[Any] = [
-        FunctionTool(triage_inbox),
-        FunctionTool(find_workspace),
-        FunctionTool(archive_messages),
-        FunctionTool(add_calendar_event),
-        FunctionTool(add_task),
-        FunctionTool(complete_task),
         FunctionTool(update_user_profile),
         FunctionTool(log_goal_update),
         FunctionTool(memory_save),
-        FunctionTool(connect_workspace),
-        FunctionTool(auth_user),
         FunctionTool(upgrade_to_pro),
         create_ask_single_choice_tool(),
         create_ask_multiple_choice_tool(),
     ]
+
+    # --- pre-Google-signin states get auth_user --------------------
+    if state in ("anonymous", "email_pending", "email_verified"):
+
+        async def auth_user(mode: str, email: str | None = None) -> dict[str, Any]:
+            """Surface the sign-in UI prompt. Eval stub."""
+            return {"status": "stubbed"}
+
+        tools.append(FunctionTool(auth_user))
+
+    # --- google_linked + workspace_connected get connect_workspace -
+    if state in ("google_linked", "workspace_connected"):
+
+        async def connect_workspace() -> dict[str, Any]:
+            """Surface the workspace-connect UI prompt. Eval stub."""
+            return {"status": "stubbed"}
+
+        tools.append(FunctionTool(connect_workspace))
+
+    # --- workspace_connected gets the six workspace tools ----------
+    if state == "workspace_connected":
+
+        async def triage_inbox(since: str | None = None) -> dict[str, Any]:
+            """Inbox triage AgentTool — eval stub."""
+            return {"status": "stubbed"}
+
+        async def find_workspace(query: str) -> dict[str, Any]:
+            """Workspace search AgentTool — eval stub."""
+            return {"status": "stubbed"}
+
+        async def archive_messages(ids: list[str]) -> dict[str, Any]:
+            """Batched archive — eval stub."""
+            return {"status": "stubbed"}
+
+        async def add_calendar_event(
+            summary: str,
+            start: str,
+            end: str | None = None,
+            location: str | None = None,
+            description: str | None = None,
+            calendarId: str = "primary",  # noqa: N803
+        ) -> dict[str, Any]:
+            """Calendar insert — eval stub."""
+            return {"status": "stubbed"}
+
+        async def add_task(
+            title: str,
+            due: str | None = None,
+            notes: str | None = None,
+            taskListId: str = "@default",  # noqa: N803
+        ) -> dict[str, Any]:
+            """Tasks insert — eval stub."""
+            return {"status": "stubbed"}
+
+        async def complete_task(
+            id: str,
+            taskListId: str = "@default",  # noqa: N803
+        ) -> dict[str, Any]:
+            """Tasks patch — eval stub."""
+            return {"status": "stubbed"}
+
+        tools.extend(
+            [
+                FunctionTool(triage_inbox),
+                FunctionTool(find_workspace),
+                FunctionTool(archive_messages),
+                FunctionTool(add_calendar_event),
+                FunctionTool(add_task),
+                FunctionTool(complete_task),
+            ]
+        )
+
+    return tools
+
+
+def build_eval_root_agent(state: UserState) -> Agent:
+    """Build a stub agent for one specific UserState. The agent's
+    system instruction is materialised for that state (so the
+    WORKSPACE-ASK TRIGGER routing matches what production would do)
+    and the tool list mirrors `main.py`'s per-state registration.
+
+    `before_tool_callback` short-circuits real side effects with
+    canned responses keyed by tool name. The model still emits the
+    same call shape so trajectory evaluators see what they need."""
+    now = datetime(2026, 5, 12, 9, 0, tzinfo=ZoneInfo("Europe/London"))
+    ctx = _build_instruction_ctx(now, user_state=state)
+    tools = _make_stub_tools_for_state(state)
     agent = build_root_agent_for(ctx, tools)
     agent.before_tool_callback = _stub_before_tool
     return agent
 
 
-# AgentEvaluator imports `root_agent` from this module via
-# `agent_module="tests.evals.eval_agent"`.
-root_agent: Agent = _build_eval_root_agent()
+# Default `root_agent` for fixtures that don't specify `agent_module`.
+# The original eval surface was workspace_connected with the full tool
+# list — preserved here so existing fixtures keep working unchanged.
+root_agent: Agent = build_eval_root_agent("workspace_connected")
 
 
 # Suppress unused import warnings for `noop_memory_client` /

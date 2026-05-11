@@ -15,9 +15,7 @@ GET_MESSAGE_TOOL_NAME = "get_message"
 
 
 def create_get_message_tool(deps: WorkspaceToolDeps) -> Any:
-    async def get_message(
-        id: str, format: Literal["full", "metadata"] = "full"
-    ) -> dict[str, Any]:
+    async def get_message(id: str, format: Literal["full", "metadata"] = "full") -> dict[str, Any]:
         """Fetch a single Gmail message by id and return the projected
         shape (decoded body, allow-listed headers). Read-only.
 

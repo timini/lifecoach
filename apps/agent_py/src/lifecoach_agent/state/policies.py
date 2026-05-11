@@ -12,23 +12,34 @@ from typing import Final
 from lifecoach_agent.state.types import StatePolicy, ToolName, UIAffordance, UserState
 
 # Tools every state always has (writes + UI directives). State-specific
-# additions come from `_STATE_ADDITIONAL_TOOLS`.
+# additions come from `_STATE_ADDITIONAL_TOOLS`. Note: `auth_user` lives
+# in the per-state list (not here) — it's only meaningful for users who
+# haven't yet signed in with Google.
 CORE_TOOLS: Final[tuple[ToolName, ...]] = (
     "update_user_profile",
     "log_goal_update",
     "ask_single_choice_question",
     "ask_multiple_choice_question",
-    "auth_user",
     "google_search",
     "memory_search",
     "memory_save",
 )
 
 
+# `auth_user({mode:"google"})` triggers the Google sign-in flow. Useful
+# only for the three pre-Google-sign-in states; firing it for a user
+# who's already on `google_linked` / `workspace_connected` would just
+# show the account picker again (confusing UX). The WORKSPACE-ASK
+# TRIGGER directive routes these states to `auth_user` as the FIRST
+# turn on workspace requests — registering the tool here is what makes
+# that directive runnable.
+_PRE_GOOGLE_AUTH_TOOLS: tuple[ToolName, ...] = ("auth_user",)
+
+
 _STATE_ADDITIONAL_TOOLS: dict[UserState, tuple[ToolName, ...]] = {
-    "anonymous": (),
-    "email_pending": (),
-    "email_verified": (),
+    "anonymous": _PRE_GOOGLE_AUTH_TOOLS,
+    "email_pending": _PRE_GOOGLE_AUTH_TOOLS,
+    "email_verified": _PRE_GOOGLE_AUTH_TOOLS,
     # google_linked users can invite themselves to upgrade — the LLM
     # emits `connect_workspace` (UI directive, no auth handling) to
     # trigger the browser's GIS popup.
@@ -54,26 +65,50 @@ _STATE_ADDITIONAL_TOOLS: dict[UserState, tuple[ToolName, ...]] = {
 }
 
 
+_WORKSPACE_ASK_TRIGGER_ANON = (
+    "WORKSPACE-ASK TRIGGER (CRITICAL — turn-ending behaviour): if the user "
+    "asks for ANYTHING that requires Google Workspace access — reading or "
+    "triaging email, checking calendar, listing or completing tasks, adding "
+    'events — your FIRST reply must call `auth_user` with `mode="google"`. '
+    "Do not ask clarifying questions, do not propose strategies, do not "
+    "explore intent. Say nothing before the tool call; the auth widget IS "
+    "the turn. Workspace access requires signing in with Google first, then "
+    "granting Workspace scopes — the auth_user tool handles step one."
+)
+
+_WORKSPACE_ASK_TRIGGER_GOOGLE_LINKED = (
+    "WORKSPACE-ASK TRIGGER (CRITICAL — turn-ending behaviour): if the user "
+    "asks for ANYTHING that requires Google Workspace access — reading or "
+    "triaging email, checking calendar, listing or completing tasks, adding "
+    "events — your FIRST reply must call `connect_workspace`. Do not ask "
+    "clarifying questions, do not propose strategies, do not explore intent. "
+    "Say nothing before the tool call; the connect widget IS the turn. The "
+    "user is already signed in with Google; they just need to grant "
+    "Workspace scopes."
+)
+
+
 _STATE_DIRECTIVE: dict[UserState, str] = {
     "anonymous": (
         "User is anonymous (no email, no Google sign-in). After ~6 meaningful "
         "exchanges, naturally suggest saving progress by sharing email or signing "
         "in with Google — but do not push early and never nag. Their data is not "
-        "persisted across sessions yet."
+        "persisted across sessions yet.\n\n" + _WORKSPACE_ASK_TRIGGER_ANON
     ),
     "email_pending": (
         "User submitted their email but has not clicked the verification link. "
-        "Mention verification once, gently, if natural. Do not repeat the reminder."
+        "Mention verification once, gently, if natural. Do not repeat the "
+        "reminder.\n\n" + _WORKSPACE_ASK_TRIGGER_ANON
     ),
     "email_verified": (
         "User is identified by a verified email. Their progress is saved. Offer "
         "Google sign-in only when it unlocks something specific the user wants "
-        "(e.g., calendar, drive)."
+        "(e.g., calendar, drive).\n\n" + _WORKSPACE_ASK_TRIGGER_ANON
     ),
     "google_linked": (
         "User is signed in with Google but has not granted Workspace access. "
-        "Offer Workspace connection only when the conversation would genuinely "
-        "benefit (calendar context, checking email, finding a file)."
+        "Workspace connection is the next step when it would genuinely benefit "
+        "the conversation.\n\n" + _WORKSPACE_ASK_TRIGGER_GOOGLE_LINKED
     ),
     "workspace_connected": (
         "User granted Google Workspace access. Use the six workspace tools "

@@ -1,0 +1,52 @@
+{
+  "eval_set_id": "workspace_immediate_auth_from_anonymous",
+  "agent_module": "tests.evals.eval_anonymous_agent",
+  "name": "anonymous user asks for a workspace op → auth_user on turn 1",
+  "description": "Anonymous users need to sign in with Google before workspace scopes can be granted. The TRIGGER directive instructs the agent to call `auth_user({mode: \"google\"})` on the first workspace-related ask, no clarifying questions. Email-verified users are covered by the sibling `workspace_immediate_auth_from_email_verified` fixture (different agent module — same trigger language, different state directive).",
+  "eval_cases": [
+    {
+      "eval_id": "case_01_anon_triage_my_emails",
+      "session_input": {
+        "app_name": "lifecoach",
+        "user_id": "test-user-anon-triage",
+        "state": {
+          "_lifecoach_user_state": "anonymous",
+          "_lifecoach_now": "2026-05-12T09:00:00+01:00"
+        }
+      },
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [{ "text": "triage my emails" }],
+            "role": "user"
+          },
+          "intermediate_data": {
+            "tool_uses": [{ "name": "auth_user", "args": { "mode": "google" } }]
+          }
+        }
+      ]
+    },
+    {
+      "eval_id": "case_02_anon_check_calendar",
+      "session_input": {
+        "app_name": "lifecoach",
+        "user_id": "test-user-anon-cal",
+        "state": {
+          "_lifecoach_user_state": "anonymous",
+          "_lifecoach_now": "2026-05-12T09:00:00+01:00"
+        }
+      },
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [{ "text": "what's on my calendar today?" }],
+            "role": "user"
+          },
+          "intermediate_data": {
+            "tool_uses": [{ "name": "auth_user", "args": { "mode": "google" } }]
+          }
+        }
+      ]
+    }
+  ]
+}

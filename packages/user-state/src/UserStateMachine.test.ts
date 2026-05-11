@@ -219,7 +219,6 @@ describe('UserStateMachine — policy per state', () => {
           "tools": [
             "ask_multiple_choice_question",
             "ask_single_choice_question",
-            "auth_user",
             "connect_workspace",
             "google_search",
             "log_goal_update",
@@ -239,7 +238,6 @@ describe('UserStateMachine — policy per state', () => {
             "archive_messages",
             "ask_multiple_choice_question",
             "ask_single_choice_question",
-            "auth_user",
             "complete_task",
             "connect_workspace",
             "find_workspace",

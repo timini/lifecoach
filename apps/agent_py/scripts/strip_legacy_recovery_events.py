@@ -40,9 +40,7 @@ def _is_legacy_recovery_event(ev: dict[str, Any]) -> bool:
     if isinstance(ev.get("invocationId"), str) and ev["invocationId"] == "gap-end":
         return True
     eid = ev.get("id")
-    if isinstance(eid, str) and eid.startswith("recovery-"):
-        return True
-    return False
+    return isinstance(eid, str) and eid.startswith("recovery-")
 
 
 async def _process_one_session(
@@ -127,7 +125,9 @@ async def _walk_all_users(client: Any, app_name: str, *, dry_run: bool) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project", required=True, help="GCP project id (Firestore lives here).")
-    parser.add_argument("--app-name", default="lifecoach", help="App name root path. Default lifecoach.")
+    parser.add_argument(
+        "--app-name", default="lifecoach", help="App name root path. Default lifecoach."
+    )
     parser.add_argument(
         "--user-id",
         default=None,

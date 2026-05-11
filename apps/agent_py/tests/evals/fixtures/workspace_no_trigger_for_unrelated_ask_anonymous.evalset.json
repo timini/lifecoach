@@ -1,0 +1,48 @@
+{
+  "eval_set_id": "workspace_no_trigger_for_unrelated_ask_anonymous",
+  "agent_module": "tests.evals.eval_anonymous_agent",
+  "name": "anonymous user asks unrelated wellbeing question → no auth_user fire",
+  "description": "Negative-case guardrail for the WORKSPACE-ASK TRIGGER directive (anonymous variant). Same intent as the google_linked sibling but pinned at a different agent state so over-firing auth_user on general questions also gets caught.",
+  "eval_cases": [
+    {
+      "eval_id": "case_01_thinking_about_running",
+      "session_input": {
+        "app_name": "lifecoach",
+        "user_id": "test-user-anon-general",
+        "state": {
+          "_lifecoach_user_state": "anonymous",
+          "_lifecoach_now": "2026-05-12T09:00:00+01:00"
+        }
+      },
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [{ "text": "I'm thinking about getting back into running" }],
+            "role": "user"
+          },
+          "intermediate_data": { "tool_uses": [] }
+        }
+      ]
+    },
+    {
+      "eval_id": "case_02_feeling_stressed",
+      "session_input": {
+        "app_name": "lifecoach",
+        "user_id": "test-user-anon-feelings",
+        "state": {
+          "_lifecoach_user_state": "anonymous",
+          "_lifecoach_now": "2026-05-12T09:00:00+01:00"
+        }
+      },
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [{ "text": "feeling stressed" }],
+            "role": "user"
+          },
+          "intermediate_data": { "tool_uses": [] }
+        }
+      ]
+    }
+  ]
+}

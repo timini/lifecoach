@@ -13,7 +13,8 @@ COMPLETE_TASK_TOOL_NAME = "complete_task"
 
 def create_complete_task_tool(deps: WorkspaceToolDeps) -> Any:
     async def complete_task(
-        id: str, taskListId: str = "@default"  # noqa: N803
+        id: str,
+        taskListId: str = "@default",  # noqa: N803
     ) -> dict[str, Any]:
         """Mark a Google Task as completed. Use when the user says they
         finished an item from list_tasks or a triage action.

@@ -102,9 +102,7 @@ async def test_all_ok_returns_archived_empty_failed() -> None:
     deps = WorkspaceToolDeps(
         store=store,  # type: ignore[arg-type]
         uid="u1",
-        build_client=_build_client_factory(
-            {"m1": {"body": {}}, "m2": {"body": {}}}
-        ),
+        build_client=_build_client_factory({"m1": {"body": {}}, "m2": {"body": {}}}),
     )
     tool = create_archive_messages_tool(deps)
     out = await _call_tool(tool, ids=["m1", "m2"])
