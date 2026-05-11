@@ -56,6 +56,7 @@ async function runConversation(page: Page, turns: string[]): Promise<JudgeTurn[]
     // tokens + stream flushing through GFE). 60s is comfortably above
     // the observed worst case.
     let assistant = '<NO ASSISTANT REPLY>';
+    let atStreamEnd: string[] = [];
     try {
       await page.waitForFunction(
         ([sel, prev]) => {
@@ -73,6 +74,7 @@ async function runConversation(page: Page, turns: string[]): Promise<JudgeTurn[]
         .map((s) => s.trim())
         .filter(Boolean);
       if (newOnes.length > 0) assistant = newOnes.join('\n');
+      atStreamEnd = newOnes;
     } catch {
       // Timed out — dump what's actually on screen so a CI reader can
       // tell whether the agent went silent vs the FE just hadn't
@@ -96,6 +98,28 @@ async function runConversation(page: Page, turns: string[]): Promise<JudgeTurn[]
       });
       // eslint-disable-next-line no-console
       console.log(`[chat-quality][turn-${i + 1}] page snapshot:\n${snapshot}\n---`);
+    }
+
+    // Post-stream stability check — guards against the "flash then
+    // disappear" class of regression where the assistant reply renders
+    // during streaming, then a load-effect re-fire (e.g. on Firebase
+    // token refresh flipping the User reference) calls setMessages([])
+    // and the /history refetch races the agent's Firestore commit.
+    // Only runs when the stream succeeded with non-empty content — if
+    // we never saw a reply, the timeout/silent-turn path already failed
+    // upstream (no point asserting persistence of nothing).
+    if (atStreamEnd.length > 0) {
+      await page.waitForTimeout(2_000);
+      const stillThere = await page.locator(ASSISTANT_CONTENT_SEL).allTextContents();
+      const stillNonEmpty = stillThere
+        .slice(beforeCount)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      expect(
+        stillNonEmpty.length,
+        `Assistant content disappeared between stream-end and T+2s on turn ${i + 1}. ` +
+          `at-stream-end=${JSON.stringify(atStreamEnd)} ; at-T+2s=${JSON.stringify(stillNonEmpty)}`,
+      ).toBeGreaterThan(0);
     }
 
     transcript.push({ user: userMsg, assistant });
