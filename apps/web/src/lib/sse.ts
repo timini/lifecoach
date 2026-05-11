@@ -211,22 +211,28 @@ export function parseSseBlock(block: string): AssistantOp[] {
   }
 
   // functionCall events — emitted when the model decides to run a tool.
-  // We push a tool-call element with done=false so the UI can show a
-  // running pill.
-  for (const part of parts) {
-    const fc = part.functionCall;
-    if (!fc || typeof fc.name !== 'string') continue;
-    out.push({
-      op: 'push',
-      element: {
-        kind: 'tool-call',
-        id: fc.id ?? fc.name,
-        name: fc.name,
-        label: labelForToolCall(fc.name, fc.args),
-        done: false,
-        args: fc.args,
-      },
-    });
+  // Same dedup concern as the text path above: Python ADK emits the
+  // function_call in a `partial: true` streaming event AND re-emits it
+  // in the trailing `partial: false` aggregate. Without this guard the
+  // FE pushes TWO tool-call elements with the same id and the UI shows
+  // duplicate badges ("showing a choice · showing a choice"). Gate on
+  // partial === true to drop the aggregate, matching the text handler.
+  if (parsed.partial === true) {
+    for (const part of parts) {
+      const fc = part.functionCall;
+      if (!fc || typeof fc.name !== 'string') continue;
+      out.push({
+        op: 'push',
+        element: {
+          kind: 'tool-call',
+          id: fc.id ?? fc.name,
+          name: fc.name,
+          label: labelForToolCall(fc.name, fc.args),
+          done: false,
+          args: fc.args,
+        },
+      });
+    }
   }
 
   // functionResponse events — one per tool completion. We flip the
