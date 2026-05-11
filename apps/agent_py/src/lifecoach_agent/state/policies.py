@@ -12,23 +12,34 @@ from typing import Final
 from lifecoach_agent.state.types import StatePolicy, ToolName, UIAffordance, UserState
 
 # Tools every state always has (writes + UI directives). State-specific
-# additions come from `_STATE_ADDITIONAL_TOOLS`.
+# additions come from `_STATE_ADDITIONAL_TOOLS`. Note: `auth_user` lives
+# in the per-state list (not here) — it's only meaningful for users who
+# haven't yet signed in with Google.
 CORE_TOOLS: Final[tuple[ToolName, ...]] = (
     "update_user_profile",
     "log_goal_update",
     "ask_single_choice_question",
     "ask_multiple_choice_question",
-    "auth_user",
     "google_search",
     "memory_search",
     "memory_save",
 )
 
 
+# `auth_user({mode:"google"})` triggers the Google sign-in flow. Useful
+# only for the three pre-Google-sign-in states; firing it for a user
+# who's already on `google_linked` / `workspace_connected` would just
+# show the account picker again (confusing UX). The WORKSPACE-ASK
+# TRIGGER directive routes these states to `auth_user` as the FIRST
+# turn on workspace requests — registering the tool here is what makes
+# that directive runnable.
+_PRE_GOOGLE_AUTH_TOOLS: tuple[ToolName, ...] = ("auth_user",)
+
+
 _STATE_ADDITIONAL_TOOLS: dict[UserState, tuple[ToolName, ...]] = {
-    "anonymous": (),
-    "email_pending": (),
-    "email_verified": (),
+    "anonymous": _PRE_GOOGLE_AUTH_TOOLS,
+    "email_pending": _PRE_GOOGLE_AUTH_TOOLS,
+    "email_verified": _PRE_GOOGLE_AUTH_TOOLS,
     # google_linked users can invite themselves to upgrade — the LLM
     # emits `connect_workspace` (UI directive, no auth handling) to
     # trigger the browser's GIS popup.

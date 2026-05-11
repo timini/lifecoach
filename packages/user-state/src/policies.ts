@@ -9,16 +9,23 @@ export const CORE_TOOLS: readonly ToolName[] = [
   'log_goal_update',
   'ask_single_choice_question',
   'ask_multiple_choice_question',
-  'auth_user',
   'google_search',
   'memory_search',
   'memory_save',
 ];
 
+// `auth_user({mode:"google"})` triggers the Google sign-in flow. Only
+// meaningful for the three pre-Google-sign-in states; firing it for a
+// user who's already on `google_linked` / `workspace_connected` would
+// just show the account picker again. The WORKSPACE-ASK TRIGGER (issue
+// #62) routes these states to `auth_user` as the FIRST turn on
+// workspace asks — listing it here is what makes the directive runnable.
+const PRE_GOOGLE_AUTH_TOOLS: readonly ToolName[] = ['auth_user'];
+
 const STATE_ADDITIONAL_TOOLS: Record<UserState, readonly ToolName[]> = {
-  anonymous: [],
-  email_pending: [],
-  email_verified: [],
+  anonymous: [...PRE_GOOGLE_AUTH_TOOLS],
+  email_pending: [...PRE_GOOGLE_AUTH_TOOLS],
+  email_verified: [...PRE_GOOGLE_AUTH_TOOLS],
   // google_linked users can invite themselves to upgrade — the LLM emits
   // `connect_workspace` (UI directive, no auth handling) to trigger the
   // browser's GIS popup.

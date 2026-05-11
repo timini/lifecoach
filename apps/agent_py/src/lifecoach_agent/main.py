@@ -404,7 +404,17 @@ def build_app() -> Any:
             create_ask_single_choice_tool(),
             create_ask_multiple_choice_tool(),
         ]
-        if ctx.user_state == "anonymous":
+        # `auth_user` is in `policies.CORE_TOOLS` — declared always-available.
+        # Originally only registered for `anonymous`, but the WORKSPACE-ASK
+        # TRIGGER (issue #62 / PR #63) routes `email_pending` and
+        # `email_verified` users to `auth_user({mode:"google"})` when they ask
+        # for workspace ops. They can't grant Workspace scopes without first
+        # signing in via Google, and `auth_user` is the only path. Codex P2
+        # caught this gap on PR #63. Registering for all four pre-`google_linked`
+        # states matches the policy spec and the trigger directive. For
+        # `google_linked`/`workspace_connected` the tool stays unregistered —
+        # they're already signed in and a re-trigger would just confuse.
+        if ctx.user_state in ("anonymous", "email_pending", "email_verified"):
             tools.append(create_auth_user_tool())
         if memory_enabled:
             tools.append(create_memory_save_tool(client=memory, uid=uid))
