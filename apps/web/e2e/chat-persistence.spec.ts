@@ -20,7 +20,7 @@ test('chat history persists across logout and sign-in', async ({ page }) => {
   // we sent on this run, ignoring any leftover history from prior runs.
   const token = `e2e-${Date.now().toString(36)}`;
 
-  await page.goto('/');
+  await page.goto('/chat');
 
   // Wait for the initial anon sign-in to settle. ChatWindow shows
   // "Signing you in…" until then; once the user is set, the chat-window-
@@ -64,7 +64,7 @@ test('chat history persists across logout and sign-in', async ({ page }) => {
 test('first load fires the day-of greeting and lists the session in the drawer', async ({
   page,
 }) => {
-  await page.goto('/');
+  await page.goto('/chat');
 
   // Wait for auth + sessionId to settle so the kickoff effect can fire.
   await expect(page.locator('[data-testid="chat-window-state"][data-uid]')).toBeAttached();

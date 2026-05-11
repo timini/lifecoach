@@ -5,8 +5,9 @@ import type { ReactNode } from 'react';
 import { SentryBootstrap } from '../components/SentryBootstrap';
 
 export const metadata = {
-  title: 'Lifecoach',
-  description: 'AI life coaching — chat with a friend who remembers.',
+  title: 'Lifecoach — AI life coaching for your actual day',
+  description:
+    'A warm AI life coach that remembers your goals, understands your context, and helps you plan the next grounded step.',
 };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {

@@ -132,7 +132,7 @@ async function runConversation(page: Page, turns: string[]): Promise<JudgeTurn[]
 }
 
 test('three-turn conversation produces substantive replies (LLM judged)', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/chat');
 
   // Wait for the initial anon sign-in to settle and the chat-window
   // seam to mount with a uid + sessionId — that's what gates the chat
