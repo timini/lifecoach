@@ -54,13 +54,23 @@ def create_archive_messages_tool(deps: WorkspaceToolDeps) -> Any:
                 err: RunGwsErr = result
                 failed.append({"id": mid, "code": err.code, "message": err.message})
 
-        # All-auth-failed → surface as top-level error so the LLM can
-        # call connect_workspace.
-        if not archived and failed and failed[0]["code"] == "scope_required":
+        # Any scope_required failure means run_gws has already deleted
+        # the user's token doc — the connection is gone for the rest of
+        # this turn and every future call. Surface a top-level
+        # scope_required error so the LLM reconnects via
+        # connect_workspace; otherwise the WORKSPACE_CHEATSHEET error-
+        # handling rules wouldn't trigger reconnect and the user is
+        # left in a broken state. Scan ALL failures (not just failed[0])
+        # because partial-success batches can hide the scope_required
+        # entry anywhere in the list.
+        scope_failure = next(
+            (f for f in failed if f["code"] == "scope_required"), None
+        )
+        if scope_failure is not None:
             return {
                 "status": "error",
                 "code": "scope_required",
-                "message": failed[0]["message"],
+                "message": scope_failure["message"],
             }
         return {"status": "ok", "archived": archived, "failed": failed}
 

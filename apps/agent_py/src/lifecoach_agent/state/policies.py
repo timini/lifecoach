@@ -33,11 +33,15 @@ _STATE_ADDITIONAL_TOOLS: dict[UserState, tuple[ToolName, ...]] = {
     # emits `connect_workspace` (UI directive, no auth handling) to
     # trigger the browser's GIS popup.
     "google_linked": ("connect_workspace",),
-    # workspace_connected users get the full Google Workspace surface:
-    # 2 AgentTools wrapping the workspace sub-agent (read flows) + 4
-    # narrow write FunctionTools. `connect_workspace` stays available
-    # so reconnects work if the user narrows scopes or the token is
-    # revoked.
+    # workspace_connected users get the full Google Workspace surface
+    # exported by `workspace_agent` (2 AgentTools wrapping the workspace
+    # sub-agent + 4 narrow write FunctionTools). The canonical list is
+    # `lifecoach_agent.workspace_agent.WORKSPACE_TOOL_NAMES`; this tuple
+    # must match it 1:1 + `connect_workspace`. A drift test in
+    # `tests/unit/state/test_policies_workspace_drift.py` keeps them in
+    # sync — we duplicate the names here (rather than import the source
+    # of truth) to avoid a `state → workspace_agent → storage → state`
+    # circular import.
     "workspace_connected": (
         "triage_inbox",
         "find_workspace",
