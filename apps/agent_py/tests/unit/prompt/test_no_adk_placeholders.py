@@ -26,11 +26,30 @@ import pytest
 from lifecoach_agent.prompt.build_instruction import InstructionContext, build_instruction
 from lifecoach_agent.state.daily_flow import policy_for_daily_flow
 
-# A {name} that ADK would try to substitute.
-# Negative lookbehind for `{` (so `{{name}}` is excluded) and negative
-# lookahead for `}` (same). Identifiers only (letters / digits /
-# underscore / dot for attribute access).
-_PLACEHOLDER_RE = re.compile(r"(?<!\{)\{([A-Za-z_][A-Za-z0-9_.]*)\}(?!\})")
+# ADK's *exact* placeholder regex (from
+# `google/adk/utils/instructions_utils.py`). It matches one-or-more
+# opening braces, any non-brace content, and one-or-more closing braces.
+# Then it strips ALL braces and looks up the inner text — so `{{x}}` is
+# NOT an escape (still resolves to `x`). The only safe rendering is to
+# (a) make the inner text fail `isidentifier()` (e.g. contain a hyphen,
+# space, or `<>` chars) or (b) use no braces at all.
+_ADK_PLACEHOLDER_RE = re.compile(r"\{+[^{}]*\}+")
+
+
+def _adk_would_fail(match_text: str) -> str | None:
+    """Return the identifier ADK would try to resolve from a brace match,
+    or None if the match is left alone (invalid identifier)."""
+    var = match_text.lstrip("{").rstrip("}").strip().removesuffix("?")
+    if not var:
+        return None
+    if var.isidentifier():
+        return var
+    # ADK also accepts `prefix:identifier` for `app:`, `user:`, `temp:`.
+    if ":" in var:
+        prefix, _, rest = var.partition(":")
+        if prefix in {"app", "user", "temp"} and rest.isidentifier():
+            return var
+    return None
 
 
 def _base_ctx(now: datetime, *, user_state: str = "workspace_connected") -> InstructionContext:
@@ -53,20 +72,31 @@ def test_built_instruction_has_no_adk_placeholders(hour_utc: int) -> None:
     must not contain a `{name}` literal that ADK would try to resolve."""
     now = datetime(2026, 5, 11, hour_utc, 0, tzinfo=ZoneInfo("UTC"))
     out = build_instruction(_base_ctx(now))
-    leaks = sorted(set(_PLACEHOLDER_RE.findall(out)))
+    leaks = []
+    for m in _ADK_PLACEHOLDER_RE.finditer(out):
+        var = _adk_would_fail(m.group())
+        if var is not None:
+            leaks.append((m.group(), var))
     assert not leaks, (
-        f"Built prompt contains literal {{name}} placeholders that ADK will try to "
-        f"resolve and FAIL on, causing silent turns. Found: {leaks}. "
-        f"Fix: escape with double braces — `{{{{name}}}}` renders as literal `{{name}}`."
+        "Built prompt contains literal {name} placeholders that ADK will try to "
+        "resolve from session state and FAIL on, causing silent turns. Found:\n"
+        + "\n".join(f"  {full!r} -> tries to resolve {var!r}" for full, var in leaks)
+        + "\nFix: write the surrounding text without single-braced identifiers — "
+        "e.g. `<YYYY-MM-DD>` or `(query)`. Double braces `{{x}}` do NOT escape; "
+        "ADK strips them and still resolves `x`."
     )
 
 
 def test_daily_flow_lunch_directive_does_not_leak_today() -> None:
     """Regression test for the 2026-05-11 incident specifically."""
     policy = policy_for_daily_flow("lunch")
-    leaks = sorted(set(_PLACEHOLDER_RE.findall(policy.directive)))
+    leaks = []
+    for m in _ADK_PLACEHOLDER_RE.finditer(policy.directive):
+        var = _adk_would_fail(m.group())
+        if var is not None:
+            leaks.append((m.group(), var))
     assert not leaks, (
         f"daily_flow.lunch directive has bare ADK placeholders: {leaks}. "
-        "Anything the user-facing text wants to render literally as {x} must use "
-        "double braces: {{x}}."
+        "Anything the user-facing text wants to render literally as {x} must "
+        "either use no braces or break `isidentifier()`."
     )
