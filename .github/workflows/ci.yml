@@ -56,3 +56,34 @@ jobs:
 
       - name: Coverage (90% gate)
         run: pnpm test:coverage
+
+  python-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: '0.5.x'
+          enable-cache: true
+          cache-dependency-glob: apps/agent_py/uv.lock
+
+      - uses: extractions/setup-just@v2
+        with:
+          just-version: '1.36.0'
+
+      - name: Install Python dependencies
+        run: cd apps/agent_py && uv sync --frozen
+
+      - name: Lint (ruff)
+        run: just lint-py
+
+      - name: Typecheck (mypy)
+        run: just typecheck-py
+
+      # Full Python unit suite — also covers Tier-0 eval-set fixture-shape
+      # smoke (tests/evals/test_eval_cases.py). Tier-1 (real Gemini) is
+      # opt-in via LIFECOACH_EVAL_REAL_LLM and skipped here.
+      - name: Test (pytest)
+        run: just test-py
