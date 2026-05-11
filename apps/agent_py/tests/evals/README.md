@@ -44,7 +44,6 @@ them without further redesign:
 - `add_calendar_event_after_confirm` (follow-up)
 - `complete_task_uses_patch` (follow-up)
 - `workspace_disconnected_decline` (follow-up)
-- `empty_turn_recovery_kicks_in` (follow-up)
 
 ## Adding a new case
 

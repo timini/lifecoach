@@ -69,16 +69,14 @@ def _ev(role: str, text: str) -> _FakeEvent:
     return _FakeEvent(author=role, content=_FakeContent(parts=[_FakeEventPart(text=text)]))
 
 
-def test_transcript_from_events_drops_kickoff_tokens() -> None:
+def test_transcript_from_events_drops_session_start_kickoff() -> None:
     events: list[Any] = [
         _ev("user", "__session_start__"),
         _ev("user", "hi"),
         _ev("model", "hello"),
-        _ev("user", "__continue__"),
     ]
     out = transcript_from_events(events)
     assert "__session_start__" not in out
-    assert "__continue__" not in out
     assert "User: hi" in out
     assert "Coach: hello" in out
 

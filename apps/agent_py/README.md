@@ -37,7 +37,6 @@ src/lifecoach_agent/
   agent.py              # root Agent factory
   server.py             # FastAPI app
   contracts/            # Pydantic models — generated from packages/shared-types
-  chat/                 # empty-turn guard, recovery flow
   prompt/               # buildInstruction equivalents
   practices/            # practice directives (day_planning, evening_gratitude, journaling)
   state/                # UserState/UsageState/DailyFlow machines

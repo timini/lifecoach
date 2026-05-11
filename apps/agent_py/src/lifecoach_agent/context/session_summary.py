@@ -87,7 +87,7 @@ def transcript_from_events(events: list[Any] | None) -> str:
             if isinstance(t, str):
                 text_parts.append(t)
         text = re.sub(r"\s+", " ", " ".join(text_parts)).strip()
-        if not text or text in ("__session_start__", "__continue__"):
+        if not text or text == "__session_start__":
             continue
         author = getattr(ev, "author", None)
         role = "User" if author == "user" else "Coach"

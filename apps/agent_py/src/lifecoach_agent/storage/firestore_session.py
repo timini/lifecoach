@@ -10,8 +10,7 @@ full ADK `state` + `events` array. This module exposes:
   the SDK's `to_dict()` snapshot accessor onto our Protocol's `data()`.
 - `FirestoreSessionService` — extends ADK's `BaseSessionService` so the
   Runner can call `get_session(..., config=...)` and receive real
-  `Session` objects. Injects recovery events on read via the empty-
-  turn guard; the import is lazy so this module is callable without it.
+  `Session` objects.
 - `save_session_summary()` — used by `context.session_summary` to
   persist the lazily-generated yesterday/week summary onto the session
   doc's `state.summary`.
@@ -160,11 +159,6 @@ class FirestoreSessionService(BaseSessionService):
                 raw_events = [
                     e for e in raw_events if (e.get("timestamp") or 0) > config.after_timestamp
                 ]
-        # Splice synthetic recovery events for already-poisoned sessions
-        # so the model never sees its own broken pattern in history.
-        from lifecoach_agent.chat.empty_turn_guard import inject_recovery_events
-
-        raw_events = inject_recovery_events(raw_events)
         events: list[Event] = []
         for d in raw_events:
             ev = _to_event(d)

@@ -4,7 +4,6 @@ import type { User } from 'firebase/auth';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { eventsToMessages } from './eventHistory';
 import type { BrowserLocation } from './geolocation';
-import { captureChatEvent } from './sentry';
 import { type AssistantElement, type AssistantOp, parseSseBlock } from './sse';
 
 export interface UserMessage {
@@ -36,7 +35,6 @@ export interface UseChatStreamArgs {
 export interface UseChatStreamApi {
   messages: Message[];
   busy: boolean;
-  retryAttempt: number;
   sendText: (text: string, opts?: { hidden?: boolean }) => Promise<void>;
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   appendAssistantText: (text: string) => void;
@@ -44,10 +42,10 @@ export interface UseChatStreamApi {
 }
 
 /**
- * Owns the chat transcript state and the SSE round-trip with /api/chat. Pulls
- * the streaming body, applies ops to the assistant bubble, retries on
- * pre-headers blips, and falls back to /api/chat/history rehydration when the
- * stream lands empty (the empty-thought-turn surface).
+ * Owns the chat transcript state and the SSE round-trip with /api/chat. One
+ * attempt per turn: send, stream events into the assistant bubble, done.
+ * No retries, no fallback copy: if the request errors or the stream ends
+ * with no content, the bubble stays empty and the user retypes.
  *
  * Auth, location, sessionId, and viewMode are inputs — the page owns those.
  */
@@ -59,9 +57,6 @@ export function useChatStream({
 }: UseChatStreamArgs): UseChatStreamApi {
   const [messages, setMessages] = useState<Message[]>([]);
   const [busy, setBusy] = useState(false);
-  // 0 = first attempt in flight (or idle). 1+ = currently retrying after a
-  // network blip. Drives the "retrying…" indicator copy.
-  const [retryAttempt, setRetryAttempt] = useState(0);
 
   // Tracks sessionIds we've already kicked off in this tab — guards against
   // double-firing on StrictMode re-runs of the history-load effect.
@@ -139,7 +134,7 @@ export function useChatStream({
         { id: assistantId, role: 'assistant', elements: [], timestamp: Date.now() },
       ]);
 
-      const attemptOnce = async (): Promise<void> => {
+      try {
         const idToken = await user.getIdToken();
         const res = await fetch('/api/chat', {
           method: 'POST',
@@ -161,130 +156,30 @@ export function useChatStream({
           for (const block of raw.split(/\n\n+/)) {
             applyOps(assistantId, parseSseBlock(block));
           }
-          return;
-        }
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        for (;;) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const blocks = buffer.split(/\n\n/);
-          buffer = blocks.pop() ?? '';
-          for (const block of blocks) {
-            applyOps(assistantId, parseSseBlock(block));
+        } else {
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          for (;;) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const blocks = buffer.split(/\n\n/);
+            buffer = blocks.pop() ?? '';
+            for (const block of blocks) {
+              applyOps(assistantId, parseSseBlock(block));
+            }
           }
+          if (buffer.trim()) applyOps(assistantId, parseSseBlock(buffer));
         }
-        if (buffer.trim()) applyOps(assistantId, parseSseBlock(buffer));
-      };
-
-      const MAX_RETRIES = 2;
-      let succeeded = false;
-      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-        if (attempt > 0) {
-          setRetryAttempt(attempt);
-          await new Promise((r) => setTimeout(r, 600 * attempt));
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId && m.role === 'assistant' ? { ...m, elements: [] } : m,
-            ),
-          );
-        }
-        try {
-          await attemptOnce();
-          succeeded = true;
-          break;
-        } catch {
-          const rehydrated = await fetchAndApplyHistory().catch(() => null);
-          const replied = rehydrated?.some(
-            (m, i) =>
-              m.role === 'user' &&
-              m.text === text &&
-              rehydrated.slice(i + 1).some((later) => later.role === 'assistant'),
-          );
-          if (rehydrated && replied) {
-            setMessages(rehydrated);
-            succeeded = true;
-            break;
-          }
-        }
-      }
-      setRetryAttempt(0);
-
-      if (succeeded) {
-        const isVisible = (els: AssistantElement[]) =>
-          els.some(
-            (el) => el.kind !== 'tool-call' || (el.kind === 'tool-call' && el.done && el.ok),
-          );
-        let currentEmpty = false;
-        setMessages((prev) => {
-          const m = prev.find((x) => x.id === assistantId);
-          if (m && m.role === 'assistant' && !isVisible(m.elements)) currentEmpty = true;
-          return prev;
-        });
-        if (currentEmpty) {
-          const rehydrated = await fetchAndApplyHistory().catch(() => null);
-          const ourMessageLanded = rehydrated?.some(
-            (m, i) =>
-              m.role === 'user' &&
-              m.text === text &&
-              rehydrated.slice(i + 1).some((later) => later.role === 'assistant'),
-          );
-          if (rehydrated && ourMessageLanded) {
-            setMessages(rehydrated);
-          } else {
-            captureChatEvent('chat.empty_turn_fallback_shown', {
-              sessionId,
-              uid: user?.uid ?? null,
-              lastUserText: text,
-              rehydrationHadOurMessage: Boolean(rehydrated && !ourMessageLanded),
-              historyEventCount: rehydrated?.length ?? 0,
-            });
-            setMessages((prev) =>
-              prev.map((m) => {
-                if (m.id !== assistantId || m.role !== 'assistant') return m;
-                if (isVisible(m.elements)) return m;
-                return {
-                  ...m,
-                  elements: [
-                    {
-                      kind: 'text',
-                      text: 'Hmm, I missed that — could you say it again?',
-                    },
-                  ],
-                };
-              }),
-            );
-          }
-        }
-      } else {
-        captureChatEvent('chat.retry_exhausted', {
-          sessionId,
-          uid: user?.uid ?? null,
-          lastUserText: text,
-        });
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantId && m.role === 'assistant'
-              ? {
-                  ...m,
-                  elements: [
-                    ...m.elements,
-                    {
-                      kind: 'text',
-                      text: "Couldn't reach me just now — give it another go in a moment?",
-                    },
-                  ],
-                }
-              : m,
-          ),
-        );
+      } catch {
+        // Network / fetch failure. The assistant bubble stays empty;
+        // user can retype.
       }
 
       setBusy(false);
     },
-    [user, sessionId, viewMode, location, busy, applyOps, fetchAndApplyHistory],
+    [user, sessionId, viewMode, location, busy, applyOps],
   );
 
   // sendText is memoised on `busy`, so its identity flips on every send.
@@ -346,7 +241,6 @@ export function useChatStream({
   return {
     messages,
     busy,
-    retryAttempt,
     sendText,
     setMessages,
     appendAssistantText,

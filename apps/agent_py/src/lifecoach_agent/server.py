@@ -32,10 +32,8 @@ Per-turn behaviour mirrored from the TS:
      timing each branch.
   5. Build `InstructionContext`, log the rendered prompt at length, and
      call `runnerFor(ctx, uid, usagePolicy)` to mint a Runner.
-  6. Stream the model's events to the client; on first empty turn,
-     synthesise a `__continue__` user message and try once more
-     (issue #40 option B); if STILL empty, emit a recovery stub via
-     `pick_recovery_text` + `make_recovery_event` and persist it.
+  6. Stream the model's events to the client. Silent turns produce
+     no assistant content — the chat-quality e2e judge catches them.
   7. Log the `chat.turn` line in `finally`.
 """
 
@@ -62,11 +60,6 @@ from lifecoach_agent.auth import (
     VerifiedClaims,
     claims_to_firebase_user_like,
     verify_request,
-)
-from lifecoach_agent.chat.empty_turn_guard import (
-    CONTINUE_SENTINEL,
-    make_recovery_event,
-    pick_recovery_text,
 )
 from lifecoach_agent.context.air_quality import AirQualityClient
 from lifecoach_agent.context.calendar_density import CalendarDensityClient
@@ -154,7 +147,7 @@ def _session_has_user_interaction(session: Any) -> bool:
             (p.get("text") if isinstance(p, dict) else getattr(p, "text", None)) or ""
             for p in parts
         ).strip()
-        if joined and joined not in ("__session_start__", CONTINUE_SENTINEL):
+        if joined and joined != "__session_start__":
             return True
     return False
 
@@ -766,7 +759,6 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
         async def stream() -> AsyncIterator[bytes]:
             tool_invocations: list[dict[str, Any]] = []
             pending_by_id: dict[str, dict[str, Any]] = {}
-            retried = False
             first_text_ms: int | None = None
             choice_shown = False
             turn_ending_tools = {
@@ -889,89 +881,13 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                     if chunk is None:
                         break
                     yield chunk
-                first_pass_choice = await drive_task
+                _first_pass_choice = await drive_task  # noqa: F841 — kept for symmetry/log
                 timings["streamMs"] = _now_ms() - t_stream0
                 timings["ttfbMs"] = first_event_ms if first_event_ms is not None else -1
                 timings["ttftMs"] = first_text_ms if first_text_ms is not None else -1
 
-                # Empty-turn re-invoke (issue #40 option B).
-                if first_text_ms is None and not choice_shown and not first_pass_choice:
-                    retried = True
-                    t_retry0 = _now_ms()
-                    nudge_message = genai_types.Content(
-                        role="user", parts=[genai_types.Part(text=CONTINUE_SENTINEL)]
-                    )
-                    try:
-                        retry_task = asyncio.create_task(_drive_then_signal(nudge_message))
-                        while True:
-                            chunk = await _outer_queue.get()
-                            if chunk is None:
-                                break
-                            yield chunk
-                        await retry_task
-                    except Exception:  # noqa: BLE001
-                        pass
-                    timings["retryMs"] = _now_ms() - t_retry0
-
-                # Recovery stub (only if retry also produced no text and
-                # no choice tool fired in either pass).
-                if first_text_ms is None and not choice_shown:
-                    recovery = pick_recovery_text(tool_invocations)
-                    yield (
-                        b"data: "
-                        + json.dumps(
-                            {
-                                "author": "lifecoach",
-                                "partial": True,
-                                "content": {
-                                    "role": "model",
-                                    "parts": [{"text": recovery}],
-                                },
-                            }
-                        ).encode("utf-8")
-                        + b"\n\n"
-                    )
-                    synth_event_dict = make_recovery_event(
-                        recovery, f"recovery-{session_id}-{_now_ms()}"
-                    )
-                    append = getattr(runner.session_service, "append_event", None)
-                    if append is not None and runner_session is not None:
-                        # ADK's BaseSessionService.append_event takes a real
-                        # Event; convert from the dict shape that
-                        # `make_recovery_event` returns. Older in-tree fakes
-                        # accept the dict directly — try the typed call
-                        # first, fall back to the dict.
-                        with contextlib.suppress(Exception):
-                            from google.adk.events import Event as _AdkEvent
-
-                            try:
-                                synth = _AdkEvent.model_validate(synth_event_dict)
-                                await append(runner_session, synth)
-                            except Exception:  # noqa: BLE001
-                                await append(
-                                    session=runner_session, event=synth_event_dict
-                                )
-                    print(
-                        json.dumps(
-                            {
-                                "msg": "chat.empty_after_tool_recovery",
-                                "uid": effective_user_id,
-                                "sessionId": session_id,
-                                "tools": [t["name"] for t in tool_invocations],
-                            }
-                        )
-                    )
-                    capture_chat_event(
-                        "chat.empty_turn_recovered",
-                        {
-                            "uid": effective_user_id,
-                            "sessionId": session_id,
-                            "toolCount": len(tool_invocations),
-                            "tools": [t["name"] for t in tool_invocations],
-                            "streamMs": timings.get("streamMs"),
-                        },
-                    )
-
+                # Silent turns end here. No synthetic assistant event,
+                # no retry. Forward-fix path: capture as eval + tune prompt.
                 yield b"event: done\ndata: {}\n\n"
             except Exception as err:  # noqa: BLE001
                 err_msg = str(err)
@@ -1015,8 +931,6 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                             "memoriesCount": len(memories or []),
                             "hasYesterdaySummary": bool(yesterday_summary),
                             "hasWeekSummary": bool(week_summary),
-                            "emptyTurnRetried": retried,
-                            "emptyTurnRetrySucceeded": retried and first_text_ms is not None,
                             "recentGoalCount": len(recent_goal_updates or []),
                             "toolCount": len(tool_invocations),
                             "tools": tool_invocations,

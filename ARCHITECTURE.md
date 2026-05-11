@@ -159,13 +159,6 @@ sequenceDiagram
         CW->>U: render bubble / pill / widget
     end
 
-    alt model went silent (no text + no UI-tool fired)
-        AG->>LLM: synthetic "__continue__" user message (one retry)
-        opt retry also silent
-            AG-->>API: synthetic recovery event<br/>("Done. What next?")
-        end
-    end
-
     AG-->>API: event: done
     API-->>CW: event: done
 
@@ -316,7 +309,7 @@ Every `/chat` turn builds a fresh `Runner` from `RunnerForParams(ctx, uid, usage
 2. **Agent factory:** `agent = build_root_agent_for(ctx, tools, model=usage_policy.model)` — `name="lifecoach"`, system instruction = `build_instruction(ctx)` materialised string.
 3. **Runner:** `Runner(app_name="lifecoach", agent=agent, session_service=FirestoreSessionService(...))`.
 
-> **Wire contract gotcha:** the agent's `name` is on the SSE wire as `event.author`. The web client renders text events only when `author === "lifecoach"`. **Do not rename the agent without coordinating with `apps/web/src/lib/sse.ts`.** Recovery stubs author themselves as `"lifecoach"` directly to sidestep this.
+> **Wire contract gotcha:** the agent's `name` is on the SSE wire as `event.author`. The web client renders text events only when `author === "lifecoach"`. **Do not rename the agent without coordinating with `apps/web/src/lib/sse.ts`.**
 
 ### 7.3 System prompt (`prompt/build_instruction.py`)
 
@@ -368,7 +361,7 @@ Every tool lives in `src/lifecoach_agent/tools/` (one file, one tool factory). B
 | `upgrade_to_pro` | none | Renders Pro upgrade card | **yes (turn-ending)** |
 | `call_workspace` | `{service, resource, method, params}` (params is JSON-encoded **string** to dodge schema mismatches) | Generic Google Workspace dispatch (Gmail / Calendar / Tasks) via `google-api-python-client` | no |
 
-A turn-ending tool that successfully fires (`status: "shown"` / `"auth_prompted"` / `"oauth_prompted"` / `"upgrade_prompted"`) skips the empty-turn recovery path — the UI card *is* the agent's response.
+A turn-ending tool that successfully fires (`status: "shown"` / `"auth_prompted"` / `"oauth_prompted"` / `"upgrade_prompted"`) is the agent's response — the UI card stands in for any text reply.
 
 > **Generic vs narrow.** `call_workspace` is intentionally generic — one tool covers all of Gmail / Calendar / Tasks. Inside the service module the dispatcher is generic; the *main-agent* tool surface is narrow because the LLM does best with a small, purposeful surface. See `~/.claude/projects/.../memory/feedback_prefer_generic_tools.md`.
 
@@ -433,17 +426,18 @@ Long-term facts ("user has two kids named Alex and Sam"; "user runs 5k three tim
 
 Memory is read every turn (top-5 search keyed by the user message) and rendered as `RELEVANT_MEMORIES` in the prompt. The `memory_save` tool writes new facts; the agent is instructed to do this *silently* — no "I'm remembering that for you" announcements.
 
-### 7.10 Empty-turn guard (`chat/empty_turn_guard.py`)
+### 7.10 Silent turns (no recovery, by design)
 
-Gemini occasionally goes silent post-tool-call: it emits a `function_call`, the tool returns, and then the model produces zero text events. The guard handles this in two places:
+Gemini occasionally goes silent post-tool-call — emits a `function_call`, gets the tool response, then produces zero text events. **There is no automated recovery for this.** Earlier iterations of the agent (TS service + early Python rebuild) papered over silent turns by emitting a synthetic `"Done. What next?"` model event AND persisting it into the session. That created a poisoning spiral: Gemini saw the `user → "Done. What next?"` pattern in subsequent loads of the same session and started mimicking it on the very first pass — every following turn was silent before the model even saw the user's message.
 
-1. **Server-side, in-flight** (`server.py`'s `/chat` SSE generator):
-   - If the first model pass yields no text **and** no UI-directive tool fired, synthesise a `__continue__` user message and re-invoke the runner once.
-   - If that retry is also silent, emit a synthetic recovery event (`"Done. What next?"` / `"Got it — saved."` / `"All set — anything jump out?"` — chosen by `pick_recovery_text(tool_invocations)`) authored as `lifecoach`. Persist it on the session so future loads see a coherent history.
-2. **Server-side, on session load** (`FirestoreSessionService.get_session`):
-   - `inject_recovery_events(events)` walks the stored events list and splices recovery events into any pre-existing gaps left by older silent turns. Idempotent — a second pass produces no further changes. Drops events that match `is_poisoned_model_event` (thought-only `STOP` with no content).
+Today's behaviour:
 
-This guarantees every turn produces *something* visible to the user, while keeping the failure mode discoverable in `chat.empty_turn_recovered` Cloud Logging entries.
+- A silent turn ends cleanly with `event: done` and **no** assistant content.
+- Nothing synthetic is persisted to the session, so the next turn loads clean history.
+- Sessions written by the legacy guard (recovery model events + `__continue__` user events) are NOT filtered in code — they get cleaned up by a one-off Firestore script. We don't carry backwards-compat shims for a system that's gone.
+- The `chat-quality` e2e judge ([§12.2](#122-e2e--llm-judge)) flags silent turns as failures with a per-turn diagnostic, so silence is loud at the test boundary.
+
+If silent turns become a real production pattern again, the right fix is to address the root cause (prompt structure, tool design, model choice), not to re-introduce a stamp-collecting machine that contaminates the model's own context.
 
 ### 7.11 Observability
 
@@ -506,7 +500,7 @@ Failure modes the FE must handle:
 
 - `event: error\ndata: {"message": "..."}\n\n` — server-side exception during the stream (rare; auth errors return 401 before streaming starts).
 - Stream silently drops mid-flight — `useChatStream` falls back to `/history` rehydration.
-- Empty stream (200 OK with only padding + `event: done`) — handled by the empty-turn guard server-side; should never reach the client.
+- Empty stream (200 OK with only padding + `event: done`) — the model went silent. The FE shows nothing for that turn (no synthetic recovery — see [§7.10](#710-silent-turns-no-recovery-by-design)). The user can retype.
 
 The FE filters text events to `event.author === "lifecoach"` AND `event.partial === true` — see [§7.2](#72-adk-runner-wiring-mainpyrunner_for) for why the agent name is load-bearing.
 
@@ -607,18 +601,17 @@ Five distinct test surfaces. CI gates the lot at **90% line + branch coverage** 
 | **Python unit** | pytest | `apps/agent_py/tests/unit/` | Tools (with injected fakes), context fetchers (httpx + respx), storage (in-memory `FakeFirestore`), prompt assembly, server endpoints (httpx ASGI), real-Firestore adapter |
 | **Tier-0 eval shape** | pytest | `apps/agent_py/tests/evals/test_eval_cases.py` | JSON parses, every fixture has stable `eval_set_id`, agent module imports — free, deterministic, runs in `just eval` |
 | **Tier-1 eval (real LLM)** | pytest + ADK `AgentEvaluator` | same | Each `*.evalset.json` runs the agent end-to-end against real Gemini, asserts tool trajectory + final response. Gated by `LIFECOACH_EVAL_REAL_LLM=1`; manual / nightly only — costs money. `just eval-real` |
-| **E2E + LLM judge** | Playwright + Gemini judge | `apps/web/e2e/` | Drives the deployed UI: chat-persistence, sessions-drawer, **chat-quality** (3-turn coaching conversation, judged for substance by Gemini via Vertex). Catches the regression classes unit tests miss: empty-turn templates, agent silence, SSE wire-format drift, choice/auth widgets not rendering. |
+| **E2E + LLM judge** | Playwright + Gemini judge | `apps/web/e2e/` | Drives the deployed UI: chat-persistence, sessions-drawer, **chat-quality** (3-turn coaching conversation, judged for substance by Gemini via Vertex). Catches the regression classes unit tests miss: silent turns, SSE wire-format drift, choice/auth widgets not rendering. |
 
 ### 12.1 Eval fixtures (`apps/agent_py/tests/evals/fixtures/`)
 
 | `eval_set_id` | Tests |
 |---|---|
-| `morning_triage_full_flow` | Workspace-connected morning, day_planning ON. Verifies the PR #54 regression class — empty-turn after `triage_inbox`. |
+| `morning_triage_full_flow` | Workspace-connected morning, day_planning ON. Verifies the PR #54 regression class — model goes silent after `triage_inbox`. |
 | `add_calendar_event_after_confirm` | Confirm via single-choice → `call_workspace` → `events.insert(requestBody=...)`. |
 | `complete_task_uses_patch` | Codex P1 — must use `tasks.tasks.patch` (not delete) for completion. |
 | `find_workspace_specific_lookup` | Discovery dispatch resolves the right resource path. |
 | `workspace_disconnected_decline` | `google_linked` user → emits `connect_workspace`, never `call_workspace`. |
-| `empty_turn_recovery_kicks_in` | Tool call with no follow-up text → `__continue__` retry → recovery event injected. |
 
 ### 12.2 E2E + LLM judge
 
@@ -626,7 +619,7 @@ Five distinct test surfaces. CI gates the lot at **90% line + branch coverage** 
 
 The judge is prompted to flag the failure modes existing specs miss:
 
-- Hardcoded recovery templates ("Hmm, I missed that…", "Done. What next?")
+- Silent turns (the FE shows nothing — no fallback recovery message is emitted any more)
 - Empty bubbles
 - Verbatim repetition across turns
 - Hallucinated tool actions

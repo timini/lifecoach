@@ -58,7 +58,7 @@ export function ChatWindow() {
   const endRef = useRef<HTMLDivElement | null>(null);
   const todaySessionId = user ? sessionIdForToday(user.uid) : '';
 
-  const { messages, busy, retryAttempt, sendText, setMessages, appendAssistantText, markAnswered } =
+  const { messages, busy, sendText, setMessages, appendAssistantText, markAnswered } =
     useChatStream({ user, sessionId, viewMode, location });
 
   useEffect(() => {
@@ -407,7 +407,7 @@ export function ChatWindow() {
   );
 
   const showPending = busy && lastAssistantHasNoContent(messages);
-  const pendingLabel = retryAttempt > 0 ? `${t('retry')}… (${retryAttempt})` : t('breathing');
+  const pendingLabel = t('breathing');
 
   return (
     <ChatPageTemplate header={header} footer={footer} drawer={drawer}>

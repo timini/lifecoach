@@ -6,9 +6,9 @@ import { GoogleGenAI } from '@google/genai';
  * application-default login` locally) and asks for a per-turn pass /
  * fail verdict.
  *
- * The judge is instructed to flag the regression classes the existing
- * specs miss: hardcoded recovery templates ("Hmm, I missed that…"),
- * empty bubbles, off-topic responses, and hallucinated tool actions.
+ * The judge is instructed to flag the regression classes existing
+ * specs miss: silent turns / empty bubbles, off-topic responses, and
+ * hallucinated tool actions.
  */
 
 export interface JudgeTurn {
@@ -34,7 +34,7 @@ const PROJECT =
   'lifecoach-dev-zvb6d';
 
 // Match the agent's model. The judge doesn't need a smarter tier — the
-// failure modes (recovery template, empty, off-topic) are obvious.
+// failure modes (silent / empty / off-topic) are obvious.
 const JUDGE_MODEL = process.env.E2E_JUDGE_MODEL ?? 'gemini-3-flash-preview';
 const JUDGE_LOCATION = process.env.E2E_JUDGE_LOCATION ?? 'global';
 
@@ -43,11 +43,7 @@ const JUDGE_PROMPT = `You are evaluating a multi-turn conversation between a use
 For EACH turn, score whether the assistant's reply is SUBSTANTIVE and ON-TOPIC.
 
 A turn FAILS if the assistant:
-- Returns a hardcoded recovery / non-answer template such as:
-  • "Hmm, I missed that — could you say it again?"
-  • "Done. What next?"
-  • "All set — anything jump out, or want me to dig in?"
-  • Any short generic response that does not engage with what the user said.
+- Returns a generic non-answer that does not engage with what the user said (e.g. "Done. What next?", "Got it.", "Sure — anything else?" with no substance).
 - Returns an empty bubble or the literal token "<NO ASSISTANT REPLY>".
 - Repeats itself essentially verbatim across turns.
 - Hallucinates having performed an action that was not requested.

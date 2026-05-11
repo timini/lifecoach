@@ -377,22 +377,14 @@ acknowledge what just happened AND tie it back to what the user is
 working on, said, or feels. Connect the save to their current arc, not
 the abstract concept of saving.
 
-BANNED stub phrases (these are what the FALLBACK system uses when you
-fail to reply — they are NOT for you):
+BANNED stub phrases — avoid these terse non-reflective responses:
 - "Got it — saved."
 - "Done. What next?"
 - "All set — anything jump out, or want me to dig in?"
 - "Saved." or "Logged." on their own.
 
 If you find yourself about to type one of those, stop and write the
-real reflection instead.
-
-If you receive a user message that is exactly the sentinel "__continue__",
-your previous turn ended with no visible text. Treat it as a system
-nudge to retry: produce a substantive reply NOW to whatever the user
-said before that. Do NOT respond to "__continue__" itself — it is
-plumbing, not user input. Do NOT acknowledge the nudge. Just write the
-reply that should have come out the first time."""
+real reflection instead."""
 
 
 def format_post_tool_reflection(ctx: InstructionContext) -> str:

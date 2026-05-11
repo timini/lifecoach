@@ -74,9 +74,9 @@ class FakeSessionService:
 class FakeRunner:
     """Yields whatever events are passed in — once per `run_async` call.
 
-    `events_per_call` is consumed left-to-right: first call returns the
-    first list, second call (the empty-turn retry) returns the next.
-    """
+    `events_per_call` is consumed left-to-right; entries beyond the
+    first are no-ops today but kept for tests that need multi-call
+    runners in future."""
 
     events_per_call: list[list[dict[str, Any]]]
     raise_on_call: int | None = None
@@ -438,9 +438,11 @@ async def test_chat_400_when_required_fields_missing() -> None:
 
 
 @pytest.mark.asyncio
-async def test_chat_empty_turn_recovery_emits_stub_when_retry_also_empty() -> None:
-    """Two empty passes → recovery stub + persistence call."""
-    runner = FakeRunner(events_per_call=[[], []])  # both passes empty
+async def test_chat_streams_text_when_model_responds() -> None:
+    """Happy-path sanity — model emits text, FE receives it, `event:
+    done` terminates. The only chat-level test we need; everything else
+    around silent turns is the judged chat-quality e2e's problem."""
+    runner = FakeRunner(events_per_call=[[_model_text("hi back")]])
     app = _make_app(runner=runner)
     async with (
         _client(app) as c,
@@ -451,31 +453,8 @@ async def test_chat_empty_turn_recovery_emits_stub_when_retry_also_empty() -> No
         ) as res,
     ):
         text = await _drain(res)
-    # Recovery copy is one of `pick_recovery_text`'s outputs for an
-    # empty tool list — "Done. What next?".
-    assert "Done. What next?" in text
+    assert "hi back" in text
     assert "event: done" in text
-    # The synthetic event is also persisted via append_event.
-    assert len(runner.session_service.appended) == 1
-
-
-@pytest.mark.asyncio
-async def test_chat_retry_pass_succeeds_and_no_stub_appears() -> None:
-    """First pass empty, retry produces text → no recovery stub."""
-    runner = FakeRunner(events_per_call=[[], [_model_text("recovered with text")]])
-    app = _make_app(runner=runner)
-    async with (
-        _client(app) as c,
-        c.stream(
-            "POST",
-            "/chat",
-            json={"userId": "u1", "sessionId": "s1", "message": "hi"},
-        ) as res,
-    ):
-        text = await _drain(res)
-    assert "recovered with text" in text
-    # Stub copy must NOT appear when retry succeeded.
-    assert "Done. What next?" not in text
 
 
 @pytest.mark.asyncio
