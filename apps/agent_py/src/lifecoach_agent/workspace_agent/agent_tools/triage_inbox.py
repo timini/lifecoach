@@ -28,7 +28,7 @@ _TRIAGE_DESCRIPTION = (
     "confirms."
 )
 
-_TRIAGE_INSTRUCTION = """You are the inbox-triage sub-agent for a coaching assistant.
+TRIAGE_INBOX_INSTRUCTION = """You are the inbox-triage sub-agent for a coaching assistant.
 
 The parent will hand you a JSON message such as {} or {"since":"1d"} — parse it and use the "since" key (default "1d") as the inbox window.
 
@@ -81,7 +81,7 @@ def create_triage_inbox_tool(deps: WorkspaceToolDeps) -> AgentTool:
         deps=deps,
         name=TRIAGE_INBOX_TOOL_NAME,
         description=_TRIAGE_DESCRIPTION,
-        instruction=_TRIAGE_INSTRUCTION,
+        instruction=TRIAGE_INBOX_INSTRUCTION,
         input_schema=TriageInboxInput,
     )
     return AgentTool(agent=agent, skip_summarization=False)
