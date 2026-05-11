@@ -13,16 +13,29 @@ from lifecoach_agent.contracts import AUTH_USER_TOOL_NAME, AuthMode  # noqa: F40
 
 
 async def auth_user(mode: str, email: str | None = None) -> dict[str, Any]:
-    """Invite the user to save their progress by signing in with Google or
-    email. Use ONLY in the anonymous user state, after several meaningful
-    turns, when the user has shared enough that losing it on device change
-    would frustrate them. Do NOT call this on the first turn. After
-    calling, write NO additional text that turn — the sign-in prompt is
-    the entire response.
+    """Surface a sign-in UI prompt to the user. Used in two flows:
+
+    1. SAVING PROGRESS (anonymous users only): after several meaningful
+       turns, when the user has shared enough that losing it on device
+       change would frustrate them. Do NOT lead with this on turn 1.
+
+    2. UNLOCKING WORKSPACE ACCESS (anonymous / email_pending /
+       email_verified — see WORKSPACE-ASK TRIGGER in the system prompt):
+       the moment the user asks for ANYTHING needing Google Workspace
+       (read/triage email, calendar today, list/add/complete tasks),
+       call this on the FIRST turn with mode="google". No clarifying
+       questions; the OAuth widget IS the reply. Workspace scopes are a
+       separate grant via `connect_workspace` once the user reaches
+       `google_linked` — the user only needs to be told they're signing
+       in first.
+
+    After calling, write NO additional text that turn — the sign-in
+    prompt is the entire response.
 
     Args:
-        mode: How to upgrade. "google" = one-click Google sign-in;
-            "email" = email magic-link.
+        mode: How to upgrade. "google" = one-click Google sign-in
+            (required for the WORKSPACE flow); "email" = email magic-link
+            (only useful for the saving-progress flow).
         email: Only for mode="email". If you already know the user's
             email, pass it; otherwise omit and the UI will ask.
     """
