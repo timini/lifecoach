@@ -85,9 +85,8 @@ def test_chat_returns_substantive_reply_on_simple_greeting(message: str) -> None
     #    to the FE. Any error here is a regression of the silent-turn
     #    class.
     errors = [(t, d) for (t, d) in events if t == "error"]
-    assert not errors, (
-        f"agent emitted error events for {message!r}: "
-        + ", ".join((d or {}).get("message", "") for _, d in errors)
+    assert not errors, f"agent emitted error events for {message!r}: " + ", ".join(
+        (d or {}).get("message", "") for _, d in errors
     )
 
     # 2. At least one assistant text token. Any assistant content

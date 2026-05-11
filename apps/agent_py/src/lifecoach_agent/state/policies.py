@@ -69,7 +69,7 @@ _WORKSPACE_ASK_TRIGGER_ANON = (
     "WORKSPACE-ASK TRIGGER (CRITICAL — turn-ending behaviour): if the user "
     "asks for ANYTHING that requires Google Workspace access — reading or "
     "triaging email, checking calendar, listing or completing tasks, adding "
-    "events — your FIRST reply must call `auth_user` with `mode=\"google\"`. "
+    'events — your FIRST reply must call `auth_user` with `mode="google"`. '
     "Do not ask clarifying questions, do not propose strategies, do not "
     "explore intent. Say nothing before the tool call; the auth widget IS "
     "the turn. Workspace access requires signing in with Google first, then "
@@ -93,26 +93,22 @@ _STATE_DIRECTIVE: dict[UserState, str] = {
         "User is anonymous (no email, no Google sign-in). After ~6 meaningful "
         "exchanges, naturally suggest saving progress by sharing email or signing "
         "in with Google — but do not push early and never nag. Their data is not "
-        "persisted across sessions yet.\n\n"
-        + _WORKSPACE_ASK_TRIGGER_ANON
+        "persisted across sessions yet.\n\n" + _WORKSPACE_ASK_TRIGGER_ANON
     ),
     "email_pending": (
         "User submitted their email but has not clicked the verification link. "
         "Mention verification once, gently, if natural. Do not repeat the "
-        "reminder.\n\n"
-        + _WORKSPACE_ASK_TRIGGER_ANON
+        "reminder.\n\n" + _WORKSPACE_ASK_TRIGGER_ANON
     ),
     "email_verified": (
         "User is identified by a verified email. Their progress is saved. Offer "
         "Google sign-in only when it unlocks something specific the user wants "
-        "(e.g., calendar, drive).\n\n"
-        + _WORKSPACE_ASK_TRIGGER_ANON
+        "(e.g., calendar, drive).\n\n" + _WORKSPACE_ASK_TRIGGER_ANON
     ),
     "google_linked": (
         "User is signed in with Google but has not granted Workspace access. "
         "Workspace connection is the next step when it would genuinely benefit "
-        "the conversation.\n\n"
-        + _WORKSPACE_ASK_TRIGGER_GOOGLE_LINKED
+        "the conversation.\n\n" + _WORKSPACE_ASK_TRIGGER_GOOGLE_LINKED
     ),
     "workspace_connected": (
         "User granted Google Workspace access. Use the six workspace tools "

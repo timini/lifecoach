@@ -14,14 +14,13 @@ from lifecoach_agent.workspace_agent.agent_tools.triage_inbox import (
     parse_triage_report,
 )
 
-
 _VALID_REPORT_JSON = (
-    '{'
+    "{"
     '"noise":[{"id":"m1","from":"news@x","subject":"Digest"}],'
     '"actions":[{"id":"m2","from":"a@x","subject":"Sign-off","task":"sign contract by Friday"}],'
     '"events":[{"id":"m3","subject":"Lunch","proposedStart":"2026-05-12T12:30:00+01:00"}],'
     '"info":[{"id":"m4","from":"school@x","subject":"Photo day","note":"Friday, uniform"}]'
-    '}'
+    "}"
 )
 
 
@@ -79,9 +78,7 @@ def test_first_marker_wins_when_multiple_present() -> None:
 
 def test_marker_with_surrounding_text_still_parses() -> None:
     text = (
-        "Here's the triage:\n"
-        f"<TRIAGE_REPORT>{_VALID_REPORT_JSON}</TRIAGE_REPORT>\n"
-        "Hope that helps."
+        f"Here's the triage:\n<TRIAGE_REPORT>{_VALID_REPORT_JSON}</TRIAGE_REPORT>\nHope that helps."
     )
     out = parse_triage_report(text)
     assert out.status == "ok"

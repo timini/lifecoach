@@ -426,9 +426,7 @@ def build_app() -> Any:
             and ctx.user_state == "workspace_connected"
         ):
             tools.extend(
-                create_workspace_tools(
-                    WorkspaceModuleDeps(store=workspace_tokens_store, uid=uid)
-                )
+                create_workspace_tools(WorkspaceModuleDeps(store=workspace_tokens_store, uid=uid))
             )
         if usage_policy.upgrade_tool_available:
             tools.append(create_upgrade_to_pro_tool())

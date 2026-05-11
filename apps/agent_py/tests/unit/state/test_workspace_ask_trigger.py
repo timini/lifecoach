@@ -22,7 +22,6 @@ import pytest
 
 from lifecoach_agent.state import UserState, UserStateMachine
 
-
 _PRE_SIGNIN_STATES: tuple[UserState, ...] = (
     "anonymous",
     "email_pending",

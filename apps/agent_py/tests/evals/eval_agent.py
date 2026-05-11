@@ -181,9 +181,7 @@ def _make_stub_tools_for_state(state: UserState) -> list[Any]:
         """Profile write — eval stub."""
         return {"status": "stubbed"}
 
-    async def log_goal_update(
-        goal: str, status: str, note: str | None = None
-    ) -> dict[str, Any]:
+    async def log_goal_update(goal: str, status: str, note: str | None = None) -> dict[str, Any]:
         """Goal-update log — eval stub."""
         return {"status": "stubbed"}
 
@@ -258,7 +256,8 @@ def _make_stub_tools_for_state(state: UserState) -> list[Any]:
             return {"status": "stubbed"}
 
         async def complete_task(
-            id: str, taskListId: str = "@default"  # noqa: N803
+            id: str,
+            taskListId: str = "@default",  # noqa: N803
         ) -> dict[str, Any]:
             """Tasks patch — eval stub."""
             return {"status": "stubbed"}

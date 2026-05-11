@@ -16,7 +16,7 @@ FIND_WORKSPACE_TOOL_NAME = "find_workspace"
 
 _FIND_DESCRIPTION = (
     "Use to look up specific information across the user's Gmail / Calendar / "
-    "Tasks (e.g. \"Sarah's email last week\", \"what's on Thursday afternoon\", "
+    'Tasks (e.g. "Sarah\'s email last week", "what\'s on Thursday afternoon", '
     '"open tasks for the project review"). Do NOT use for inbox triage — call '
     "triage_inbox for that. Returns a natural-language answer with relevant "
     "ids/links. Read-only."

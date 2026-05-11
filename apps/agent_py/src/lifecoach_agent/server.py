@@ -344,10 +344,7 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                     lut = getattr(s, "lastUpdateTime", 0)
                 # Session.last_update_time is in seconds (float); the wire
                 # format here is unix-ms.
-                if isinstance(lut, float) and lut < 1e11:
-                    ts_raw = int(lut * 1000)
-                else:
-                    ts_raw = lut
+                ts_raw = int(lut * 1000) if isinstance(lut, float) and lut < 1e11 else lut
             ts = int(ts_raw) if isinstance(ts_raw, int | float) else 0
             items.append({"sessionId": sid, "lastUpdateTime": ts})
         items.sort(key=lambda x: cast(int, x["lastUpdateTime"]), reverse=True)

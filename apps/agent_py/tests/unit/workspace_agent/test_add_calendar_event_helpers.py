@@ -14,7 +14,6 @@ from lifecoach_agent.workspace_agent.tools.add_calendar_event import (
     _add_minutes,
 )
 
-
 # --- _add_days_iso (all-day events) --------------------------------------
 
 

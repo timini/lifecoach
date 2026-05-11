@@ -13,9 +13,7 @@ from typing import Any
 from lifecoach_agent.contracts.models import EventProjection, EventTime
 
 
-def project_calendar_event(
-    raw: dict[str, Any], calendar_id: str | None = None
-) -> EventProjection:
+def project_calendar_event(raw: dict[str, Any], calendar_id: str | None = None) -> EventProjection:
     attendees = [
         a.get("email")
         for a in (raw.get("attendees") or [])

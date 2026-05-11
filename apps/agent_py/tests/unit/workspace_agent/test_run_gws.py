@@ -10,11 +10,10 @@ not_found, etc.) must NOT delete the doc.
 
 from __future__ import annotations
 
+import sys
 from typing import Any
 
 import pytest
-
-import sys
 
 from lifecoach_agent.storage.workspace_tokens import ScopeRequiredError
 from lifecoach_agent.workspace_agent import gws_client
