@@ -252,3 +252,113 @@ def practice_enabled_path(practice_id: str) -> str:
     e.g. `practices.day_planning.enabled`. Mirrors `practiceEnabledPath()`.
     """
     return f"practices.{practice_id}.enabled"
+
+
+# --- workspace projections -----------------------------------------------
+#
+# Shared shapes for the workspace sub-agent (Gmail / Calendar / Tasks).
+# The sub-agent's read tools project raw Google API responses into these
+# shapes before returning to the LLM — base64 bodies decoded, header
+# bloat dropped, irrelevant fields stripped. Mirrors
+# `packages/shared-types/src/workspaceProjections.ts`.
+
+
+class MessageProjection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    threadId: str  # noqa: N815 — wire camelCase preserved for parity
+    from_: str = Field(alias="from")
+    subject: str
+    date: str
+    snippet: str
+    body: str
+    truncated: bool
+    headers: dict[str, str] | None = None
+
+
+class EventTime(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    dateTime: str | None = None  # noqa: N815
+    date: str | None = None
+    timeZone: str | None = None  # noqa: N815
+
+
+class EventProjection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    calendarId: str | None = None  # noqa: N815
+    summary: str
+    start: EventTime
+    end: EventTime
+    location: str | None = None
+    attendees: list[str] | None = None
+    link: str | None = None
+    status: str | None = None
+    description: str | None = None
+
+
+class TaskProjection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    taskListId: str  # noqa: N815
+    title: str
+    due: str | None = None
+    status: Literal["needsAction", "completed"]
+    notes: str | None = None
+    completed: str | None = None
+
+
+# --- triage report -------------------------------------------------------
+
+
+class TriageNoise(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    threadId: str | None = None  # noqa: N815
+    from_: str = Field(alias="from")
+    subject: str
+
+
+class TriageAction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    threadId: str | None = None  # noqa: N815
+    from_: str = Field(alias="from")
+    subject: str
+    task: str
+
+
+class TriageEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    threadId: str | None = None  # noqa: N815
+    subject: str
+    proposedStart: str  # noqa: N815
+    proposedEnd: str | None = None  # noqa: N815
+    location: str | None = None
+
+
+class TriageInfo(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    threadId: str | None = None  # noqa: N815
+    from_: str = Field(alias="from")
+    subject: str
+    note: str
+
+
+class TriageReport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    noise: list[TriageNoise]
+    actions: list[TriageAction]
+    events: list[TriageEvent]
+    info: list[TriageInfo]

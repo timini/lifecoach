@@ -79,22 +79,23 @@ def test_workspace_arm_when_workspace_connected() -> None:
     out = day_planning.directive(_ctx(user_state="workspace_connected"))  # type: ignore[misc]
     assert out is not None
     assert "Archive these" in out
-    assert "call_workspace" in out
-    assert "calendar.events.insert" in out
+    assert "triage_inbox" in out
+    assert "archive_messages" in out
+    assert "add_calendar_event" in out
 
 
 def test_light_arm_when_google_linked() -> None:
     out = day_planning.directive(_ctx(user_state="google_linked"))  # type: ignore[misc]
     assert out is not None
     assert "most important thing" in out
-    assert "call_workspace" not in out
+    assert "triage_inbox" not in out
     assert "Archive these" not in out
 
 
 def test_light_arm_when_anonymous() -> None:
     out = day_planning.directive(_ctx(user_state="anonymous"))  # type: ignore[misc]
     assert out is not None
-    assert "call_workspace" not in out
+    assert "triage_inbox" not in out
 
 
 def test_directive_stamps_idempotency_key() -> None:
@@ -128,14 +129,16 @@ def test_metadata_offer_hint_present() -> None:
 def test_examples_workspace_arm() -> None:
     out = day_planning.examples(_ctx(user_state="workspace_connected"))  # type: ignore[misc]
     assert out is not None
-    assert "call_workspace" in out
+    assert "triage_inbox" in out
+    assert "archive_messages" in out
 
 
 def test_examples_light_arm() -> None:
     out = day_planning.examples(_ctx(user_state="anonymous"))  # type: ignore[misc]
     assert out is not None
-    # Light example doesn't reference call_workspace.
-    assert "call_workspace" not in out
+    # Light example doesn't reference workspace tools.
+    assert "triage_inbox" not in out
+    assert "archive_messages" not in out
 
 
 # --- replace() smoke (dataclass invariants) ------------------------------

@@ -68,7 +68,10 @@ from lifecoach_agent.tools import (
     create_update_user_profile_tool,
     create_upgrade_to_pro_tool,
 )
-from lifecoach_agent.workspace_agent.call_workspace import create_call_workspace_tool
+from lifecoach_agent.workspace_agent import (
+    WorkspaceModuleDeps,
+    create_workspace_tools,
+)
 
 APP_NAME = "lifecoach"
 log = logging.getLogger("lifecoach_agent.main")
@@ -412,7 +415,11 @@ def build_app() -> Any:
             and workspace_tokens_store is not None
             and ctx.user_state == "workspace_connected"
         ):
-            tools.append(create_call_workspace_tool(store=workspace_tokens_store, uid=uid))
+            tools.extend(
+                create_workspace_tools(
+                    WorkspaceModuleDeps(store=workspace_tokens_store, uid=uid)
+                )
+            )
         if usage_policy.upgrade_tool_available:
             tools.append(create_upgrade_to_pro_tool())
         # Practices contribute their own tools (e.g. log_gratitude).

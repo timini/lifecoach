@@ -75,20 +75,32 @@ def test_illegal_transitions_throw() -> None:
 
 def test_anonymous_only_core_tools_and_share_location() -> None:
     p = UserStateMachine("anonymous").policy()
-    assert "call_workspace" not in p.tools
+    assert "triage_inbox" not in p.tools
+    assert "archive_messages" not in p.tools
     assert "connect_workspace" not in p.tools
     assert {"kind": "share_location_button"} in p.ui_affordances
     assert {"kind": "save_progress_suggestion"} in p.ui_affordances
     assert re.search(r"anonymous", p.directive, re.I)
 
 
-def test_workspace_connected_is_only_state_with_call_workspace() -> None:
-    states_with_call = [
+def test_workspace_connected_is_only_state_with_workspace_tools() -> None:
+    workspace_tools = {
+        "triage_inbox",
+        "find_workspace",
+        "archive_messages",
+        "add_calendar_event",
+        "add_task",
+        "complete_task",
+    }
+    states_with_workspace = [
         UserStateMachine(s).policy().state
         for s in ALL_STATES
-        if "call_workspace" in UserStateMachine(s).policy().tools
+        if workspace_tools & set(UserStateMachine(s).policy().tools)
     ]
-    assert states_with_call == ["workspace_connected"]
+    assert states_with_workspace == ["workspace_connected"]
+    # And workspace_connected exposes ALL six.
+    ws_tools = set(UserStateMachine("workspace_connected").policy().tools)
+    assert workspace_tools.issubset(ws_tools)
 
 
 def test_google_linked_and_workspace_connected_expose_connect_workspace() -> None:

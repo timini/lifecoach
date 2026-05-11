@@ -33,10 +33,20 @@ _STATE_ADDITIONAL_TOOLS: dict[UserState, tuple[ToolName, ...]] = {
     # emits `connect_workspace` (UI directive, no auth handling) to
     # trigger the browser's GIS popup.
     "google_linked": ("connect_workspace",),
-    # workspace_connected users can use `call_workspace` for Gmail /
-    # Calendar / Tasks. `connect_workspace` stays available so reconnects
-    # work if the user narrows scopes or the token gets revoked.
-    "workspace_connected": ("call_workspace", "connect_workspace"),
+    # workspace_connected users get the full Google Workspace surface:
+    # 2 AgentTools wrapping the workspace sub-agent (read flows) + 4
+    # narrow write FunctionTools. `connect_workspace` stays available
+    # so reconnects work if the user narrows scopes or the token is
+    # revoked.
+    "workspace_connected": (
+        "triage_inbox",
+        "find_workspace",
+        "archive_messages",
+        "add_calendar_event",
+        "add_task",
+        "complete_task",
+        "connect_workspace",
+    ),
 }
 
 
@@ -62,9 +72,11 @@ _STATE_DIRECTIVE: dict[UserState, str] = {
         "benefit (calendar context, checking email, finding a file)."
     ),
     "workspace_connected": (
-        "User granted Google Workspace access. You may call run_gws when the user "
-        "asks something that requires it. Never speculate about their workspace "
-        "contents — call the tool."
+        "User granted Google Workspace access. Use the six workspace tools "
+        "(triage_inbox, find_workspace, archive_messages, add_calendar_event, "
+        "add_task, complete_task) when the user asks something that requires "
+        "their workspace. Never speculate about their workspace contents — "
+        "call the tool."
     ),
 }
 

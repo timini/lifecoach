@@ -77,14 +77,15 @@ describe('UserStateMachine — illegal transitions throw', () => {
 describe('UserStateMachine — policy per state', () => {
   it('anonymous has only core tools and share-location affordance', () => {
     const p = new UserStateMachine('anonymous').policy();
-    expect(p.tools).not.toContain('call_workspace');
+    expect(p.tools).not.toContain('triage_inbox');
+    expect(p.tools).not.toContain('archive_messages');
     expect(p.tools).not.toContain('connect_workspace');
     expect(p.uiAffordances).toContainEqual({ kind: 'share_location_button' });
     expect(p.uiAffordances).toContainEqual({ kind: 'save_progress_suggestion' });
     expect(p.directive).toMatch(/anonymous/i);
   });
 
-  it('workspace_connected is the only state with call_workspace', () => {
+  it('workspace_connected is the only state with the workspace tools', () => {
     const all = (
       [
         'anonymous',
@@ -95,8 +96,22 @@ describe('UserStateMachine — policy per state', () => {
       ] as const
     ).map((s) => new UserStateMachine(s).policy());
 
-    const withCall = all.filter((p) => p.tools.includes('call_workspace')).map((p) => p.state);
-    expect(withCall).toEqual(['workspace_connected']);
+    const workspaceTools = [
+      'triage_inbox',
+      'find_workspace',
+      'archive_messages',
+      'add_calendar_event',
+      'add_task',
+      'complete_task',
+    ] as const;
+    const withWorkspace = all
+      .filter((p) => workspaceTools.some((t) => p.tools.includes(t)))
+      .map((p) => p.state);
+    expect(withWorkspace).toEqual(['workspace_connected']);
+
+    // And workspace_connected exposes ALL six.
+    const ws = new UserStateMachine('workspace_connected').policy().tools;
+    for (const t of workspaceTools) expect(ws).toContain(t);
   });
 
   it('google_linked and workspace_connected both expose connect_workspace (reconnect path)', () => {
@@ -219,15 +234,20 @@ describe('UserStateMachine — policy per state', () => {
           ],
           "state": "workspace_connected",
           "tools": [
+            "add_calendar_event",
+            "add_task",
+            "archive_messages",
             "ask_multiple_choice_question",
             "ask_single_choice_question",
             "auth_user",
-            "call_workspace",
+            "complete_task",
             "connect_workspace",
+            "find_workspace",
             "google_search",
             "log_goal_update",
             "memory_save",
             "memory_search",
+            "triage_inbox",
             "update_user_profile",
           ],
         },
