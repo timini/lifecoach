@@ -54,26 +54,54 @@ _STATE_ADDITIONAL_TOOLS: dict[UserState, tuple[ToolName, ...]] = {
 }
 
 
+_WORKSPACE_ASK_TRIGGER_ANON = (
+    "WORKSPACE-ASK TRIGGER (CRITICAL — turn-ending behaviour): if the user "
+    "asks for ANYTHING that requires Google Workspace access — reading or "
+    "triaging email, checking calendar, listing or completing tasks, adding "
+    "events — your FIRST reply must call `auth_user` with `mode=\"google\"`. "
+    "Do not ask clarifying questions, do not propose strategies, do not "
+    "explore intent. Say nothing before the tool call; the auth widget IS "
+    "the turn. Workspace access requires signing in with Google first, then "
+    "granting Workspace scopes — the auth_user tool handles step one."
+)
+
+_WORKSPACE_ASK_TRIGGER_GOOGLE_LINKED = (
+    "WORKSPACE-ASK TRIGGER (CRITICAL — turn-ending behaviour): if the user "
+    "asks for ANYTHING that requires Google Workspace access — reading or "
+    "triaging email, checking calendar, listing or completing tasks, adding "
+    "events — your FIRST reply must call `connect_workspace`. Do not ask "
+    "clarifying questions, do not propose strategies, do not explore intent. "
+    "Say nothing before the tool call; the connect widget IS the turn. The "
+    "user is already signed in with Google; they just need to grant "
+    "Workspace scopes."
+)
+
+
 _STATE_DIRECTIVE: dict[UserState, str] = {
     "anonymous": (
         "User is anonymous (no email, no Google sign-in). After ~6 meaningful "
         "exchanges, naturally suggest saving progress by sharing email or signing "
         "in with Google — but do not push early and never nag. Their data is not "
-        "persisted across sessions yet."
+        "persisted across sessions yet.\n\n"
+        + _WORKSPACE_ASK_TRIGGER_ANON
     ),
     "email_pending": (
         "User submitted their email but has not clicked the verification link. "
-        "Mention verification once, gently, if natural. Do not repeat the reminder."
+        "Mention verification once, gently, if natural. Do not repeat the "
+        "reminder.\n\n"
+        + _WORKSPACE_ASK_TRIGGER_ANON
     ),
     "email_verified": (
         "User is identified by a verified email. Their progress is saved. Offer "
         "Google sign-in only when it unlocks something specific the user wants "
-        "(e.g., calendar, drive)."
+        "(e.g., calendar, drive).\n\n"
+        + _WORKSPACE_ASK_TRIGGER_ANON
     ),
     "google_linked": (
         "User is signed in with Google but has not granted Workspace access. "
-        "Offer Workspace connection only when the conversation would genuinely "
-        "benefit (calendar context, checking email, finding a file)."
+        "Workspace connection is the next step when it would genuinely benefit "
+        "the conversation.\n\n"
+        + _WORKSPACE_ASK_TRIGGER_GOOGLE_LINKED
     ),
     "workspace_connected": (
         "User granted Google Workspace access. Use the six workspace tools "

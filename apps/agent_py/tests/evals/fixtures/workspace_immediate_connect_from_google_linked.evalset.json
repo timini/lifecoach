@@ -1,0 +1,73 @@
+{
+  "eval_set_id": "workspace_immediate_connect_from_google_linked",
+  "name": "google_linked user asks for a workspace op → connect_workspace on turn 1",
+  "description": "Replaces the older workspace_disconnected_decline fixture (which used a softer trigger and didn't enforce turn-1 behaviour). The user is in `google_linked` state — signed in with Google but hasn't granted Workspace scopes. The moment they ask for a Gmail / Calendar / Tasks operation, the agent's FIRST reply must be `connect_workspace` with no clarifying questions, no strategy probes, no chit-chat. Real-world incident on 2026-05-11: the agent took 4 turns of clarification before mentioning the connection blocker. The TRIGGER block added to `_STATE_DIRECTIVE['google_linked']` is what this case proves.",
+  "eval_cases": [
+    {
+      "eval_id": "case_01_triage_my_emails",
+      "session_input": {
+        "app_name": "lifecoach",
+        "user_id": "test-user-google-linked-triage",
+        "state": {
+          "_lifecoach_user_state": "google_linked",
+          "_lifecoach_now": "2026-05-12T09:00:00+01:00"
+        }
+      },
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [{ "text": "triage my emails" }],
+            "role": "user"
+          },
+          "intermediate_data": {
+            "tool_uses": [{ "name": "connect_workspace", "args": {} }]
+          }
+        }
+      ]
+    },
+    {
+      "eval_id": "case_02_calendar_today",
+      "session_input": {
+        "app_name": "lifecoach",
+        "user_id": "test-user-google-linked-cal",
+        "state": {
+          "_lifecoach_user_state": "google_linked",
+          "_lifecoach_now": "2026-05-12T09:00:00+01:00"
+        }
+      },
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [{ "text": "what's on my calendar today?" }],
+            "role": "user"
+          },
+          "intermediate_data": {
+            "tool_uses": [{ "name": "connect_workspace", "args": {} }]
+          }
+        }
+      ]
+    },
+    {
+      "eval_id": "case_03_check_my_inbox",
+      "session_input": {
+        "app_name": "lifecoach",
+        "user_id": "test-user-google-linked-inbox",
+        "state": {
+          "_lifecoach_user_state": "google_linked",
+          "_lifecoach_now": "2026-05-12T09:00:00+01:00"
+        }
+      },
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [{ "text": "check my inbox" }],
+            "role": "user"
+          },
+          "intermediate_data": {
+            "tool_uses": [{ "name": "connect_workspace", "args": {} }]
+          }
+        }
+      ]
+    }
+  ]
+}

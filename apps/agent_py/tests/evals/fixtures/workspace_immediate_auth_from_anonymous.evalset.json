@@ -1,0 +1,51 @@
+{
+  "eval_set_id": "workspace_immediate_auth_from_anonymous",
+  "name": "anonymous user asks for a workspace op → auth_user on turn 1",
+  "description": "Anonymous users (and email_pending / email_verified) need to sign in with Google before workspace scopes can be granted. The TRIGGER directive instructs the agent to call `auth_user({mode: \"google\"})` on the first workspace-related ask, no clarifying questions. The old `workspace_disconnected_decline` fixture only covered `google_linked`; this one closes the gap for the three pre-sign-in states.",
+  "eval_cases": [
+    {
+      "eval_id": "case_01_anon_triage_my_emails",
+      "session_input": {
+        "app_name": "lifecoach",
+        "user_id": "test-user-anon-triage",
+        "state": {
+          "_lifecoach_user_state": "anonymous",
+          "_lifecoach_now": "2026-05-12T09:00:00+01:00"
+        }
+      },
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [{ "text": "triage my emails" }],
+            "role": "user"
+          },
+          "intermediate_data": {
+            "tool_uses": [{ "name": "auth_user", "args": { "mode": "google" } }]
+          }
+        }
+      ]
+    },
+    {
+      "eval_id": "case_02_email_verified_check_calendar",
+      "session_input": {
+        "app_name": "lifecoach",
+        "user_id": "test-user-emailver-cal",
+        "state": {
+          "_lifecoach_user_state": "email_verified",
+          "_lifecoach_now": "2026-05-12T09:00:00+01:00"
+        }
+      },
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [{ "text": "what's on my calendar today?" }],
+            "role": "user"
+          },
+          "intermediate_data": {
+            "tool_uses": [{ "name": "auth_user", "args": { "mode": "google" } }]
+          }
+        }
+      ]
+    }
+  ]
+}

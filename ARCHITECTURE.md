@@ -220,6 +220,14 @@ stateDiagram-v2
 | `google_linked` | choice / profile / goals / memory, **`connect_workspace`** | "Connect Workspace" |
 | `workspace_connected` | choice / profile / goals / memory, **`triage_inbox`**, **`find_workspace`**, **`archive_messages`**, **`add_calendar_event`**, **`add_task`**, **`complete_task`**, **`connect_workspace`** (reconnect path) | "Workspace connected" badge |
 
+**WORKSPACE-ASK TRIGGER (immediate auth/connect rule, all states except `workspace_connected`).** When the user asks for anything that requires Workspace access — read inbox, triage, calendar today, list/add tasks — the agent's FIRST reply must be the auth or connect tool call, with no clarifying questions. The tool call IS the turn (turn-ending UI directive). Routing:
+
+- `anonymous` / `email_pending` / `email_verified` → call `auth_user({mode: "google"})`. The user has to sign in with Google first; granting Workspace scopes happens after, via `connect_workspace`, once the state machine reaches `google_linked`.
+- `google_linked` → call `connect_workspace`. The user is already signed in; this is the OAuth-scopes step.
+- `workspace_connected` → use the six workspace tools directly; no auth handshake needed.
+
+This rule was added in response to issue #62 — a regression where a `google_linked` user asked to triage emails and got four turns of clarification before the agent admitted it couldn't access the inbox. The directive lives in `_WORKSPACE_ASK_TRIGGER_*` blocks in `state/policies.py` and is appended to every non-`workspace_connected` `STATE_DIRECTIVE`. The negative-case eval `workspace_no_immediate_connect_for_unrelated_ask` guards against over-firing on unrelated wellbeing questions.
+
 **Per-state policy (UsageState → model + nudge + upgrade tool):**
 
 | `UsageState` | Model | Nudge | `upgrade_to_pro` |
@@ -629,7 +637,9 @@ Five distinct test surfaces. CI gates the lot at **90% line + branch coverage** 
 | `add_calendar_event_after_confirm` | Confirm via single-choice → `add_calendar_event({summary, start, end})`. |
 | `complete_task_uses_patch` | Codex P1 — must use `complete_task` (which goes through `tasks.tasks.patch` server-side), never delete. |
 | `find_workspace_specific_lookup` | Natural-language lookup → `find_workspace({query})`, NOT `triage_inbox` (different intent). |
-| `workspace_disconnected_decline` | `google_linked` user → emits `connect_workspace`, never any workspace tool (none are registered for this state). |
+| `workspace_immediate_connect_from_google_linked` | `google_linked` user asks for a workspace op → `connect_workspace` on **turn 1**, no clarifying questions. Three cases (triage / calendar / inbox phrasings). Replaces the older softer `workspace_disconnected_decline` fixture. |
+| `workspace_immediate_auth_from_anonymous` | `anonymous` (and `email_verified`) users asking for workspace ops → `auth_user({mode:"google"})` on turn 1. Covers the pre-sign-in states the connect-only fixture misses. |
+| `workspace_no_immediate_connect_for_unrelated_ask` | Negative guardrail. `google_linked` + `anonymous` users asking unrelated wellbeing / coaching questions → no tool calls, normal coaching reply. Prevents the WORKSPACE-ASK TRIGGER from over-firing. |
 | `silent_turn_simple_greeting` | One-word "hi" must produce a substantive reply — guards the 2026-05-11 silent-turn class where stale Firestore events / `{name}` placeholder leaks crashed the prompt. |
 | **`subagent_triage_basic_classification`** | Targets the **triage sub-agent directly** (not via the AgentTool). Mocks `list_inbox` + `get_message` via `before_tool_callback` with a 4-message inbox; asserts the sub-agent walks the right tool sequence and emits `<TRIAGE_REPORT>` in its final response. See `tests/evals/eval_triage_inbox_agent.py` for the stubs. |
 
