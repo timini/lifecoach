@@ -14,7 +14,7 @@ import { readE2ECreds, signInAsTestUser } from './fixtures';
  */
 test('drawer slides into the viewport when opened post-login', async ({ page }) => {
   const creds = readE2ECreds();
-  await page.goto('/');
+  await page.goto('/chat');
   await expect(page.locator('[data-testid="chat-window-state"][data-uid]')).toBeAttached();
   await signInAsTestUser(page, creds);
 
@@ -54,7 +54,7 @@ test('drawer slides into the viewport when opened post-login', async ({ page }) 
  */
 test('account menu opens post-login', async ({ page }) => {
   const creds = readE2ECreds();
-  await page.goto('/');
+  await page.goto('/chat');
   await expect(page.locator('[data-testid="chat-window-state"][data-uid]')).toBeAttached();
   await signInAsTestUser(page, creds);
   await page.waitForTimeout(1000);
