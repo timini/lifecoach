@@ -51,7 +51,7 @@ _DIRECTIVES: dict[DailyFlowState, str] = {
         "It's around lunch time and we don't yet know if they've eaten. Naturally "
         "check in about food / break — a short, caring nudge, not a hard prompt. If "
         "they say they ate (or just had X), call `update_user_profile` with "
-        "`path=daily.{today}.lunch_eaten` and `value=true` so we don't ask again. "
+        "`path=daily.{{today}}.lunch_eaten` and `value=true` so we don't ask again. "
         "Today's date in the path is the same YYYY-MM-DD already on the session id."
     ),
     "post_lunch": (
