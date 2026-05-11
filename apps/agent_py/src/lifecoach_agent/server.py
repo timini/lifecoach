@@ -890,6 +890,14 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                 # no retry. Forward-fix path: capture as eval + tune prompt.
                 yield b"event: done\ndata: {}\n\n"
             except Exception as err:  # noqa: BLE001
+                # Log the traceback to stdout — Sentry capture is silent
+                # without a DSN, and silent turns from swallowed runner
+                # exceptions are exactly the class we want to surface.
+                logger.exception(
+                    "chat.stream_error uid=%s sessionId=%s",
+                    effective_user_id,
+                    session_id,
+                )
                 err_msg = str(err)
                 yield (
                     b"event: error\ndata: "

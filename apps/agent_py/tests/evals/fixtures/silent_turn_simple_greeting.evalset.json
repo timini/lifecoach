@@ -1,0 +1,45 @@
+{
+  "eval_set_id": "silent_turn_simple_greeting",
+  "name": "Simple greeting must not produce silent turn",
+  "description": "User sends a one-word greeting (\"hi\"). The agent must emit at least one substantive text reply — never silence, never the legacy 'Done. What next?' recovery template. This case guards against the silent-turn regression class that bit us in 2026-05-11 when stale recovery events left in Firestore poisoned Gemini's context and the model emitted no output. Forward fix: capture as eval + tune prompt; never re-introduce runtime fallback copy.",
+  "eval_cases": [
+    {
+      "eval_id": "case_01_workspace_connected_hi",
+      "session_input": {
+        "app_name": "lifecoach",
+        "user_id": "test-user-silent-turn-greeting",
+        "state": {
+          "_lifecoach_user_state": "workspace_connected",
+          "_lifecoach_now": "2026-05-11T11:00:00+01:00"
+        }
+      },
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [{ "text": "hi" }],
+            "role": "user"
+          }
+        }
+      ]
+    },
+    {
+      "eval_id": "case_02_anonymous_hi",
+      "session_input": {
+        "app_name": "lifecoach",
+        "user_id": "test-user-silent-turn-greeting-anon",
+        "state": {
+          "_lifecoach_user_state": "anonymous",
+          "_lifecoach_now": "2026-05-11T11:00:00+01:00"
+        }
+      },
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [{ "text": "hi" }],
+            "role": "user"
+          }
+        }
+      ]
+    }
+  ]
+}
