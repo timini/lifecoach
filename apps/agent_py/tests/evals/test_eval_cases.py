@@ -27,19 +27,40 @@ ALL_FIXTURES: list[str] = sorted(
     p.name.removesuffix(".evalset.json") for p in FIXTURES.glob("*.evalset.json")
 )
 
-# Fixtures whose `eval_set_id` starts with `subagent_triage_` target the
-# triage_inbox sub-agent directly (its own LlmAgent + stubbed list_inbox /
-# get_message). Anything else runs against the main coach agent stub.
-_AGENT_MODULES: dict[str, str] = {
-    "subagent_triage_": "tests.evals.eval_triage_inbox_agent",
-}
+# Default agent module when a fixture doesn't declare `agent_module`.
+# Codex P2 on PR #63 caught a real bug here: `_lifecoach_user_state`
+# on the fixture session-state does NOT rebuild the agent — ADK binds
+# instruction + tool list at module import time, so per-case state
+# overrides don't change the surface the model sees. Per-fixture
+# `agent_module` (top-level JSON field) routes each fixture to a
+# state-specific module that materialised the right prompt + tools.
+#
+# Known per-state modules (one per UserState we test):
+#   - tests.evals.eval_agent                  workspace_connected (default)
+#   - tests.evals.eval_anonymous_agent        anonymous
+#   - tests.evals.eval_email_verified_agent   email_verified
+#   - tests.evals.eval_google_linked_agent    google_linked
+#   - tests.evals.eval_triage_inbox_agent     workspace sub-agent
 _DEFAULT_AGENT_MODULE = "tests.evals.eval_agent"
+
+# Used by the import-sanity test below. Keep in sync with the
+# `agent_module` values fixtures declare.
+_KNOWN_AGENT_MODULES: set[str] = {
+    _DEFAULT_AGENT_MODULE,
+    "tests.evals.eval_anonymous_agent",
+    "tests.evals.eval_email_verified_agent",
+    "tests.evals.eval_google_linked_agent",
+    "tests.evals.eval_triage_inbox_agent",
+}
 
 
 def _agent_module_for(fixture: str) -> str:
-    for prefix, mod in _AGENT_MODULES.items():
-        if fixture.startswith(prefix):
-            return mod
+    """Read the `agent_module` field from the fixture JSON, falling
+    back to the workspace_connected default."""
+    payload = json.loads((FIXTURES / f"{fixture}.evalset.json").read_text())
+    declared = payload.get("agent_module")
+    if isinstance(declared, str) and declared:
+        return declared
     return _DEFAULT_AGENT_MODULE
 
 
@@ -64,10 +85,21 @@ def test_eval_agent_module_imports() -> None:
     factories)."""
     import importlib
 
-    modules = {_DEFAULT_AGENT_MODULE, *_AGENT_MODULES.values()}
-    for mod_name in modules:
+    for mod_name in _KNOWN_AGENT_MODULES:
         mod = importlib.import_module(mod_name)
         assert hasattr(mod, "root_agent"), f"{mod_name} missing root_agent"
+
+
+def test_fixture_agent_module_in_known_set() -> None:
+    """Every fixture's declared `agent_module` (or the default fallback)
+    must point at one of the known per-state modules. Catches typos
+    that would otherwise surface as ImportError at Tier-1 runtime."""
+    for fixture in ALL_FIXTURES:
+        module = _agent_module_for(fixture)
+        assert module in _KNOWN_AGENT_MODULES, (
+            f"{fixture} declares unknown agent_module={module!r}. "
+            f"Known: {sorted(_KNOWN_AGENT_MODULES)}"
+        )
 
 
 # --- Tier-1 real-LLM eval cases (gated) -----------------------------------

@@ -226,7 +226,7 @@ stateDiagram-v2
 - `google_linked` → call `connect_workspace`. The user is already signed in; this is the OAuth-scopes step.
 - `workspace_connected` → use the six workspace tools directly; no auth handshake needed.
 
-This rule was added in response to issue #62 — a regression where a `google_linked` user asked to triage emails and got four turns of clarification before the agent admitted it couldn't access the inbox. The directive lives in `_WORKSPACE_ASK_TRIGGER_*` blocks in `state/policies.py` and is appended to every non-`workspace_connected` `STATE_DIRECTIVE`. The negative-case eval `workspace_no_immediate_connect_for_unrelated_ask` guards against over-firing on unrelated wellbeing questions.
+This rule was added in response to issue #62 — a regression where a `google_linked` user asked to triage emails and got four turns of clarification before the agent admitted it couldn't access the inbox. The directive lives in `_WORKSPACE_ASK_TRIGGER_*` blocks in `state/policies.py` and is appended to every non-`workspace_connected` `STATE_DIRECTIVE`. The negative-case evals (`workspace_no_trigger_for_unrelated_ask_*`) guard against over-firing on unrelated wellbeing questions.
 
 **Per-state policy (UsageState → model + nudge + upgrade tool):**
 
@@ -637,9 +637,13 @@ Five distinct test surfaces. CI gates the lot at **90% line + branch coverage** 
 | `add_calendar_event_after_confirm` | Confirm via single-choice → `add_calendar_event({summary, start, end})`. |
 | `complete_task_uses_patch` | Codex P1 — must use `complete_task` (which goes through `tasks.tasks.patch` server-side), never delete. |
 | `find_workspace_specific_lookup` | Natural-language lookup → `find_workspace({query})`, NOT `triage_inbox` (different intent). |
-| `workspace_immediate_connect_from_google_linked` | `google_linked` user asks for a workspace op → `connect_workspace` on **turn 1**, no clarifying questions. Three cases (triage / calendar / inbox phrasings). Replaces the older softer `workspace_disconnected_decline` fixture. |
-| `workspace_immediate_auth_from_anonymous` | `anonymous` (and `email_verified`) users asking for workspace ops → `auth_user({mode:"google"})` on turn 1. Covers the pre-sign-in states the connect-only fixture misses. |
-| `workspace_no_immediate_connect_for_unrelated_ask` | Negative guardrail. `google_linked` + `anonymous` users asking unrelated wellbeing / coaching questions → no tool calls, normal coaching reply. Prevents the WORKSPACE-ASK TRIGGER from over-firing. |
+| `workspace_immediate_connect_from_google_linked` | `google_linked` user asks for a workspace op → `connect_workspace` on **turn 1**, no clarifying questions. Three cases (triage / calendar / inbox phrasings). Routes to `eval_google_linked_agent`. |
+| `workspace_immediate_auth_from_anonymous` | `anonymous` user asking for workspace ops → `auth_user({mode:"google"})` on turn 1. Routes to `eval_anonymous_agent`. |
+| `workspace_immediate_auth_from_email_verified` | Same TRIGGER, different state — `email_verified` user. Separate fixture because the eval framework binds one `agent_module` per fixture and per-state agents have different system prompts. Routes to `eval_email_verified_agent`. |
+| `workspace_no_trigger_for_unrelated_ask_google_linked` | Negative guardrail. `google_linked` user asking unrelated wellbeing / coaching questions → no tool calls. Prevents the trigger from over-firing. |
+| `workspace_no_trigger_for_unrelated_ask_anonymous` | Same negative guard for `anonymous` — over-fire of `auth_user` on general questions would also be a regression. |
+
+**Per-state agent modules.** ADK binds an agent's system instruction and tool list at module import time. Fixture-level `_lifecoach_user_state` does NOT rebuild either — it just seeds runtime session state, which is too late. Each fixture declares a top-level `agent_module` JSON field; `test_eval_cases.py` dispatches per fixture. The per-state modules (`eval_anonymous_agent.py`, `eval_email_verified_agent.py`, `eval_google_linked_agent.py`) wrap `build_eval_root_agent(state)` from the central factory in `eval_agent.py` — same tool-stub callback, same `_tool_stubs` map, just different state baked into the prompt + the tool registration filter. Codex caught this on PR #63 (the original fixtures were silently running under `workspace_connected`).
 | `silent_turn_simple_greeting` | One-word "hi" must produce a substantive reply — guards the 2026-05-11 silent-turn class where stale Firestore events / `{name}` placeholder leaks crashed the prompt. |
 | **`subagent_triage_basic_classification`** | Targets the **triage sub-agent directly** (not via the AgentTool). Mocks `list_inbox` + `get_message` via `before_tool_callback` with a 4-message inbox; asserts the sub-agent walks the right tool sequence and emits `<TRIAGE_REPORT>` in its final response. See `tests/evals/eval_triage_inbox_agent.py` for the stubs. |
 

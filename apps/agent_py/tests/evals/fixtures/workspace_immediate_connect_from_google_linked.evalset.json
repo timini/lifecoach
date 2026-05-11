@@ -1,5 +1,6 @@
 {
   "eval_set_id": "workspace_immediate_connect_from_google_linked",
+  "agent_module": "tests.evals.eval_google_linked_agent",
   "name": "google_linked user asks for a workspace op → connect_workspace on turn 1",
   "description": "Replaces the older workspace_disconnected_decline fixture (which used a softer trigger and didn't enforce turn-1 behaviour). The user is in `google_linked` state — signed in with Google but hasn't granted Workspace scopes. The moment they ask for a Gmail / Calendar / Tasks operation, the agent's FIRST reply must be `connect_workspace` with no clarifying questions, no strategy probes, no chit-chat. Real-world incident on 2026-05-11: the agent took 4 turns of clarification before mentioning the connection blocker. The TRIGGER block added to `_STATE_DIRECTIVE['google_linked']` is what this case proves.",
   "eval_cases": [

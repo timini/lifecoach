@@ -1,0 +1,48 @@
+{
+  "eval_set_id": "workspace_no_trigger_for_unrelated_ask_google_linked",
+  "agent_module": "tests.evals.eval_google_linked_agent",
+  "name": "google_linked user asks unrelated wellbeing question → no connect_workspace fire",
+  "description": "Negative-case guardrail for the WORKSPACE-ASK TRIGGER directive (google_linked variant). Without this, a future prompt tweak might over-fire `connect_workspace` on any vague mention of work — a worse UX than the original silent-clarification regression. Asserts the agent emits a normal coaching reply (no tool calls) when the user's first message is purely about feelings / wellbeing / general planning. The trigger fires only on requests that genuinely need workspace data.",
+  "eval_cases": [
+    {
+      "eval_id": "case_01_feeling_overwhelmed",
+      "session_input": {
+        "app_name": "lifecoach",
+        "user_id": "test-user-google-linked-coaching",
+        "state": {
+          "_lifecoach_user_state": "google_linked",
+          "_lifecoach_now": "2026-05-12T09:00:00+01:00"
+        }
+      },
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [{ "text": "feeling overwhelmed today" }],
+            "role": "user"
+          },
+          "intermediate_data": { "tool_uses": [] }
+        }
+      ]
+    },
+    {
+      "eval_id": "case_02_morning_greeting",
+      "session_input": {
+        "app_name": "lifecoach",
+        "user_id": "test-user-google-linked-morning",
+        "state": {
+          "_lifecoach_user_state": "google_linked",
+          "_lifecoach_now": "2026-05-12T08:00:00+01:00"
+        }
+      },
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [{ "text": "morning" }],
+            "role": "user"
+          },
+          "intermediate_data": { "tool_uses": [] }
+        }
+      ]
+    }
+  ]
+}
