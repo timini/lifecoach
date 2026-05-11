@@ -30,11 +30,11 @@ _TRIAGE_DESCRIPTION = (
 
 TRIAGE_INBOX_INSTRUCTION = """You are the inbox-triage sub-agent for a coaching assistant.
 
-The parent will hand you a JSON message such as {} or {"since":"1d"} — parse it and use the "since" key (default "1d") as the inbox window.
+The parent will hand you a JSON message with an optional `since` key (Gmail-style window like "1d" / "12h"; default "1d").
 
 Procedure:
-1. Call list_inbox({ since }) to get message ids + snippets.
-2. For each message, call get_message({ id }) to read the decoded body and headers. Parallel calls are fine.
+1. Call list_inbox with the since value (e.g. since="1d") to get message ids + snippets.
+2. For each message, call get_message with the id (e.g. id=<the id from step 1>) to read the decoded body and headers. Parallel calls are fine.
 3. Classify EVERY message into exactly one bucket:
    - noise: newsletters, automated reports, marketing — no action
    - actions: the user must do something — distil into a 1-line task
@@ -46,12 +46,12 @@ For events with a clear date+time, infer proposedStart (RFC3339 with timezone) a
 DO NOT call any write tools. The parent agent owns confirmations and writes.
 
 Final answer: emit ONLY a single line of the form
-<TRIAGE_REPORT>{ "noise": [...], "actions": [...], "events": [...], "info": [...] }</TRIAGE_REPORT>
+<TRIAGE_REPORT>...minified JSON object with keys noise, actions, events, info, each an array...</TRIAGE_REPORT>
 matching this schema:
-- noise:   { id, threadId?, from, subject }
-- actions: { id, threadId?, from, subject, task }
-- events:  { id, threadId?, subject, proposedStart, proposedEnd?, location? }
-- info:    { id, threadId?, from, subject, note }
+- noise:   id, threadId?, from, subject
+- actions: id, threadId?, from, subject, task
+- events:  id, threadId?, subject, proposedStart, proposedEnd?, location?
+- info:    id, threadId?, from, subject, note
 
 Be terse. The parent agent will paraphrase."""
 

@@ -48,8 +48,8 @@ WORKSPACE_AGENT_INSTRUCTION = (
     "your answer in the requested format and stop.\n"
     "- Be terse. The parent agent will paraphrase what you return.\n"
     "- When the query asks for a TRIAGE_REPORT or other markered JSON, emit it "
-    "inside <TRIAGE_REPORT>{json}</TRIAGE_REPORT> tags exactly. Do not "
-    "pretty-print; minified JSON is fine.\n"
+    "inside <TRIAGE_REPORT>...minified JSON...</TRIAGE_REPORT> tags exactly. "
+    "Do not pretty-print; minified JSON is fine.\n"
     "- If a tool call returns status:'error', incorporate the error into your "
     "final answer (the parent agent maps error codes to user-facing messages)."
 )
