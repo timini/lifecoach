@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { Spinner } from '../atoms/spinner';
 import { AuthPrompt } from '../molecules/auth-prompt';
 import { Bubble } from '../molecules/bubble';
@@ -161,9 +162,11 @@ function AssistantGroup({
         if (el.kind === 'text') {
           if (OPENUI_TAG.test(el.text)) {
             return (
-              <div key={elKey} className="self-start max-w-[90%]">
-                <Renderer response={el.text} library={openUILibrary} isStreaming={false} />
-              </div>
+              <OpenUiOrMarkdown
+                key={elKey}
+                text={el.text}
+                timestamp={i === lastTextIndex ? timestamp : undefined}
+              />
             );
           }
           return (
@@ -218,5 +221,41 @@ function AssistantGroup({
         );
       })}
     </>
+  );
+}
+
+/**
+ * Renders assistant text that contains an OpenUI Lang tag. Tries the
+ * Renderer first; if the parser can't produce a renderable root (e.g.
+ * the prompt teaches stale JSX-like syntax, model emits malformed
+ * props, schema mismatch), falls back to plain Markdown so the bubble
+ * is never empty.
+ *
+ * Without this fallback, a parse-failed payload renders as a
+ * zero-height div — the "flash then disappear" pattern users see.
+ */
+function OpenUiOrMarkdown({ text, timestamp }: { text: string; timestamp?: number }) {
+  const [parseFailed, setParseFailed] = useState(false);
+
+  if (parseFailed) {
+    return (
+      <Bubble from="assistant" timestamp={timestamp}>
+        <Markdown>{text}</Markdown>
+      </Bubble>
+    );
+  }
+  return (
+    <div className="self-start max-w-[90%]">
+      <Renderer
+        response={text}
+        library={openUILibrary}
+        isStreaming={false}
+        onParseResult={(result) => {
+          if (result && result.root == null) {
+            setParseFailed(true);
+          }
+        }}
+      />
+    </div>
   );
 }
