@@ -25,8 +25,8 @@ import { LanguagePicker } from '../../components/LanguagePicker';
 import { isLocale } from '../../i18n/routing';
 import {
   ensureSignedIn,
-  linkWithGoogle,
-  sendEmailSignInLink,
+  linkWithGoogleResult,
+  sendWelcomeVerificationEmail,
   signOutCurrent,
 } from '../../lib/firebase';
 import {
@@ -219,8 +219,12 @@ export default function SettingsPage() {
 
   async function handleLinkGoogle() {
     try {
-      const upgraded = await linkWithGoogle();
+      const result = await linkWithGoogleResult();
+      const upgraded = result.user;
       setUser(upgraded);
+      if (result.convertedAnonymousUser && upgraded.email) {
+        await sendWelcomeVerificationEmail(upgraded.email, window.location.href);
+      }
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : String(err));
     }
@@ -229,7 +233,7 @@ export default function SettingsPage() {
   async function handleSendEmail() {
     if (!emailDraft.includes('@')) return;
     try {
-      await sendEmailSignInLink(emailDraft, window.location.href);
+      await sendWelcomeVerificationEmail(emailDraft, window.location.href);
       setEmailDraft('');
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : String(err));

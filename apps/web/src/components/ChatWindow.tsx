@@ -22,9 +22,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   completeEmailSignInLink,
   ensureSignedIn,
-  linkWithGoogle,
+  linkWithGoogleResult,
   onAuthChange,
-  sendEmailSignInLink,
+  sendWelcomeVerificationEmail,
   signOutCurrent,
 } from '../lib/firebase';
 import {
@@ -261,8 +261,16 @@ export function ChatWindow() {
 
   async function handleGoogleSignIn() {
     try {
-      const upgraded = await linkWithGoogle();
+      const result = await linkWithGoogleResult();
+      const upgraded = result.user;
       setUser(upgraded);
+      if (result.convertedAnonymousUser && upgraded.email) {
+        await sendWelcomeVerificationEmail(upgraded.email, window.location.href);
+        void sendText(
+          "I've just signed in with Google and sent a welcome email with a verification link.",
+        );
+        return;
+      }
       void sendText("I've just signed in with Google.");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -273,9 +281,9 @@ export function ChatWindow() {
   async function handleEmailSignIn(email: string) {
     try {
       const returnUrl = window.location.href;
-      await sendEmailSignInLink(email, returnUrl);
+      await sendWelcomeVerificationEmail(email, returnUrl);
       appendAssistantText(
-        `Email sent to ${email} — check your inbox and click the link to finish.`,
+        `Welcome email sent to ${email} — check your inbox and click the verification link to finish.`,
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

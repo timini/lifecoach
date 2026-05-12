@@ -111,22 +111,33 @@ const EMAIL_PENDING_KEY = 'lifecoach.pendingEmail';
  * of the error, and sign in to the existing account directly. The freshly-
  * minted anonymous user is abandoned — fine, it had no data.
  */
-export async function linkWithGoogle(): Promise<User> {
+export interface GoogleLinkResult {
+  user: User;
+  convertedAnonymousUser: boolean;
+}
+
+export async function linkWithGoogleResult(): Promise<GoogleLinkResult> {
   const auth = firebaseAuth();
   const user = auth.currentUser;
   if (!user) throw new Error('no current user — sign-in must complete first');
+  const wasAnonymous = user.isAnonymous;
   const provider = new GoogleAuthProvider();
   try {
     const cred = await linkWithPopup(user, provider);
-    return cred.user;
+    return { user: cred.user, convertedAnonymousUser: wasAnonymous };
   } catch (err) {
     const credential = credentialFromAuthError(err);
     if (credential) {
       const cred = await signInWithCredential(auth, credential);
-      return cred.user;
+      return { user: cred.user, convertedAnonymousUser: false };
     }
     throw err;
   }
+}
+
+export async function linkWithGoogle(): Promise<User> {
+  const result = await linkWithGoogleResult();
+  return result.user;
 }
 
 /**
@@ -147,10 +158,15 @@ function credentialFromAuthError(
 }
 
 /**
- * Send a magic-link sign-in email. Caller stores the email so we can finish
- * linking when the user returns from the email link.
+ * Send the welcome email that contains the Firebase email-link verification
+ * URL. Caller stores the email so we can finish linking when the user returns
+ * from the email link. The same link acts as the user's email verification
+ * and sign-in credential.
  */
-export async function sendEmailSignInLink(email: string, returnUrl: string): Promise<void> {
+export async function sendWelcomeVerificationEmail(
+  email: string,
+  returnUrl: string,
+): Promise<void> {
   const auth = firebaseAuth();
   await sendSignInLinkToEmail(auth, email, {
     url: returnUrl,
@@ -159,6 +175,10 @@ export async function sendEmailSignInLink(email: string, returnUrl: string): Pro
   if (typeof window !== 'undefined') {
     window.localStorage.setItem(EMAIL_PENDING_KEY, email);
   }
+}
+
+export async function sendEmailSignInLink(email: string, returnUrl: string): Promise<void> {
+  await sendWelcomeVerificationEmail(email, returnUrl);
 }
 
 /**
