@@ -200,6 +200,9 @@ class CreateAppDeps:
     workspace_tokens_store: WorkspaceTokensStore | None = None
     workspace_oauth_client: WorkspaceOAuthClient | None = None
     user_meta_store: UserMetaStore | None = None
+    internal_bearer: str | None = None
+    free_anonymous_turn_limit: int = 25
+    free_signed_in_turn_limit: int = 100
     now: Callable[[], datetime] = field(
         default_factory=lambda: lambda: datetime.now(ZoneInfo("UTC"))
     )
@@ -241,6 +244,23 @@ def _coerce_tier(value: Any) -> Tier:
     return "pro" if value == "pro" else "free"
 
 
+def _internal_auth_ok(request: Request, deps: CreateAppDeps) -> bool:
+    """Validate the optional app-to-agent shared bearer secret.
+
+    Firebase ID tokens prove who the end-user is, but they do not stop a
+    caller from bypassing the Next.js API proxy and hitting the agent
+    directly. When `internal_bearer` is configured, all billable/private
+    endpoints must include the same value in `x-agent-internal-bearer`.
+    """
+    if not deps.internal_bearer:
+        return True
+    return request.headers.get("x-agent-internal-bearer") == deps.internal_bearer
+
+
+def _internal_auth_error() -> JSONResponse:
+    return JSONResponse({"error": "agent internal auth required"}, status_code=401)
+
+
 # --- App factory ---------------------------------------------------------
 
 
@@ -264,6 +284,8 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
         session_id = request.query_params.get("sessionId")
         if not user_id or not session_id:
             return JSONResponse({"error": "userId and sessionId are required"}, status_code=400)
+        if not _internal_auth_ok(request, deps):
+            return _internal_auth_error()
         claims = await _verify(request, deps)
         if deps.require_auth and claims is None:
             return JSONResponse({"error": "unauthenticated"}, status_code=401)
@@ -305,6 +327,8 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
 
     @app.get("/sessions")
     async def sessions(request: Request) -> JSONResponse:
+        if not _internal_auth_ok(request, deps):
+            return _internal_auth_error()
         claims = await _verify(request, deps)
         if deps.require_auth and claims is None:
             return JSONResponse({"error": "unauthenticated"}, status_code=401)
@@ -357,6 +381,8 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
         user_id = request.query_params.get("userId")
         if not user_id:
             return JSONResponse({"error": "userId is required"}, status_code=400)
+        if not _internal_auth_ok(request, deps):
+            return _internal_auth_error()
         claims = await _verify(request, deps)
         if deps.require_auth and claims is None:
             return JSONResponse({"error": "unauthenticated"}, status_code=401)
@@ -388,6 +414,8 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
         profile = body.get("profile") if isinstance(body, dict) else None
         if not isinstance(profile, dict):
             return JSONResponse({"error": "body.profile must be an object"}, status_code=400)
+        if not _internal_auth_ok(request, deps):
+            return _internal_auth_error()
         claims = await _verify(request, deps)
         if claims is None:
             # Direct profile writes always require a verified token, even
@@ -406,6 +434,8 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
         user_id = request.query_params.get("userId")
         if not user_id:
             return JSONResponse({"error": "userId is required"}, status_code=400)
+        if not _internal_auth_ok(request, deps):
+            return _internal_auth_error()
         claims = await _verify(request, deps)
         if deps.require_auth and claims is None:
             return JSONResponse({"error": "unauthenticated"}, status_code=401)
@@ -429,6 +459,8 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
         code = body.get("code") if isinstance(body, dict) else None
         if not isinstance(code, str) or not code:
             return JSONResponse({"error": "body.code (string) is required"}, status_code=400)
+        if not _internal_auth_ok(request, deps):
+            return _internal_auth_error()
         claims = await _verify(request, deps)
         if claims is None:
             return JSONResponse({"error": "unauthenticated"}, status_code=401)
@@ -460,6 +492,8 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
 
     @app.get("/workspace/status")
     async def workspace_status(request: Request) -> JSONResponse:
+        if not _internal_auth_ok(request, deps):
+            return _internal_auth_error()
         claims = await _verify(request, deps)
         if claims is None:
             return JSONResponse({"error": "unauthenticated"}, status_code=401)
@@ -481,6 +515,8 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
 
     @app.delete("/workspace")
     async def workspace_delete(request: Request) -> JSONResponse:
+        if not _internal_auth_ok(request, deps):
+            return _internal_auth_error()
         claims = await _verify(request, deps)
         if claims is None:
             return JSONResponse({"error": "unauthenticated"}, status_code=401)
@@ -521,6 +557,9 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                 {"error": "userId, sessionId, and message are required"},
                 status_code=400,
             )
+
+        if not _internal_auth_ok(request, deps):
+            return _internal_auth_error()
 
         # Auth + workspace-grant inspection -------------------------------
         t0 = _now_ms()
@@ -704,6 +743,21 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
             )
         )
         usage_policy = usage_machine.policy()
+        if tier != "pro":
+            turn_limit = (
+                deps.free_anonymous_turn_limit
+                if machine.current() == "anonymous"
+                else deps.free_signed_in_turn_limit
+            )
+            if chat_turn_count > turn_limit:
+                return JSONResponse(
+                    {
+                        "error": "free_usage_limit_exceeded",
+                        "limit": turn_limit,
+                        "tier": tier,
+                    },
+                    status_code=429,
+                )
 
         has_interacted_today = _session_has_user_interaction(existing_session)
         location_ctx: LocationCtx | None = LocationCtx(coord=coord) if coord else None

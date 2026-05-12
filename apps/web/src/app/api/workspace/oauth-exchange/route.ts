@@ -1,6 +1,11 @@
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+function agentInternalHeaders(): Record<string, string> {
+  const bearer = process.env.AGENT_INTERNAL_BEARER;
+  return bearer ? { 'x-agent-internal-bearer': bearer } : {};
+}
+
 /**
  * POST /api/workspace/oauth-exchange  body:{code}
  *
@@ -27,7 +32,11 @@ export async function POST(request: Request): Promise<Response> {
   const body = await request.text();
   const upstream = await fetch(`${agent}/workspace/oauth-exchange`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', authorization: auth },
+    headers: {
+      ...agentInternalHeaders(),
+      'content-type': 'application/json',
+      authorization: auth,
+    },
     body,
   });
   if (upstream.status >= 400) {

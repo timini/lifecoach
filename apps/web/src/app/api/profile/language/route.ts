@@ -4,6 +4,11 @@ import { isLocale } from '../../../../i18n/routing';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+function agentInternalHeaders(): Record<string, string> {
+  const bearer = process.env.AGENT_INTERNAL_BEARER;
+  return bearer ? { 'x-agent-internal-bearer': bearer } : {};
+}
+
 const COOKIE_NAME = 'NEXT_LOCALE';
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
@@ -40,7 +45,11 @@ export async function POST(request: Request): Promise<Response> {
 
   const upstream = await fetch(`${agent}/profile`, {
     method: 'PATCH',
-    headers: { 'content-type': 'application/json', authorization: auth },
+    headers: {
+      ...agentInternalHeaders(),
+      'content-type': 'application/json',
+      authorization: auth,
+    },
     body: JSON.stringify({ profile: { language } }),
   });
   if (upstream.status >= 400) {

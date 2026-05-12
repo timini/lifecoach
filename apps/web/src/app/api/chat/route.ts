@@ -6,6 +6,11 @@
 export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
 
+function agentInternalHeaders(): Record<string, string> {
+  const bearer = process.env.AGENT_INTERNAL_BEARER;
+  return bearer ? { 'x-agent-internal-bearer': bearer } : {};
+}
+
 interface ChatBody {
   userId?: string;
   sessionId?: string;
@@ -30,6 +35,7 @@ export async function POST(request: Request): Promise<Response> {
   const upstream = await fetch(`${agentUrl}/chat`, {
     method: 'POST',
     headers: {
+      ...agentInternalHeaders(),
       'content-type': 'application/json',
       ...(authHeader ? { authorization: authHeader } : {}),
     },

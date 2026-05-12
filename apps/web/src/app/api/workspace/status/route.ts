@@ -1,6 +1,11 @@
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+function agentInternalHeaders(): Record<string, string> {
+  const bearer = process.env.AGENT_INTERNAL_BEARER;
+  return bearer ? { 'x-agent-internal-bearer': bearer } : {};
+}
+
 /**
  * GET /api/workspace/status
  * Bearer-only. Forwards to the agent's /workspace/status and returns
@@ -19,7 +24,7 @@ export async function GET(request: Request): Promise<Response> {
   if (!auth) return Response.json({ error: 'unauthenticated' }, { status: 401 });
 
   const upstream = await fetch(`${agent}/workspace/status`, {
-    headers: { authorization: auth },
+    headers: { ...agentInternalHeaders(), authorization: auth },
   });
   if (upstream.status >= 400) {
     return Response.json(

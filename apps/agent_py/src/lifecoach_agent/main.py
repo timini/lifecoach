@@ -84,6 +84,16 @@ def _require_env(name: str) -> str:
     return val
 
 
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return default
+    try:
+        return int(raw)
+    except ValueError as err:
+        raise RuntimeError(f"env var {name!r} must be an integer") from err
+
+
 def _utc_now() -> datetime:
     return datetime.now(ZoneInfo("UTC"))
 
@@ -468,7 +478,13 @@ def build_app() -> Any:
         runner_for=runner_for,
         session_reader=_SessionReaderAdapter(),
         verify_token=firebase_admin_verifier(),
-        require_auth=os.environ.get("REQUIRE_AUTH") == "true",
+        # Default closed: the web app already obtains Firebase anonymous ID
+        # tokens before chat, so unauthenticated agent calls should not reach
+        # billable LLM execution unless explicitly disabled for local/dev.
+        require_auth=os.environ.get("REQUIRE_AUTH", "true") != "false",
+        internal_bearer=os.environ.get("AGENT_INTERNAL_BEARER") or None,
+        free_anonymous_turn_limit=_env_int("FREE_ANONYMOUS_TURN_LIMIT", 25),
+        free_signed_in_turn_limit=_env_int("FREE_SIGNED_IN_TURN_LIMIT", 100),
         weather=weather,
         places=places,
         places_token_provider=places_token_provider,

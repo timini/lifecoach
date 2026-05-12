@@ -30,6 +30,7 @@ from lifecoach_agent.storage.profile_history import (
     ProfileHistoryEntry,
     create_profile_history_store,
 )
+from lifecoach_agent.storage.user_meta import create_user_meta_store
 from lifecoach_agent.storage.user_profile import create_user_profile_store
 from lifecoach_agent.storage.workspace_tokens import create_workspace_tokens_store
 from tests.unit.storage._fakes import FakeBucket, FakeFirestore
@@ -410,6 +411,46 @@ async def _drain(res: httpx.Response) -> str:
     async for chunk in res.aiter_bytes():
         body += chunk
     return body.decode("utf-8")
+
+
+@pytest.mark.asyncio
+async def test_chat_requires_internal_bearer_when_configured() -> None:
+    app = _make_app(deps_overrides={"internal_bearer": "shared-secret"})
+    async with _client(app) as c:
+        denied = await c.post(
+            "/chat",
+            json={"userId": "u1", "sessionId": "s1", "message": "hi"},
+        )
+        allowed = await c.post(
+            "/chat",
+            json={"userId": "u1", "sessionId": "s1", "message": "hi"},
+            headers={"x-agent-internal-bearer": "shared-secret"},
+        )
+    assert denied.status_code == 401
+    assert denied.json() == {"error": "agent internal auth required"}
+    assert allowed.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_chat_enforces_free_anonymous_turn_limit_before_runner() -> None:
+    fs = FakeFirestore()
+    runner = FakeRunner(events_per_call=[[_model_text("should not run")]])
+    app = _make_app(
+        runner=runner,
+        deps_overrides={
+            "user_meta_store": create_user_meta_store(firestore=fs),
+            "free_anonymous_turn_limit": 0,
+        },
+    )
+    async with _client(app) as c:
+        res = await c.post(
+            "/chat",
+            json={"userId": "u1", "sessionId": "s1", "message": "hi"},
+        )
+    assert res.status_code == 429
+    assert res.json()["error"] == "free_usage_limit_exceeded"
+    assert res.json()["limit"] == 0
+    assert runner.calls_made == 0
 
 
 @pytest.mark.asyncio

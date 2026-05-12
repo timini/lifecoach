@@ -1,6 +1,11 @@
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+function agentInternalHeaders(): Record<string, string> {
+  const bearer = process.env.AGENT_INTERNAL_BEARER;
+  return bearer ? { 'x-agent-internal-bearer': bearer } : {};
+}
+
 /**
  * GET /api/profile?userId=...     → forwards to agent GET /profile
  * PATCH /api/profile              → forwards to agent PATCH /profile (body: {profile})
@@ -20,6 +25,7 @@ export async function GET(request: Request): Promise<Response> {
 
   const upstream = await fetch(`${agent}/profile?userId=${encodeURIComponent(userId)}`, {
     headers: {
+      ...agentInternalHeaders(),
       ...(request.headers.get('authorization')
         ? { authorization: request.headers.get('authorization') as string }
         : {}),
@@ -49,7 +55,11 @@ export async function PATCH(request: Request): Promise<Response> {
   const body = await request.text();
   const upstream = await fetch(`${agent}/profile`, {
     method: 'PATCH',
-    headers: { 'content-type': 'application/json', authorization: auth },
+    headers: {
+      ...agentInternalHeaders(),
+      'content-type': 'application/json',
+      authorization: auth,
+    },
     body,
   });
   if (upstream.status >= 400) {

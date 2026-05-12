@@ -1,6 +1,11 @@
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+function agentInternalHeaders(): Record<string, string> {
+  const bearer = process.env.AGENT_INTERNAL_BEARER;
+  return bearer ? { 'x-agent-internal-bearer': bearer } : {};
+}
+
 /**
  * DELETE /api/workspace
  * Bearer-only. Forwards to the agent's DELETE /workspace which best-effort
@@ -20,7 +25,7 @@ export async function DELETE(request: Request): Promise<Response> {
 
   const upstream = await fetch(`${agent}/workspace`, {
     method: 'DELETE',
-    headers: { authorization: auth },
+    headers: { ...agentInternalHeaders(), authorization: auth },
   });
   if (upstream.status >= 400) {
     return Response.json(

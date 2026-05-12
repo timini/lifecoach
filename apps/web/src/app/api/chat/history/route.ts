@@ -1,6 +1,11 @@
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+function agentInternalHeaders(): Record<string, string> {
+  const bearer = process.env.AGENT_INTERNAL_BEARER;
+  return bearer ? { 'x-agent-internal-bearer': bearer } : {};
+}
+
 /**
  * GET /api/chat/history?sessionId=...
  * Forwards to the agent's /history endpoint. The agent is the source of
@@ -25,6 +30,7 @@ export async function GET(request: Request): Promise<Response> {
     {
       method: 'GET',
       headers: {
+        ...agentInternalHeaders(),
         ...(authHeader ? { authorization: authHeader } : {}),
       },
     },
