@@ -55,6 +55,13 @@ def test_style_rules_present() -> None:
     assert "STYLE:" in out
 
 
+def test_style_rules_encourage_grounded_formatting() -> None:
+    out = build_instruction(_base_ctx())
+    assert "Use light Markdown formatting" in out
+    assert "0–2 grounded emojis" in out
+    assert "Don't over-format" in out
+
+
 def test_user_state_block_present() -> None:
     out = build_instruction(_base_ctx())
     assert "USER_STATE: anonymous" in out
