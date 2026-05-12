@@ -40,23 +40,46 @@ export default function LandingPage() {
       <section className="relative px-5 py-6 sm:px-8 lg:px-12">
         <div className="absolute inset-x-0 top-0 -z-10 h-[620px] bg-[radial-gradient(circle_at_20%_15%,rgba(123,154,134,0.22),transparent_34%),radial-gradient(circle_at_80%_10%,rgba(198,123,99,0.16),transparent_34%)]" />
         <nav className="mx-auto flex max-w-7xl items-center justify-between rounded-full border border-border/70 bg-background/75 px-4 py-3 shadow-sm backdrop-blur">
-          <a href="/" className="font-serif text-2xl font-semibold tracking-tight text-foreground">
+          <a
+            href="/"
+            className="font-serif text-2xl font-semibold tracking-tight text-foreground"
+            data-analytics-event="landing_nav_click"
+            data-analytics-label="logo"
+          >
             Lifecoach
           </a>
           <div className="hidden items-center gap-6 text-sm font-medium text-muted-foreground md:flex">
-            <a href="#how-it-works" className="transition hover:text-foreground">
+            <a
+              href="#how-it-works"
+              className="transition hover:text-foreground"
+              data-analytics-event="landing_nav_click"
+              data-analytics-label="how_it_works"
+            >
               How it works
             </a>
-            <a href="#privacy" className="transition hover:text-foreground">
+            <a
+              href="#privacy"
+              className="transition hover:text-foreground"
+              data-analytics-event="landing_nav_click"
+              data-analytics-label="privacy"
+            >
               Privacy
             </a>
-            <a href="#use-cases" className="transition hover:text-foreground">
+            <a
+              href="#use-cases"
+              className="transition hover:text-foreground"
+              data-analytics-event="landing_nav_click"
+              data-analytics-label="use_cases"
+            >
               Use cases
             </a>
           </div>
           <a
             href="/chat"
             className="rounded-full bg-foreground px-5 py-2.5 text-sm font-semibold text-background shadow-sm transition hover:-translate-y-0.5 hover:bg-accent"
+            data-analytics-event="cta_click"
+            data-analytics-label="nav_start_coaching"
+            data-analytics-param-location="nav"
           >
             Start coaching
           </a>
@@ -80,12 +103,18 @@ export default function LandingPage() {
               <a
                 href="/chat"
                 className="inline-flex items-center justify-center rounded-full bg-foreground px-7 py-4 text-base font-semibold text-background shadow-lg shadow-foreground/10 transition hover:-translate-y-0.5 hover:bg-accent"
+                data-analytics-event="cta_click"
+                data-analytics-label="hero_try_free"
+                data-analytics-param-location="hero"
               >
                 Try the coach free
               </a>
               <a
                 href="#how-it-works"
                 className="inline-flex items-center justify-center rounded-full border border-border bg-background/70 px-7 py-4 text-base font-semibold text-foreground transition hover:-translate-y-0.5 hover:border-accent"
+                data-analytics-event="cta_click"
+                data-analytics-label="hero_see_product"
+                data-analytics-param-location="hero"
               >
                 See the product
               </a>
@@ -137,6 +166,8 @@ export default function LandingPage() {
                       key={action}
                       type="button"
                       className="rounded-2xl border border-border bg-muted/60 px-3 py-3 text-sm font-semibold text-foreground"
+                      data-analytics-event="demo_action_click"
+                      data-analytics-label={action}
                     >
                       {action}
                     </button>
@@ -243,6 +274,9 @@ export default function LandingPage() {
           <a
             href="/chat"
             className="mt-8 inline-flex items-center justify-center rounded-full bg-foreground px-8 py-4 text-base font-semibold text-background shadow-lg shadow-foreground/10 transition hover:-translate-y-0.5 hover:bg-accent"
+            data-analytics-event="cta_click"
+            data-analytics-label="footer_open_lifecoach"
+            data-analytics-param-location="footer"
           >
             Open Lifecoach
           </a>

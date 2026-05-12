@@ -23,6 +23,7 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { LanguagePicker } from '../../components/LanguagePicker';
 import { isLocale } from '../../i18n/routing';
+import { trackAction } from '../../lib/analytics';
 import {
   ensureSignedIn,
   linkWithGoogle,
@@ -163,9 +164,11 @@ export default function SettingsPage() {
 
   async function handleConnectWorkspace() {
     if (!user) return;
+    trackAction('settings_workspace_connect_clicked');
     setWorkspaceBusy(true);
     try {
       const status = await connectWorkspace(user);
+      trackAction('settings_workspace_connect_result', { connected: status.connected });
       setWorkspace(status);
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : String(err));
@@ -176,9 +179,11 @@ export default function SettingsPage() {
 
   async function handleRevokeWorkspace() {
     if (!user) return;
+    trackAction('settings_workspace_revoke_clicked');
     setWorkspaceBusy(true);
     try {
       const status = await revokeWorkspace(user);
+      trackAction('settings_workspace_revoke_result', { connected: status.connected });
       setWorkspace(status);
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : String(err));
@@ -194,6 +199,7 @@ export default function SettingsPage() {
     const prevProfile = profileState.status === 'ready' ? profileState.profile : {};
     const prevHistory = profileState.status === 'ready' ? profileState.history : [];
     setProfileState({ status: 'ready', profile, history: prevHistory });
+    trackAction('settings_profile_changed');
     setSavingProfile(true);
     try {
       const idToken = await user.getIdToken();
@@ -212,14 +218,18 @@ export default function SettingsPage() {
   }
 
   async function handleShareLocation() {
+    trackAction('settings_location_share_clicked');
     setLocationRequested(true);
     const loc = await requestBrowserLocation();
     setLocation(loc);
+    trackAction('settings_location_share_result', { shared: loc !== null });
   }
 
   async function handleLinkGoogle() {
+    trackAction('settings_google_sign_in_clicked');
     try {
       const upgraded = await linkWithGoogle();
+      trackAction('settings_google_sign_in_result', { is_anonymous: upgraded.isAnonymous });
       setUser(upgraded);
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : String(err));
@@ -228,8 +238,10 @@ export default function SettingsPage() {
 
   async function handleSendEmail() {
     if (!emailDraft.includes('@')) return;
+    trackAction('settings_email_sign_in_clicked');
     try {
       await sendEmailSignInLink(emailDraft, window.location.href);
+      trackAction('settings_email_sign_in_link_sent');
       setEmailDraft('');
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : String(err));
@@ -237,6 +249,7 @@ export default function SettingsPage() {
   }
 
   async function handleSignOut() {
+    trackAction('settings_sign_out_clicked');
     await signOutCurrent();
     router.push('/');
   }
@@ -296,7 +309,16 @@ export default function SettingsPage() {
     <SettingsPageTemplate
       header={header}
       footer={footer}
-      tabs={<SettingsTabs<TabId> tabs={tabs} activeId={activeTab} onChange={setActiveTab} />}
+      tabs={
+        <SettingsTabs<TabId>
+          tabs={tabs}
+          activeId={activeTab}
+          onChange={(tab) => {
+            trackAction('settings_tab_changed', { tab });
+            setActiveTab(tab);
+          }}
+        />
+      }
     >
       {activeTab === 'connections' ? (
         <section className="flex flex-col gap-3">

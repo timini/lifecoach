@@ -130,6 +130,8 @@ just logs-agent dev # gcloud logging tail for the agent service
 
 `.env.local` (gitignored) holds local secrets. Production uses GCP Secret Manager via Terraform.
 
+Optional web analytics can be enabled by setting `NEXT_PUBLIC_GA_MEASUREMENT_ID` to a Google Analytics 4 measurement ID (for example, `G-XXXXXXXXXX`). When unset, the Google Analytics scripts are not loaded and action tracking becomes a no-op.
+
 For full layout — every endpoint, tool, context provider, storage doc, infra module, and CI workflow — see [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
 ---

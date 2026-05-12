@@ -19,6 +19,7 @@ import { UserStateMachine } from '@lifecoach/user-state';
 import type { User } from 'firebase/auth';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { trackAction } from '../lib/analytics';
 import {
   completeEmailSignInLink,
   ensureSignedIn,
@@ -208,29 +209,35 @@ export function ChatWindow() {
   }, [sendText]);
 
   async function shareLocation() {
+    trackAction('location_share_clicked');
     setLocationRequested(true);
     const loc = await requestBrowserLocation();
     setLocation(loc);
+    trackAction('location_share_result', { shared: loc !== null });
   }
 
   function handleSelectSession(selectedId: string) {
     if (selectedId === sessionId) return;
+    trackAction('session_selected', { is_today: selectedId === todaySessionId });
     setSessionId(selectedId);
     setViewMode(selectedId === todaySessionId ? 'live' : 'past');
   }
 
   function handleBackToToday() {
     if (!user) return;
+    trackAction('back_to_today_clicked');
     setSessionId(sessionIdForToday(user.uid));
     setViewMode('live');
   }
 
   function submitChoice(mid: string, answer: string) {
+    trackAction('choice_submitted');
     markAnswered(mid);
     void sendText(answer);
   }
 
   async function handleSignOut() {
+    trackAction('sign_out_clicked');
     try {
       await signOutCurrent();
       setUser(null);
@@ -245,40 +252,50 @@ export function ChatWindow() {
 
   async function handleConnectWorkspace() {
     if (!user) return;
+    trackAction('workspace_connect_clicked');
     try {
       const status = await connectWorkspace(user);
       setWorkspaceConnected(status.connected);
+      trackAction('workspace_connect_result', { connected: status.connected });
       void sendText('Connected — try that again please.');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      trackAction('workspace_connect_failed');
       appendAssistantText(`workspace connect failed: ${msg}`);
     }
   }
 
   function handleProInterest() {
+    trackAction('pro_interest_clicked');
     appendAssistantText("Thanks — we'll be in touch when Pro is ready.");
   }
 
   async function handleGoogleSignIn() {
+    trackAction('google_sign_in_clicked');
     try {
       const upgraded = await linkWithGoogle();
+      trackAction('google_sign_in_result', { is_anonymous: upgraded.isAnonymous });
       setUser(upgraded);
       void sendText("I've just signed in with Google.");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      trackAction('google_sign_in_failed');
       appendAssistantText(`sign-in error: ${msg}`);
     }
   }
 
   async function handleEmailSignIn(email: string) {
+    trackAction('email_sign_in_clicked');
     try {
       const returnUrl = window.location.href;
       await sendEmailSignInLink(email, returnUrl);
+      trackAction('email_sign_in_link_sent');
       appendAssistantText(
         `Email sent to ${email} — check your inbox and click the link to finish.`,
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      trackAction('email_sign_in_failed');
       appendAssistantText(`email-link error: ${msg}`);
     }
   }
@@ -347,6 +364,7 @@ export function ChatWindow() {
             isAnonymous: user.isAnonymous,
           }}
           onOpenSettings={() => {
+            trackAction('settings_opened');
             if (typeof window !== 'undefined') window.location.assign('/settings');
           }}
           onSignOut={() => void handleSignOut()}
@@ -388,7 +406,13 @@ export function ChatWindow() {
       <ChatComposer
         value={composerValue}
         onChange={setComposerValue}
-        onSubmit={(text) => void sendText(text)}
+        onSubmit={(text) => {
+          trackAction('chat_message_submitted', {
+            view_mode: viewMode,
+            message_length: text.length,
+          });
+          void sendText(text);
+        }}
         disabled={busy}
         placeholder={t('placeholder')}
         sendLabel={t('placeholder')}
@@ -427,7 +451,14 @@ export function ChatWindow() {
           </Text>
           <div className="flex flex-wrap gap-2">
             {starterPrompts.map((prompt) => (
-              <StarterPromptCard key={prompt} prompt={prompt} onSelect={(p) => void sendText(p)} />
+              <StarterPromptCard
+                key={prompt}
+                prompt={prompt}
+                onSelect={(p) => {
+                  trackAction('starter_prompt_selected', { prompt: p });
+                  void sendText(p);
+                }}
+              />
             ))}
           </div>
         </div>
