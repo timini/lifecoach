@@ -55,6 +55,12 @@ variable "mem0_enabled" {
   description = "Mount the MEM0_API_KEY secret. Defaults to true so previews mirror dev."
 }
 
+variable "google_analytics_measurement_id" {
+  type        = string
+  default     = ""
+  description = "Google Analytics 4 measurement ID forwarded from dev tfvars into preview web builds. Empty disables GA."
+}
+
 variable "sentry_dsn" {
   type        = string
   default     = ""

@@ -65,6 +65,12 @@ variable "github_repo" {
   description = "GitHub repo (OWNER/REPO) allowed to mint deploy credentials via Workload Identity Federation."
 }
 
+variable "google_analytics_measurement_id" {
+  type        = string
+  default     = ""
+  description = "Google Analytics 4 measurement ID (NEXT_PUBLIC_GA_MEASUREMENT_ID) inlined into the web bundle at build time. Empty disables GA."
+}
+
 variable "sentry_dsn" {
   type        = string
   default     = ""

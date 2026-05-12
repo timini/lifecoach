@@ -19,6 +19,7 @@ import { UserStateMachine } from '@lifecoach/user-state';
 import type { User } from 'firebase/auth';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { type AnalyticsParams, trackAction } from '../lib/analytics';
 import {
   completeEmailSignInLink,
   ensureSignedIn,
@@ -60,6 +61,18 @@ export function ChatWindow() {
 
   const { messages, busy, sendText, setMessages, appendAssistantText, markAnswered } =
     useChatStream({ user, sessionId, viewMode, location });
+
+  const trackChatAction = useCallback(
+    (action: string, params: AnalyticsParams = {}) => {
+      trackAction(action, {
+        ...params,
+        view_mode: viewMode,
+        is_anonymous: user?.isAnonymous ?? true,
+        workspace_connected: workspaceConnected,
+      });
+    },
+    [user?.isAnonymous, viewMode, workspaceConnected],
+  );
 
   useEffect(() => {
     (async () => {
@@ -200,85 +213,116 @@ export function ChatWindow() {
     function onChoice(e: Event) {
       const detail = (e as CustomEvent<string>).detail;
       if (typeof detail === 'string' && detail.length > 0) {
+        trackChatAction('chat_choice_selected', { source: 'generated_ui' });
         void sendText(detail);
       }
     }
     window.addEventListener('lifecoach:choice', onChoice);
     return () => window.removeEventListener('lifecoach:choice', onChoice);
-  }, [sendText]);
+  }, [sendText, trackChatAction]);
 
   async function shareLocation() {
+    trackChatAction('location_share_clicked', { already_shared: location !== null });
     setLocationRequested(true);
     const loc = await requestBrowserLocation();
     setLocation(loc);
+    trackChatAction('location_share_completed', { shared: loc !== null });
   }
 
   function handleSelectSession(selectedId: string) {
     if (selectedId === sessionId) return;
+    trackChatAction('sessions_session_selected', {
+      selected_is_today: selectedId === todaySessionId,
+      sessions_count: sessions.length,
+    });
     setSessionId(selectedId);
     setViewMode(selectedId === todaySessionId ? 'live' : 'past');
   }
 
   function handleBackToToday() {
     if (!user) return;
+    trackChatAction('sessions_back_to_today_clicked');
     setSessionId(sessionIdForToday(user.uid));
     setViewMode('live');
   }
 
   function submitChoice(mid: string, answer: string) {
+    trackChatAction('chat_choice_selected', { source: 'assistant_picker' });
     markAnswered(mid);
     void sendText(answer);
   }
 
+  function handleSendText(text: string, source: string) {
+    trackChatAction('chat_message_sent', {
+      source,
+      length: text.length,
+      location_shared: location !== null,
+    });
+    void sendText(text);
+  }
+
   async function handleSignOut() {
+    trackChatAction('account_sign_out_clicked');
     try {
       await signOutCurrent();
       setUser(null);
       setMessages([]);
       const fresh = await ensureSignedIn();
       setUser(fresh);
+      trackChatAction('account_sign_out_completed');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setAuthError(msg);
+      trackChatAction('account_sign_out_failed');
     }
   }
 
   async function handleConnectWorkspace() {
     if (!user) return;
+    trackChatAction('workspace_connect_clicked');
     try {
       const status = await connectWorkspace(user);
       setWorkspaceConnected(status.connected);
+      trackChatAction('workspace_connect_completed', { connected: status.connected });
       void sendText('Connected — try that again please.');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      trackChatAction('workspace_connect_failed');
       appendAssistantText(`workspace connect failed: ${msg}`);
     }
   }
 
   function handleProInterest() {
+    trackChatAction('pro_interest_clicked');
     appendAssistantText("Thanks — we'll be in touch when Pro is ready.");
   }
 
   async function handleGoogleSignIn() {
+    trackChatAction('account_google_sign_in_clicked');
     try {
       const upgraded = await linkWithGoogle();
       setUser(upgraded);
+      trackChatAction('account_google_sign_in_completed');
       void sendText("I've just signed in with Google.");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      trackChatAction('account_google_sign_in_failed');
       appendAssistantText(`sign-in error: ${msg}`);
     }
   }
 
   async function handleEmailSignIn(email: string) {
+    trackChatAction('account_email_sign_in_clicked');
     try {
       const returnUrl = window.location.href;
       await sendEmailSignInLink(email, returnUrl);
+      trackChatAction('account_email_sign_in_sent');
       appendAssistantText(
         `Email sent to ${email} — check your inbox and click the link to finish.`,
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      trackChatAction('account_email_sign_in_failed');
       appendAssistantText(`email-link error: ${msg}`);
     }
   }
@@ -316,6 +360,7 @@ export function ChatWindow() {
         <SessionsDrawerTrigger
           onOpen={() => {
             setDrawerOpen(true);
+            trackChatAction('sessions_drawer_opened', { sessions_count: sessions.length });
             captureChatEvent('sessions.drawer_opened', {
               uid: user.uid,
               sessionsCountOnOpen: sessions.length,
@@ -347,6 +392,7 @@ export function ChatWindow() {
             isAnonymous: user.isAnonymous,
           }}
           onOpenSettings={() => {
+            trackChatAction('account_settings_opened');
             if (typeof window !== 'undefined') window.location.assign('/settings');
           }}
           onSignOut={() => void handleSignOut()}
@@ -357,6 +403,7 @@ export function ChatWindow() {
           onConnectWorkspace={() => void handleConnectWorkspace()}
           onOpenChange={(open) => {
             setLastAccountMenuOpenChange({ open, at: Date.now() });
+            trackChatAction('account_menu_open_change', { open });
             captureChatEvent('account_menu.open_change', {
               open,
               uid: user.uid,
@@ -388,7 +435,7 @@ export function ChatWindow() {
       <ChatComposer
         value={composerValue}
         onChange={setComposerValue}
-        onSubmit={(text) => void sendText(text)}
+        onSubmit={(text) => handleSendText(text, 'composer')}
         disabled={busy}
         placeholder={t('placeholder')}
         sendLabel={t('placeholder')}
@@ -398,7 +445,10 @@ export function ChatWindow() {
   const drawer = (
     <SessionsDrawer
       open={drawerOpen}
-      onOpenChange={setDrawerOpen}
+      onOpenChange={(open) => {
+        setDrawerOpen(open);
+        trackChatAction('sessions_drawer_open_change', { open, sessions_count: sessions.length });
+      }}
       sessions={sessions}
       activeSessionId={sessionId}
       todaySessionId={todaySessionId}
@@ -427,7 +477,11 @@ export function ChatWindow() {
           </Text>
           <div className="flex flex-wrap gap-2">
             {starterPrompts.map((prompt) => (
-              <StarterPromptCard key={prompt} prompt={prompt} onSelect={(p) => void sendText(p)} />
+              <StarterPromptCard
+                key={prompt}
+                prompt={prompt}
+                onSelect={(p) => handleSendText(p, 'starter_prompt')}
+              />
             ))}
           </div>
         </div>

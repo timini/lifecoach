@@ -1,7 +1,8 @@
 import '@lifecoach/ui/styles.css';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getMessages } from 'next-intl/server';
-import type { ReactNode } from 'react';
+import { type ReactNode, Suspense } from 'react';
+import { AnalyticsBootstrap } from '../components/AnalyticsBootstrap';
 import { SentryBootstrap } from '../components/SentryBootstrap';
 
 export const metadata = {
@@ -28,6 +29,9 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       </head>
       <body className="bg-background text-foreground">
         <SentryBootstrap />
+        <Suspense fallback={null}>
+          <AnalyticsBootstrap />
+        </Suspense>
         <NextIntlClientProvider locale={locale} messages={messages}>
           {children}
         </NextIntlClientProvider>

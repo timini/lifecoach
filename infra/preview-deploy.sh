@@ -73,6 +73,7 @@ dev_tfvar() {
   [[ -z "${line}" ]] && return 0
   printf '%s' "${line}" | sed -E 's/.*=[[:space:]]*"([^"]*)".*/\1/'
 }
+GA_MEASUREMENT_ID="$(dev_tfvar google_analytics_measurement_id)"
 SENTRY_DSN_VALUE="$(dev_tfvar sentry_dsn)"
 
 # --- Docker auth + builds + pushes -----------------------------------------
@@ -100,6 +101,7 @@ build_and_push() {
       --build-arg "NEXT_PUBLIC_FIREBASE_PROJECT_ID=${PROJECT_ID}"
       --build-arg "NEXT_PUBLIC_FIREBASE_APP_ID=${FIREBASE_APP_ID}"
       --build-arg "NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}"
+      --build-arg "NEXT_PUBLIC_GA_MEASUREMENT_ID=${GA_MEASUREMENT_ID}"
       --build-arg "NEXT_PUBLIC_SENTRY_DSN=${SENTRY_DSN_VALUE}"
       --build-arg "NEXT_PUBLIC_SENTRY_ENVIRONMENT=preview-pr-${PR_NUMBER}"
     )
@@ -140,6 +142,7 @@ apply_preview() {
       -var="firebase_auth_domain=${FIREBASE_AUTH_DOMAIN}" \
       -var="firebase_app_id=${FIREBASE_APP_ID}" \
       -var="google_oauth_client_id=${GOOGLE_OAUTH_CLIENT_ID}" \
+      -var="google_analytics_measurement_id=${GA_MEASUREMENT_ID}" \
       -var="sentry_dsn=${SENTRY_DSN_VALUE}" >&2
   )
 }
