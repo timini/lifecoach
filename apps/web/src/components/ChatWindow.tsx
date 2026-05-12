@@ -25,6 +25,7 @@ import {
   linkWithGoogle,
   onAuthChange,
   sendEmailSignInLink,
+  sendWelcomeVerificationEmail,
   signOutCurrent,
 } from '../lib/firebase';
 import {
@@ -263,6 +264,18 @@ export function ChatWindow() {
     try {
       const upgraded = await linkWithGoogle();
       setUser(upgraded);
+      try {
+        const returnUrl = window.location.href;
+        const sentWelcome = await sendWelcomeVerificationEmail(upgraded, returnUrl);
+        if (sentWelcome && upgraded.email) {
+          appendAssistantText(
+            `Welcome email sent to ${upgraded.email} — click the verification link when you have a minute.`,
+          );
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        appendAssistantText(`signed in, but welcome email failed: ${msg}`);
+      }
       void sendText("I've just signed in with Google.");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -275,7 +288,7 @@ export function ChatWindow() {
       const returnUrl = window.location.href;
       await sendEmailSignInLink(email, returnUrl);
       appendAssistantText(
-        `Email sent to ${email} — check your inbox and click the link to finish.`,
+        `Welcome email sent to ${email} — check your inbox and click the verification link to finish.`,
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

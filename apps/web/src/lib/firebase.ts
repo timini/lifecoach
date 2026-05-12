@@ -12,6 +12,7 @@ import {
   linkWithCredential,
   linkWithPopup,
   onAuthStateChanged,
+  sendEmailVerification,
   sendSignInLinkToEmail,
   signInAnonymously,
   signInWithCredential,
@@ -99,6 +100,7 @@ export function onAuthChange(cb: (user: User | null) => void): () => void {
 }
 
 const EMAIL_PENDING_KEY = 'lifecoach.pendingEmail';
+const WELCOME_VERIFICATION_SENT_KEY_PREFIX = 'lifecoach.welcomeVerificationSent.';
 
 /**
  * Link the current (anonymous) user to a Google account via popup. Preserves
@@ -147,18 +149,57 @@ function credentialFromAuthError(
 }
 
 /**
- * Send a magic-link sign-in email. Caller stores the email so we can finish
- * linking when the user returns from the email link.
+ * Send the welcome email for an anonymous user who chose email signup.
+ *
+ * Firebase's passwordless sign-in email is also the verification link for
+ * this path: clicking it proves the recipient controls the address, and
+ * `completeEmailSignInLink` links that verified email credential onto the
+ * existing anonymous user so their saved progress stays on the same UID.
  */
 export async function sendEmailSignInLink(email: string, returnUrl: string): Promise<void> {
   const auth = firebaseAuth();
-  await sendSignInLinkToEmail(auth, email, {
-    url: returnUrl,
-    handleCodeInApp: true,
-  });
+  await sendSignInLinkToEmail(auth, email, emailActionSettings(returnUrl));
   if (typeof window !== 'undefined') {
     window.localStorage.setItem(EMAIL_PENDING_KEY, email);
   }
+}
+
+/**
+ * Send the welcome verification email for a user who just converted via
+ * Google. Google already proves ownership for most accounts, but this keeps
+ * the post-conversion lifecycle consistent with email signup: the user gets
+ * a Lifecoach welcome message from Firebase Auth containing a verification
+ * link that returns them to the app. The per-browser localStorage guard keeps
+ * retries/re-renders from spamming a converted user.
+ */
+export async function sendWelcomeVerificationEmail(
+  user: User,
+  returnUrl: string,
+): Promise<boolean> {
+  if (user.isAnonymous || !user.email) return false;
+  const storageKey = welcomeVerificationSentKey(user);
+  if (typeof window !== 'undefined' && window.localStorage.getItem(storageKey) === 'true') {
+    return false;
+  }
+
+  await sendEmailVerification(user, emailActionSettings(returnUrl));
+
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem(storageKey, 'true');
+  }
+  return true;
+}
+
+function emailActionSettings(returnUrl: string): { url: string; handleCodeInApp: true } {
+  return {
+    url: returnUrl,
+    handleCodeInApp: true,
+  };
+}
+
+function welcomeVerificationSentKey(user: User): string {
+  const email = user.email ?? user.uid;
+  return `${WELCOME_VERIFICATION_SENT_KEY_PREFIX}${user.uid}.${email}`;
 }
 
 /**
