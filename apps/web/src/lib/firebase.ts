@@ -111,13 +111,18 @@ const EMAIL_PENDING_KEY = 'lifecoach.pendingEmail';
  * of the error, and sign in to the existing account directly. The freshly-
  * minted anonymous user is abandoned — fine, it had no data.
  */
-export async function linkWithGoogle(): Promise<User> {
+export async function linkWithGoogle(returnUrl?: string): Promise<User> {
   const auth = firebaseAuth();
   const user = auth.currentUser;
   if (!user) throw new Error('no current user — sign-in must complete first');
   const provider = new GoogleAuthProvider();
   try {
     const cred = await linkWithPopup(user, provider);
+    if (returnUrl && cred.user.email) {
+      await sendWelcomeEmailVerificationLink(cred.user.email, returnUrl, {
+        rememberPendingEmail: true,
+      });
+    }
     return cred.user;
   } catch (err) {
     const credential = credentialFromAuthError(err);
@@ -146,19 +151,47 @@ function credentialFromAuthError(
   return GoogleAuthProvider.credentialFromError(err as AuthError);
 }
 
+interface WelcomeEmailOptions {
+  /**
+   * Store the address locally so the app can link the credential to the
+   * current anonymous/Google user when the recipient clicks the email link.
+   */
+  rememberPendingEmail?: boolean;
+}
+
 /**
- * Send a magic-link sign-in email. Caller stores the email so we can finish
- * linking when the user returns from the email link.
+ * Send the welcome email as a Firebase email-link action. The link verifies
+ * ownership of the inbox by completing Firebase's email-link sign-in flow,
+ * and the `welcome=1` flag lets the app (and Firebase templates/analytics)
+ * distinguish first-run verification emails from ordinary sign-in links.
  */
-export async function sendEmailSignInLink(email: string, returnUrl: string): Promise<void> {
+export async function sendWelcomeEmailVerificationLink(
+  email: string,
+  returnUrl: string,
+  options: WelcomeEmailOptions = {},
+): Promise<void> {
   const auth = firebaseAuth();
   await sendSignInLinkToEmail(auth, email, {
-    url: returnUrl,
+    url: withWelcomeFlag(returnUrl),
     handleCodeInApp: true,
   });
-  if (typeof window !== 'undefined') {
+  if (options.rememberPendingEmail && typeof window !== 'undefined') {
     window.localStorage.setItem(EMAIL_PENDING_KEY, email);
   }
+}
+
+/**
+ * Send a welcome + verification magic-link email. Caller stores the email so
+ * we can finish linking when the user returns from the email link.
+ */
+export async function sendEmailSignInLink(email: string, returnUrl: string): Promise<void> {
+  await sendWelcomeEmailVerificationLink(email, returnUrl, { rememberPendingEmail: true });
+}
+
+function withWelcomeFlag(returnUrl: string): string {
+  const url = new URL(returnUrl);
+  url.searchParams.set('welcome', '1');
+  return url.toString();
 }
 
 /**

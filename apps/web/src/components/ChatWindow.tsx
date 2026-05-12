@@ -261,9 +261,11 @@ export function ChatWindow() {
 
   async function handleGoogleSignIn() {
     try {
-      const upgraded = await linkWithGoogle();
+      const upgraded = await linkWithGoogle(window.location.href);
       setUser(upgraded);
-      void sendText("I've just signed in with Google.");
+      appendAssistantText(
+        `Welcome email sent to ${upgraded.email ?? 'your Google address'} — click the verification link there to finish saving your progress.`,
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       appendAssistantText(`sign-in error: ${msg}`);
@@ -275,7 +277,7 @@ export function ChatWindow() {
       const returnUrl = window.location.href;
       await sendEmailSignInLink(email, returnUrl);
       appendAssistantText(
-        `Email sent to ${email} — check your inbox and click the link to finish.`,
+        `Welcome email sent to ${email} — check your inbox and click the verification link to finish.`,
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

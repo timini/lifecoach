@@ -219,7 +219,7 @@ export default function SettingsPage() {
 
   async function handleLinkGoogle() {
     try {
-      const upgraded = await linkWithGoogle();
+      const upgraded = await linkWithGoogle(window.location.href);
       setUser(upgraded);
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : String(err));
