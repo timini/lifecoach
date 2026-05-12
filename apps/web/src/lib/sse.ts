@@ -19,6 +19,22 @@ export type AssistantElement =
   | { kind: 'workspace' }
   | { kind: 'upgrade' }
   | {
+      /** Paywall card emitted by the server when the user has hit a hard
+       * cost-ceiling state (`free_wall` / `signed_in_wall`). Surfaces as
+       * a full-card `<WallPrompt>` in chat-stream. The agent never sees
+       * this — the server short-circuits before the model runs.
+       *
+       *   reason='free_limit'           → anonymous user at 25+ turns
+       *   reason='free_signed_in_limit' → signed-in free user at 100+ turns
+       *
+       *   cta='auth_user'      → sign-in flow (linkWithGoogle)
+       *   cta='upgrade_to_pro' → pro upgrade flow
+       */
+      kind: 'wall';
+      reason: 'free_limit' | 'free_signed_in_limit';
+      cta: 'auth_user' | 'upgrade_to_pro';
+    }
+  | {
       kind: 'tool-call';
       id: string;
       /** Internal tool name, for state matching (functionCall.id). */
@@ -177,7 +193,9 @@ export type AssistantOp =
 export function parseSseBlock(block: string): AssistantOp[] {
   const out: AssistantOp[] = [];
   if (!block.trim()) return out;
-  const dataLine = block.split('\n').find((line) => line.startsWith('data: '));
+  const lines = block.split('\n');
+  const eventLine = lines.find((line) => line.startsWith('event: '));
+  const dataLine = lines.find((line) => line.startsWith('data: '));
   if (!dataLine) return out;
   const payload = dataLine.slice('data: '.length);
   if (!payload || payload === '{}') return out;
@@ -188,6 +206,18 @@ export function parseSseBlock(block: string): AssistantOp[] {
   } catch {
     return out;
   }
+
+  // Named SSE events have a different shape from the default ADK event
+  // stream. `event: wall` is the server-side cost-ceiling short-circuit
+  // — the FE pushes a paywall card and that's the whole turn.
+  if (eventLine === 'event: wall' && isWallPayload(parsed)) {
+    out.push({
+      op: 'push',
+      element: { kind: 'wall', reason: parsed.reason, cta: parsed.cta },
+    });
+    return out;
+  }
+
   if (!isAgentEvent(parsed)) return out;
 
   const parts = parsed.content?.parts ?? [];
@@ -399,4 +429,18 @@ interface AgentPart {
 
 function isAgentEvent(v: unknown): v is AgentEvent {
   return typeof v === 'object' && v !== null;
+}
+
+interface WallPayload {
+  reason: 'free_limit' | 'free_signed_in_limit';
+  cta: 'auth_user' | 'upgrade_to_pro';
+}
+
+function isWallPayload(v: unknown): v is WallPayload {
+  if (typeof v !== 'object' || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return (
+    (o.reason === 'free_limit' || o.reason === 'free_signed_in_limit') &&
+    (o.cta === 'auth_user' || o.cta === 'upgrade_to_pro')
+  );
 }

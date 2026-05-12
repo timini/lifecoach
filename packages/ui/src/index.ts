@@ -71,6 +71,12 @@ export {
 } from './organisms/sessions-drawer';
 export { ToolCallBadge, type ToolCallBadgeProps } from './molecules/tool-call-badge';
 export { UpgradePrompt, type UpgradePromptProps } from './molecules/upgrade-prompt';
+export {
+  WallPrompt,
+  type WallPromptProps,
+  type WallReason,
+  type WallCta,
+} from './molecules/wall-prompt';
 export { WorkspacePrompt, type WorkspacePromptProps } from './molecules/workspace-prompt';
 export {
   YamlTree,
