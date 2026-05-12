@@ -22,9 +22,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   completeEmailSignInLink,
   ensureSignedIn,
-  linkWithGoogle,
+  linkWithGoogleResult,
   onAuthChange,
   sendEmailSignInLink,
+  sendWelcomeVerificationEmail,
   signOutCurrent,
 } from '../lib/firebase';
 import {
@@ -261,8 +262,29 @@ export function ChatWindow() {
 
   async function handleGoogleSignIn() {
     try {
-      const upgraded = await linkWithGoogle();
+      const result = await linkWithGoogleResult();
+      const upgraded = result.user;
       setUser(upgraded);
+      // Only send the welcome on a genuine anon→Google conversion. If we
+      // recovered an existing account (UID swap path), they already got a
+      // welcome on their original signup.
+      if (result.convertedAnonymousUser && upgraded.email) {
+        // Failures don't block the sign-in — the user is signed in either
+        // way; an email-send error just means no welcome lands. Surface it
+        // softly in the transcript so the user knows.
+        try {
+          const sent = await sendWelcomeVerificationEmail(upgraded.email, window.location.href);
+          if (sent) {
+            void sendText(
+              `I've just signed in with Google. A welcome email is on its way to ${upgraded.email}.`,
+            );
+            return;
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          appendAssistantText(`signed in, but the welcome email didn't go through: ${msg}`);
+        }
+      }
       void sendText("I've just signed in with Google.");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -275,7 +297,7 @@ export function ChatWindow() {
       const returnUrl = window.location.href;
       await sendEmailSignInLink(email, returnUrl);
       appendAssistantText(
-        `Email sent to ${email} — check your inbox and click the link to finish.`,
+        `Welcome email sent to ${email} — check your inbox and click the verification link to finish.`,
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
