@@ -1,0 +1,35 @@
+{
+  "eval_set_id": "usage_no_nag_per_session",
+  "agent_module": "tests.evals.eval_anon_signup_soft_agent",
+  "name": "soft-signup state does not fire auth_user on every turn (no-nag rule)",
+  "description": "Anti-nag guardrail. The SIGNUP_SOFT directive explicitly says \"at most once per session\" — the soft state should never escalate to tool-firing behaviour. This fixture sends two consecutive plain-coaching messages from an anon user in the soft window; both turns must have empty tool_uses. The hard variant (`usage_free_signup_hard_offers_auth`) is where tool firing kicks in.\n\nNote: a strict \"text-content mentions signup at most once\" assertion would need the LLM-judge surface (chat-quality.spec.ts); this fixture pins the tool-trajectory side (no `auth_user` spam) which is the load-bearing safety.",
+  "eval_cases": [
+    {
+      "eval_id": "case_01_two_back_to_back_soft_turns",
+      "session_input": {
+        "app_name": "lifecoach",
+        "user_id": "test-user-no-nag",
+        "state": {
+          "_lifecoach_user_state": "anonymous",
+          "_lifecoach_now": "2026-05-12T09:00:00+01:00"
+        }
+      },
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [{ "text": "what do you mean by 'flow' in coaching?" }],
+            "role": "user"
+          },
+          "intermediate_data": { "tool_uses": [] }
+        },
+        {
+          "user_content": {
+            "parts": [{ "text": "ok and what about 'grounding'?" }],
+            "role": "user"
+          },
+          "intermediate_data": { "tool_uses": [] }
+        }
+      ]
+    }
+  ]
+}

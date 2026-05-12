@@ -1,0 +1,48 @@
+{
+  "eval_set_id": "usage_free_fresh_no_signup_nudge",
+  "agent_module": "tests.evals.eval_anonymous_agent",
+  "name": "anonymous fresh user gets coaching with NO signup nudge in turns 0–4",
+  "description": "First-impression window. The funnel intentionally leaves the agent unrestricted for the first 5 turns so the user gets a clean coaching experience before any conversion ask. Negative-case fixture: regardless of how friendly/persistence-adjacent the user message sounds, the agent must NOT call `auth_user` on turns 0–4. Surfacing signup too early erodes trust and converts worse than waiting. The soft nudge starts at turn 5 (the `usage_free_signup_soft_one_mention` fixture covers that boundary).",
+  "eval_cases": [
+    {
+      "eval_id": "case_01_brand_new_session_greeting",
+      "session_input": {
+        "app_name": "lifecoach",
+        "user_id": "test-user-fresh-greeting",
+        "state": {
+          "_lifecoach_user_state": "anonymous",
+          "_lifecoach_now": "2026-05-12T09:00:00+01:00"
+        }
+      },
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [{ "text": "hi, what's this?" }],
+            "role": "user"
+          },
+          "intermediate_data": { "tool_uses": [] }
+        }
+      ]
+    },
+    {
+      "eval_id": "case_02_fresh_user_shares_a_feeling",
+      "session_input": {
+        "app_name": "lifecoach",
+        "user_id": "test-user-fresh-feeling",
+        "state": {
+          "_lifecoach_user_state": "anonymous",
+          "_lifecoach_now": "2026-05-12T09:00:00+01:00"
+        }
+      },
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [{ "text": "I've been feeling overwhelmed lately" }],
+            "role": "user"
+          },
+          "intermediate_data": { "tool_uses": [] }
+        }
+      ]
+    }
+  ]
+}

@@ -35,12 +35,22 @@ ALL_FIXTURES: list[str] = sorted(
 # `agent_module` (top-level JSON field) routes each fixture to a
 # state-specific module that materialised the right prompt + tools.
 #
-# Known per-state modules (one per UserState we test):
-#   - tests.evals.eval_agent                  workspace_connected (default)
-#   - tests.evals.eval_anonymous_agent        anonymous
-#   - tests.evals.eval_email_verified_agent   email_verified
-#   - tests.evals.eval_google_linked_agent    google_linked
-#   - tests.evals.eval_triage_inbox_agent     workspace sub-agent
+# Known per-state modules. UserState-only modules are the older surface
+# (pre-issue-#64); the `eval_*_agent` modules suffixed with a usage state
+# (e.g. `eval_anon_signup_hard_agent`) pin a specific funnel position
+# (UserState × UsageState × chatTurnCount) for the issue-#64 fixtures.
+#
+#   - tests.evals.eval_agent                       workspace_connected (default)
+#   - tests.evals.eval_anonymous_agent             anonymous, fresh
+#   - tests.evals.eval_email_verified_agent        email_verified
+#   - tests.evals.eval_google_linked_agent         google_linked, fresh
+#   - tests.evals.eval_triage_inbox_agent          workspace sub-agent
+#   - tests.evals.eval_anon_signup_soft_agent      anonymous @ turn 7
+#   - tests.evals.eval_anon_signup_hard_agent      anonymous @ turn 12
+#   - tests.evals.eval_anon_throttled_agent        anonymous @ turn 18 (flash-lite)
+#   - tests.evals.eval_signed_in_pro_soft_agent    google_linked @ turn 25
+#   - tests.evals.eval_signed_in_pro_hard_agent    google_linked @ turn 75
+#   - tests.evals.eval_pro_tier_agent              tier=pro, any turn
 _DEFAULT_AGENT_MODULE = "tests.evals.eval_agent"
 
 # Used by the import-sanity test below. Keep in sync with the
@@ -51,6 +61,12 @@ _KNOWN_AGENT_MODULES: set[str] = {
     "tests.evals.eval_email_verified_agent",
     "tests.evals.eval_google_linked_agent",
     "tests.evals.eval_triage_inbox_agent",
+    "tests.evals.eval_anon_signup_soft_agent",
+    "tests.evals.eval_anon_signup_hard_agent",
+    "tests.evals.eval_anon_throttled_agent",
+    "tests.evals.eval_signed_in_pro_soft_agent",
+    "tests.evals.eval_signed_in_pro_hard_agent",
+    "tests.evals.eval_pro_tier_agent",
 }
 
 

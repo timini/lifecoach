@@ -1,0 +1,28 @@
+{
+  "eval_set_id": "usage_pro_soft_one_mention",
+  "agent_module": "tests.evals.eval_signed_in_pro_soft_agent",
+  "name": "signed-in free user at turn 25 — soft pro nudge text only, no upgrade_to_pro fire",
+  "description": "Soft-pro window (signed-in turns 20–49). The PRO_SOFT directive instructs the agent to mention Pro once per session, in text, when a Pro-adjacent moment lands naturally. Like the soft-signup state, the tool (`upgrade_to_pro`) should NOT fire on this turn — that's reserved for the hard variant at turn 50+. This fixture pins the boundary: on a general coaching question at turn 25, the agent stays text-only and does NOT call `upgrade_to_pro`.",
+  "eval_cases": [
+    {
+      "eval_id": "case_01_pro_soft_no_tool_fire_general",
+      "session_input": {
+        "app_name": "lifecoach",
+        "user_id": "test-user-pro-soft-general",
+        "state": {
+          "_lifecoach_user_state": "google_linked",
+          "_lifecoach_now": "2026-05-12T09:00:00+01:00"
+        }
+      },
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [{ "text": "tell me a quick tip for staying focused at work" }],
+            "role": "user"
+          },
+          "intermediate_data": { "tool_uses": [] }
+        }
+      ]
+    }
+  ]
+}

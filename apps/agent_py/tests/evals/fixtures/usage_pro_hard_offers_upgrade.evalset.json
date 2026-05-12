@@ -1,0 +1,56 @@
+{
+  "eval_set_id": "usage_pro_hard_offers_upgrade",
+  "agent_module": "tests.evals.eval_signed_in_pro_hard_agent",
+  "name": "signed-in free user at turn 75 — depth-adjacent ask fires upgrade_to_pro",
+  "description": "Hard-pro window (signed-in turns 50–99, on flash-lite). The PRO_HARD directive instructs the agent: when the user mentions wanting more depth / longer sessions / heavier workspace flow, call `upgrade_to_pro` this turn. USAGE credit-count is also present (chat number 75 of 100). Mirrors `usage_free_signup_hard_offers_auth` but for the signed-in→pro funnel transition.",
+  "eval_cases": [
+    {
+      "eval_id": "case_01_depth_ask_more_thorough",
+      "session_input": {
+        "app_name": "lifecoach",
+        "user_id": "test-user-pro-hard-depth",
+        "state": {
+          "_lifecoach_user_state": "google_linked",
+          "_lifecoach_now": "2026-05-12T09:00:00+01:00"
+        }
+      },
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [
+              {
+                "text": "can we go deeper on this? I'd like a more thorough analysis than usual"
+              }
+            ],
+            "role": "user"
+          },
+          "intermediate_data": {
+            "tool_uses": [{ "name": "upgrade_to_pro", "args": {} }]
+          }
+        }
+      ]
+    },
+    {
+      "eval_id": "case_02_depth_ask_longer_sessions",
+      "session_input": {
+        "app_name": "lifecoach",
+        "user_id": "test-user-pro-hard-longer",
+        "state": {
+          "_lifecoach_user_state": "google_linked",
+          "_lifecoach_now": "2026-05-12T09:00:00+01:00"
+        }
+      },
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [{ "text": "I want longer coaching sessions — is there a way?" }],
+            "role": "user"
+          },
+          "intermediate_data": {
+            "tool_uses": [{ "name": "upgrade_to_pro", "args": {} }]
+          }
+        }
+      ]
+    }
+  ]
+}

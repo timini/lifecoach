@@ -49,7 +49,7 @@ from google.adk.tools.tool_context import ToolContext
 from lifecoach_agent.agent import build_root_agent_for
 from lifecoach_agent.context.memory import noop_memory_client
 from lifecoach_agent.prompt.build_instruction import InstructionContext
-from lifecoach_agent.state import UserState
+from lifecoach_agent.state import UsageState, UserState, policy_for_usage
 from lifecoach_agent.tools.ask_choice import (
     create_ask_multiple_choice_tool,
     create_ask_single_choice_tool,
@@ -151,12 +151,26 @@ def _stub_before_tool(
     return canned
 
 
-def _build_instruction_ctx(now: datetime, *, user_state: UserState) -> InstructionContext:
+def _build_instruction_ctx(
+    now: datetime,
+    *,
+    user_state: UserState,
+    usage_state: UsageState | None = None,
+    chat_turn_count: int = 0,
+) -> InstructionContext:
+    """Build the InstructionContext an eval agent renders its prompt
+    from. `usage_state` + `chat_turn_count` exist so usage-funnel evals
+    can pin the nudge directive + USAGE credit-count block (e.g.
+    `usage_state="free_signup_hard", chat_turn_count=12`)."""
+    nudge_mode = policy_for_usage(usage_state).nudge_mode if usage_state else None
     return InstructionContext(
         now=now,
         timezone="Europe/London",
         user_state=user_state,
         memory_enabled=False,
+        nudge_mode=nudge_mode,
+        usage_state=usage_state,
+        chat_turn_count=chat_turn_count,
     )
 
 
@@ -276,17 +290,33 @@ def _make_stub_tools_for_state(state: UserState) -> list[Any]:
     return tools
 
 
-def build_eval_root_agent(state: UserState) -> Agent:
-    """Build a stub agent for one specific UserState. The agent's
-    system instruction is materialised for that state (so the
-    WORKSPACE-ASK TRIGGER routing matches what production would do)
-    and the tool list mirrors `main.py`'s per-state registration.
+def build_eval_root_agent(
+    state: UserState,
+    *,
+    usage_state: UsageState | None = None,
+    chat_turn_count: int = 0,
+) -> Agent:
+    """Build a stub agent for one specific (UserState, UsageState) pair.
+    The agent's system instruction is materialised for that combination
+    (so the WORKSPACE-ASK TRIGGER routing AND the funnel nudge directive
+    match what production would do) and the tool list mirrors
+    `main.py`'s per-state registration.
 
     `before_tool_callback` short-circuits real side effects with
     canned responses keyed by tool name. The model still emits the
-    same call shape so trajectory evaluators see what they need."""
+    same call shape so trajectory evaluators see what they need.
+
+    `usage_state` + `chat_turn_count` are optional — fixtures that pin
+    a funnel transition pass them in via per-usage-state agent modules
+    (e.g. `eval_anon_signup_hard_agent.py`). Fixtures targeting only
+    UserState behaviour leave them at their defaults."""
     now = datetime(2026, 5, 12, 9, 0, tzinfo=ZoneInfo("Europe/London"))
-    ctx = _build_instruction_ctx(now, user_state=state)
+    ctx = _build_instruction_ctx(
+        now,
+        user_state=state,
+        usage_state=usage_state,
+        chat_turn_count=chat_turn_count,
+    )
     tools = _make_stub_tools_for_state(state)
     agent = build_root_agent_for(ctx, tools)
     agent.before_tool_callback = _stub_before_tool
