@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 
 from lifecoach_agent.state import (
+    ANONYMOUS_HARD_LIMIT_AFTER,
+    FREE_HARD_LIMIT_AFTER,
     MODEL_DOWNGRADE_AFTER,
     PRO_NUDGE_AFTER,
     SIGNUP_NUDGE_AFTER,
@@ -48,6 +50,10 @@ def test_anonymous_at_downgrade_flips_to_throttled() -> None:
     assert _from(user_state="anonymous", chat_count=MODEL_DOWNGRADE_AFTER) == "free_throttled"
 
 
+def test_anonymous_at_hard_limit_is_blocked() -> None:
+    assert _from(user_state="anonymous", chat_count=ANONYMOUS_HARD_LIMIT_AFTER) == "free_blocked"
+
+
 @pytest.mark.parametrize(
     "user_state",
     ["email_pending", "email_verified", "google_linked", "workspace_connected"],
@@ -60,15 +66,22 @@ def test_signed_in_at_pro_threshold_flips_to_pro_pitch() -> None:
     assert _from(user_state="google_linked", chat_count=PRO_NUDGE_AFTER) == "free_pro_pitch"
 
 
+def test_signed_in_at_hard_limit_is_blocked() -> None:
+    assert (
+        _from(user_state="google_linked", chat_count=FREE_HARD_LIMIT_AFTER)
+        == "free_signed_in_blocked"
+    )
+
+
 def test_pro_tier_is_always_pro() -> None:
     assert _from(user_state="anonymous", chat_count=0, tier="pro") == "pro"
     assert _from(user_state="workspace_connected", chat_count=9999, tier="pro") == "pro"
 
 
 def test_signing_in_drops_out_of_throttled() -> None:
-    assert _from(user_state="anonymous", chat_count=MODEL_DOWNGRADE_AFTER + 5) == "free_throttled"
+    assert _from(user_state="anonymous", chat_count=MODEL_DOWNGRADE_AFTER + 4) == "free_throttled"
     assert (
-        _from(user_state="google_linked", chat_count=MODEL_DOWNGRADE_AFTER + 5) == "free_signed_in"
+        _from(user_state="google_linked", chat_count=MODEL_DOWNGRADE_AFTER + 4) == "free_signed_in"
     )
 
 
@@ -81,6 +94,7 @@ def test_policy_free_fresh() -> None:
         model="gemini-3-flash-preview",
         nudge_mode="none",
         upgrade_tool_available=False,
+        llm_allowed=True,
     )
 
 
@@ -90,6 +104,7 @@ def test_policy_free_signup_nudge() -> None:
         model="gemini-3-flash-preview",
         nudge_mode="signup",
         upgrade_tool_available=False,
+        llm_allowed=True,
     )
 
 
@@ -99,6 +114,18 @@ def test_policy_free_throttled() -> None:
         model="gemini-flash-lite-latest",
         nudge_mode="signup",
         upgrade_tool_available=False,
+        llm_allowed=True,
+    )
+
+
+def test_policy_free_blocked() -> None:
+    assert policy_for_usage("free_blocked") == UsagePolicy(
+        state="free_blocked",
+        model="gemini-flash-lite-latest",
+        nudge_mode="signup",
+        upgrade_tool_available=False,
+        llm_allowed=False,
+        limit_message="Free anonymous chat limit reached. Sign in to continue.",
     )
 
 
@@ -108,6 +135,7 @@ def test_policy_free_signed_in() -> None:
         model="gemini-3-flash-preview",
         nudge_mode="none",
         upgrade_tool_available=False,
+        llm_allowed=True,
     )
 
 
@@ -117,6 +145,18 @@ def test_policy_free_pro_pitch() -> None:
         model="gemini-3-flash-preview",
         nudge_mode="pro",
         upgrade_tool_available=True,
+        llm_allowed=True,
+    )
+
+
+def test_policy_signed_in_blocked() -> None:
+    assert policy_for_usage("free_signed_in_blocked") == UsagePolicy(
+        state="free_signed_in_blocked",
+        model="gemini-flash-lite-latest",
+        nudge_mode="pro",
+        upgrade_tool_available=True,
+        llm_allowed=False,
+        limit_message="Free chat limit reached. Upgrade to Pro to continue.",
     )
 
 
@@ -126,6 +166,7 @@ def test_policy_pro() -> None:
         model="gemini-3-flash-preview",
         nudge_mode="none",
         upgrade_tool_available=False,
+        llm_allowed=True,
     )
 
 
@@ -140,3 +181,5 @@ def test_thresholds_strictly_ordered() -> None:
     assert SIGNUP_NUDGE_AFTER > 0
     assert MODEL_DOWNGRADE_AFTER > SIGNUP_NUDGE_AFTER
     assert PRO_NUDGE_AFTER > 0
+    assert ANONYMOUS_HARD_LIMIT_AFTER > MODEL_DOWNGRADE_AFTER
+    assert FREE_HARD_LIMIT_AFTER > PRO_NUDGE_AFTER

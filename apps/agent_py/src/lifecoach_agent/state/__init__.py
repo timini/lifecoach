@@ -18,6 +18,8 @@ from lifecoach_agent.state.types import (
     UserState,
 )
 from lifecoach_agent.state.usage_state import (
+    ANONYMOUS_HARD_LIMIT_AFTER,
+    FREE_HARD_LIMIT_AFTER,
     MODEL_DOWNGRADE_AFTER,
     PRO_NUDGE_AFTER,
     SIGNUP_NUDGE_AFTER,
@@ -33,7 +35,9 @@ from lifecoach_agent.state.usage_state import (
 from lifecoach_agent.state.user_state import IllegalTransitionError, UserStateMachine
 
 __all__ = [
+    "ANONYMOUS_HARD_LIMIT_AFTER",
     "CORE_TOOLS",
+    "FREE_HARD_LIMIT_AFTER",
     "MODEL_DOWNGRADE_AFTER",
     "PRO_NUDGE_AFTER",
     "SIGNUP_NUDGE_AFTER",

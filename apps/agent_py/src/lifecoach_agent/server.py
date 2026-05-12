@@ -586,14 +586,38 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
             except Exception:  # noqa: BLE001
                 return []
 
-        async def _meta_call() -> dict[str, Any]:
-            if deps.user_meta_store is None:
-                return {"chatTurnCount": 0, "tier": "free"}
+        t_meta0 = _now_ms()
+        if deps.user_meta_store is None:
+            meta: dict[str, Any] = {"chatTurnCount": 0, "tier": "free"}
+        else:
             try:
                 doc = await deps.user_meta_store.increment_turn_count(effective_user_id)
-                return {"chatTurnCount": doc.chatTurnCount, "tier": doc.tier}
+                meta = {"chatTurnCount": doc.chatTurnCount, "tier": doc.tier}
             except Exception:  # noqa: BLE001
-                return {"chatTurnCount": 0, "tier": "free"}
+                meta = {"chatTurnCount": 0, "tier": "free"}
+        timings["metaMs"] = _now_ms() - t_meta0
+
+        chat_turn_count = int(meta.get("chatTurnCount", 0))
+        tier: Tier = _coerce_tier(meta.get("tier"))
+        usage_machine = UsageStateMachine.from_inputs(
+            UsageInputs(
+                user_state=machine.current(),
+                chat_count=chat_turn_count,
+                tier=tier,
+            )
+        )
+        usage_policy = usage_machine.policy()
+        if not usage_policy.llm_allowed:
+            return JSONResponse(
+                {
+                    "error": "usage_limit_exceeded",
+                    "message": usage_policy.limit_message or "Chat limit reached.",
+                    "usageState": usage_policy.state,
+                    "chatTurnCount": chat_turn_count,
+                },
+                status_code=429,
+                headers={"Retry-After": "86400"},
+            )
 
         t_parallel0 = _now_ms()
         results = await asyncio.gather(
@@ -637,7 +661,6 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                 if deps.memory is not None
                 else _empty_list()
             ),
-            _timed(_meta_call()),
             _timed(
                 deps.session_reader.get_session(
                     app_name=deps.session_reader.app_name,
@@ -675,7 +698,6 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
             (user_profile, profile_ms),
             (recent_goal_updates, goals_ms),
             (memories, memory_ms),
-            (meta, meta_ms),
             (existing_session, _existing_session_ms),
             (yesterday_summary, yesterday_summary_ms),
             (week_summary, week_summary_ms),
@@ -688,22 +710,9 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
         timings["profileMs"] = profile_ms
         timings["goalsMs"] = goals_ms
         timings["memoryMs"] = memory_ms
-        timings["metaMs"] = meta_ms
         timings["yesterdaySummaryMs"] = yesterday_summary_ms
         timings["weekSummaryMs"] = week_summary_ms
-
-        chat_turn_count = int(meta.get("chatTurnCount", 0)) if isinstance(meta, dict) else 0
-        tier: Tier = _coerce_tier(meta.get("tier")) if isinstance(meta, dict) else "free"
         timings["prepMs"] = tick()
-
-        usage_machine = UsageStateMachine.from_inputs(
-            UsageInputs(
-                user_state=machine.current(),
-                chat_count=chat_turn_count,
-                tier=tier,
-            )
-        )
-        usage_policy = usage_machine.policy()
 
         has_interacted_today = _session_has_user_interaction(existing_session)
         location_ctx: LocationCtx | None = LocationCtx(coord=coord) if coord else None

@@ -44,9 +44,12 @@ export async function POST(request: Request): Promise<Response> {
 
   if (upstream.status >= 400) {
     const text = await upstream.text().catch(() => '');
+    const retryAfter = upstream.headers.get('retry-after');
+    const headers = retryAfter ? { 'retry-after': retryAfter } : undefined;
+    const status = upstream.status === 429 ? 429 : 502;
     return Response.json(
       { error: 'Upstream agent error', detail: text.slice(0, 500) },
-      { status: 502 },
+      { status, headers },
     );
   }
 

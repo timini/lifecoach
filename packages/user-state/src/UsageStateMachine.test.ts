@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ANONYMOUS_HARD_LIMIT_AFTER,
+  FREE_HARD_LIMIT_AFTER,
   MODEL_DOWNGRADE_AFTER,
   PRO_NUDGE_AFTER,
   SIGNUP_NUDGE_AFTER,
@@ -59,6 +61,16 @@ describe('UsageStateMachine.from', () => {
     ).toBe('free_throttled');
   });
 
+  it('blocks anonymous free users at the hard limit', () => {
+    expect(
+      UsageStateMachine.from({
+        userState: 'anonymous',
+        chatCount: ANONYMOUS_HARD_LIMIT_AFTER,
+        tier: 'free',
+      }).current(),
+    ).toBe('free_blocked');
+  });
+
   it.each<[UserState]>([
     ['email_pending'],
     ['email_verified'],
@@ -84,6 +96,16 @@ describe('UsageStateMachine.from', () => {
     ).toBe('free_pro_pitch');
   });
 
+  it('blocks signed-in free users at the hard limit', () => {
+    expect(
+      UsageStateMachine.from({
+        userState: 'google_linked',
+        chatCount: FREE_HARD_LIMIT_AFTER,
+        tier: 'free',
+      }).current(),
+    ).toBe('free_signed_in_blocked');
+  });
+
   it('a tier=pro user is always in the pro state regardless of count or auth', () => {
     expect(
       UsageStateMachine.from({
@@ -106,14 +128,14 @@ describe('UsageStateMachine.from', () => {
     // anonymous. Signing up rewards the user with full Flash again.
     const anon = UsageStateMachine.from({
       userState: 'anonymous',
-      chatCount: MODEL_DOWNGRADE_AFTER + 5,
+      chatCount: MODEL_DOWNGRADE_AFTER + 4,
       tier: 'free',
     });
     expect(anon.current()).toBe('free_throttled');
 
     const signedIn = UsageStateMachine.from({
       userState: 'google_linked',
-      chatCount: MODEL_DOWNGRADE_AFTER + 5,
+      chatCount: MODEL_DOWNGRADE_AFTER + 4,
       tier: 'free',
     });
     expect(signedIn.current()).toBe('free_signed_in');
@@ -129,6 +151,7 @@ describe('policyForUsage', () => {
         model: 'gemini-3-flash-preview',
         nudgeMode: 'none',
         upgradeToolAvailable: false,
+        llmAllowed: true,
       },
     ],
     [
@@ -138,6 +161,7 @@ describe('policyForUsage', () => {
         model: 'gemini-3-flash-preview',
         nudgeMode: 'signup',
         upgradeToolAvailable: false,
+        llmAllowed: true,
       },
     ],
     [
@@ -147,6 +171,18 @@ describe('policyForUsage', () => {
         model: 'gemini-flash-lite-latest',
         nudgeMode: 'signup',
         upgradeToolAvailable: false,
+        llmAllowed: true,
+      },
+    ],
+    [
+      'free_blocked',
+      {
+        state: 'free_blocked',
+        model: 'gemini-flash-lite-latest',
+        nudgeMode: 'signup',
+        upgradeToolAvailable: false,
+        llmAllowed: false,
+        limitMessage: 'Free anonymous chat limit reached. Sign in to continue.',
       },
     ],
     [
@@ -156,6 +192,7 @@ describe('policyForUsage', () => {
         model: 'gemini-3-flash-preview',
         nudgeMode: 'none',
         upgradeToolAvailable: false,
+        llmAllowed: true,
       },
     ],
     [
@@ -165,6 +202,18 @@ describe('policyForUsage', () => {
         model: 'gemini-3-flash-preview',
         nudgeMode: 'pro',
         upgradeToolAvailable: true,
+        llmAllowed: true,
+      },
+    ],
+    [
+      'free_signed_in_blocked',
+      {
+        state: 'free_signed_in_blocked',
+        model: 'gemini-flash-lite-latest',
+        nudgeMode: 'pro',
+        upgradeToolAvailable: true,
+        llmAllowed: false,
+        limitMessage: 'Free chat limit reached. Upgrade to Pro to continue.',
       },
     ],
     [
@@ -174,6 +223,7 @@ describe('policyForUsage', () => {
         model: 'gemini-3-flash-preview',
         nudgeMode: 'none',
         upgradeToolAvailable: false,
+        llmAllowed: true,
       },
     ],
   ])('returns the correct policy for %s', (state, expected) => {
@@ -197,5 +247,7 @@ describe('threshold constants', () => {
     expect(SIGNUP_NUDGE_AFTER).toBeGreaterThan(0);
     expect(MODEL_DOWNGRADE_AFTER).toBeGreaterThan(SIGNUP_NUDGE_AFTER);
     expect(PRO_NUDGE_AFTER).toBeGreaterThan(0);
+    expect(ANONYMOUS_HARD_LIMIT_AFTER).toBeGreaterThan(MODEL_DOWNGRADE_AFTER);
+    expect(FREE_HARD_LIMIT_AFTER).toBeGreaterThan(PRO_NUDGE_AFTER);
   });
 });
