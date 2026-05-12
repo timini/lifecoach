@@ -92,6 +92,22 @@ resource "google_clouddomains_registration" "domain" {
 
   domain_name = var.domain_name
 
+  # HSTS-preloaded TLDs (.dev, .app, .page, .foo, .new, ...) require the
+  # registrant to explicitly acknowledge that every subdomain is forced
+  # to HTTPS by every modern browser. Cloud Domains rejects registration
+  # requests for these TLDs without `domain_notices` containing
+  # `HSTS_PRELOADED`. The ack is informational — there's nothing to opt
+  # out of, HSTS preload is intrinsic to the TLD — but the API still
+  # demands it.
+  #
+  # Non-HSTS TLDs (.com, .io, ...) get an empty list and the field is a
+  # no-op. The closed set below is every Google-owned HSTS-preloaded TLD
+  # listed at https://hstspreload.org as of 2026-05.
+  domain_notices = contains(
+    ["dev", "app", "page", "foo", "new", "boo", "rsvp", "channel", "how", "soy", "ing", "meme", "fly", "phd", "prof", "esq", "day", "moe"],
+    regex("[^.]+$", var.domain_name)
+  ) ? ["HSTS_PRELOADED"] : []
+
   # `renewal_method` is computed by the provider (Cloud Domains assigns
   # AUTOMATIC_RENEWAL by default; changing it requires the Cloud Domains
   # console). Only `transfer_lock_state` is user-configurable on this
