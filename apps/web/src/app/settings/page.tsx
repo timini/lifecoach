@@ -23,6 +23,7 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { LanguagePicker } from '../../components/LanguagePicker';
 import { isLocale } from '../../i18n/routing';
+import { trackAction } from '../../lib/analytics';
 import {
   ensureSignedIn,
   linkWithGoogle,
@@ -162,6 +163,7 @@ export default function SettingsPage() {
   }, [user, loadProfile, loadGoals]);
 
   async function handleConnectWorkspace() {
+    trackAction('settings_connect_workspace');
     if (!user) return;
     setWorkspaceBusy(true);
     try {
@@ -175,6 +177,7 @@ export default function SettingsPage() {
   }
 
   async function handleRevokeWorkspace() {
+    trackAction('settings_revoke_workspace');
     if (!user) return;
     setWorkspaceBusy(true);
     try {
@@ -188,6 +191,7 @@ export default function SettingsPage() {
   }
 
   async function handleProfileChange(next: JsonValue) {
+    trackAction('settings_profile_change');
     if (!user) return;
     if (next === null || typeof next !== 'object' || Array.isArray(next)) return;
     const profile = next as JsonObject;
@@ -212,12 +216,14 @@ export default function SettingsPage() {
   }
 
   async function handleShareLocation() {
+    trackAction('settings_share_location', { requested: locationRequested });
     setLocationRequested(true);
     const loc = await requestBrowserLocation();
     setLocation(loc);
   }
 
   async function handleLinkGoogle() {
+    trackAction('settings_link_google');
     try {
       const upgraded = await linkWithGoogle();
       setUser(upgraded);
@@ -227,6 +233,7 @@ export default function SettingsPage() {
   }
 
   async function handleSendEmail() {
+    trackAction('settings_send_email_link', { valid: emailDraft.includes('@') });
     if (!emailDraft.includes('@')) return;
     try {
       await sendEmailSignInLink(emailDraft, window.location.href);
@@ -237,6 +244,7 @@ export default function SettingsPage() {
   }
 
   async function handleSignOut() {
+    trackAction('settings_sign_out');
     await signOutCurrent();
     router.push('/');
   }
@@ -296,7 +304,16 @@ export default function SettingsPage() {
     <SettingsPageTemplate
       header={header}
       footer={footer}
-      tabs={<SettingsTabs<TabId> tabs={tabs} activeId={activeTab} onChange={setActiveTab} />}
+      tabs={
+        <SettingsTabs<TabId>
+          tabs={tabs}
+          activeId={activeTab}
+          onChange={(tab) => {
+            trackAction('settings_tab_change', { tab });
+            setActiveTab(tab);
+          }}
+        />
+      }
     >
       {activeTab === 'connections' ? (
         <section className="flex flex-col gap-3">

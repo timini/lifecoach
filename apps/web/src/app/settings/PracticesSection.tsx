@@ -12,6 +12,7 @@
 
 import { PRACTICE_METADATA } from '@lifecoach/shared-types';
 import type { JsonObject } from '@lifecoach/ui';
+import { trackAction } from '../../lib/analytics';
 
 interface Props {
   profile: JsonObject;
@@ -22,6 +23,7 @@ export function PracticesSection({ profile, onChange }: Props) {
   const practices = isObject(profile.practices) ? (profile.practices as JsonObject) : {};
 
   function toggle(id: string, next: boolean) {
+    trackAction('settings_practice_toggle', { practice: id, enabled: next });
     const slot = isObject(practices[id]) ? (practices[id] as JsonObject) : {};
     const updatedPractices: JsonObject = {
       ...practices,

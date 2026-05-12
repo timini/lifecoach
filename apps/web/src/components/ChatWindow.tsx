@@ -19,6 +19,7 @@ import { UserStateMachine } from '@lifecoach/user-state';
 import type { User } from 'firebase/auth';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { trackAction } from '../lib/analytics';
 import {
   completeEmailSignInLink,
   ensureSignedIn,
@@ -208,6 +209,7 @@ export function ChatWindow() {
   }, [sendText]);
 
   async function shareLocation() {
+    trackAction('chat_share_location', { requested: locationRequested });
     setLocationRequested(true);
     const loc = await requestBrowserLocation();
     setLocation(loc);
@@ -215,22 +217,26 @@ export function ChatWindow() {
 
   function handleSelectSession(selectedId: string) {
     if (selectedId === sessionId) return;
+    trackAction('chat_select_session', { historical: selectedId !== todaySessionId });
     setSessionId(selectedId);
     setViewMode(selectedId === todaySessionId ? 'live' : 'past');
   }
 
   function handleBackToToday() {
+    trackAction('chat_back_to_today');
     if (!user) return;
     setSessionId(sessionIdForToday(user.uid));
     setViewMode('live');
   }
 
   function submitChoice(mid: string, answer: string) {
+    trackAction('chat_choice_submit', { message_id: mid, answer_length: answer.length });
     markAnswered(mid);
     void sendText(answer);
   }
 
   async function handleSignOut() {
+    trackAction('chat_sign_out');
     try {
       await signOutCurrent();
       setUser(null);
@@ -244,6 +250,7 @@ export function ChatWindow() {
   }
 
   async function handleConnectWorkspace() {
+    trackAction('chat_connect_workspace');
     if (!user) return;
     try {
       const status = await connectWorkspace(user);
@@ -256,10 +263,12 @@ export function ChatWindow() {
   }
 
   function handleProInterest() {
+    trackAction('chat_pro_interest');
     appendAssistantText("Thanks — we'll be in touch when Pro is ready.");
   }
 
   async function handleGoogleSignIn() {
+    trackAction('chat_google_sign_in');
     try {
       const upgraded = await linkWithGoogle();
       setUser(upgraded);
@@ -271,6 +280,7 @@ export function ChatWindow() {
   }
 
   async function handleEmailSignIn(email: string) {
+    trackAction('chat_email_sign_in_link', { has_email: Boolean(email) });
     try {
       const returnUrl = window.location.href;
       await sendEmailSignInLink(email, returnUrl);
@@ -315,6 +325,7 @@ export function ChatWindow() {
       <div className="flex items-center gap-2">
         <SessionsDrawerTrigger
           onOpen={() => {
+            trackAction('chat_open_sessions_drawer', { sessions_count: sessions.length });
             setDrawerOpen(true);
             captureChatEvent('sessions.drawer_opened', {
               uid: user.uid,
@@ -347,6 +358,7 @@ export function ChatWindow() {
             isAnonymous: user.isAnonymous,
           }}
           onOpenSettings={() => {
+            trackAction('chat_open_settings');
             if (typeof window !== 'undefined') window.location.assign('/settings');
           }}
           onSignOut={() => void handleSignOut()}
@@ -388,7 +400,10 @@ export function ChatWindow() {
       <ChatComposer
         value={composerValue}
         onChange={setComposerValue}
-        onSubmit={(text) => void sendText(text)}
+        onSubmit={(text) => {
+          trackAction('chat_submit_message', { source: 'composer', length: text.length });
+          void sendText(text);
+        }}
         disabled={busy}
         placeholder={t('placeholder')}
         sendLabel={t('placeholder')}
@@ -427,7 +442,14 @@ export function ChatWindow() {
           </Text>
           <div className="flex flex-wrap gap-2">
             {starterPrompts.map((prompt) => (
-              <StarterPromptCard key={prompt} prompt={prompt} onSelect={(p) => void sendText(p)} />
+              <StarterPromptCard
+                key={prompt}
+                prompt={prompt}
+                onSelect={(p) => {
+                  trackAction('chat_starter_prompt', { length: p.length });
+                  void sendText(p);
+                }}
+              />
             ))}
           </div>
         </div>

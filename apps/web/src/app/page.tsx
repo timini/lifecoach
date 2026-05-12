@@ -40,22 +40,39 @@ export default function LandingPage() {
       <section className="relative px-5 py-6 sm:px-8 lg:px-12">
         <div className="absolute inset-x-0 top-0 -z-10 h-[620px] bg-[radial-gradient(circle_at_20%_15%,rgba(123,154,134,0.22),transparent_34%),radial-gradient(circle_at_80%_10%,rgba(198,123,99,0.16),transparent_34%)]" />
         <nav className="mx-auto flex max-w-7xl items-center justify-between rounded-full border border-border/70 bg-background/75 px-4 py-3 shadow-sm backdrop-blur">
-          <a href="/" className="font-serif text-2xl font-semibold tracking-tight text-foreground">
+          <a
+            href="/"
+            data-analytics-action="landing_nav_home"
+            className="font-serif text-2xl font-semibold tracking-tight text-foreground"
+          >
             Lifecoach
           </a>
           <div className="hidden items-center gap-6 text-sm font-medium text-muted-foreground md:flex">
-            <a href="#how-it-works" className="transition hover:text-foreground">
+            <a
+              href="#how-it-works"
+              data-analytics-action="landing_nav_how_it_works"
+              className="transition hover:text-foreground"
+            >
               How it works
             </a>
-            <a href="#privacy" className="transition hover:text-foreground">
+            <a
+              href="#privacy"
+              data-analytics-action="landing_nav_privacy"
+              className="transition hover:text-foreground"
+            >
               Privacy
             </a>
-            <a href="#use-cases" className="transition hover:text-foreground">
+            <a
+              href="#use-cases"
+              data-analytics-action="landing_nav_use_cases"
+              className="transition hover:text-foreground"
+            >
               Use cases
             </a>
           </div>
           <a
             href="/chat"
+            data-analytics-action="landing_start_coaching"
             className="rounded-full bg-foreground px-5 py-2.5 text-sm font-semibold text-background shadow-sm transition hover:-translate-y-0.5 hover:bg-accent"
           >
             Start coaching
@@ -79,12 +96,14 @@ export default function LandingPage() {
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <a
                 href="/chat"
+                data-analytics-action="landing_try_coach_free"
                 className="inline-flex items-center justify-center rounded-full bg-foreground px-7 py-4 text-base font-semibold text-background shadow-lg shadow-foreground/10 transition hover:-translate-y-0.5 hover:bg-accent"
               >
                 Try the coach free
               </a>
               <a
                 href="#how-it-works"
+                data-analytics-action="landing_see_product"
                 className="inline-flex items-center justify-center rounded-full border border-border bg-background/70 px-7 py-4 text-base font-semibold text-foreground transition hover:-translate-y-0.5 hover:border-accent"
               >
                 See the product
@@ -242,6 +261,7 @@ export default function LandingPage() {
           </p>
           <a
             href="/chat"
+            data-analytics-action="landing_open_lifecoach"
             className="mt-8 inline-flex items-center justify-center rounded-full bg-foreground px-8 py-4 text-base font-semibold text-background shadow-lg shadow-foreground/10 transition hover:-translate-y-0.5 hover:bg-accent"
           >
             Open Lifecoach
