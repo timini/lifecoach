@@ -32,7 +32,27 @@ module "firebase_auth" {
   # or the Google sign-in popup fails with "The requested action is
   # invalid". Passed via var to break a cycle (web -> firebase_auth -> web).
   # Hardcoded in terraform.tfvars because the Cloud Run URL is stable.
-  extra_authorized_domains = var.firebase_extra_authorized_domains
+  #
+  # We also append `preview.<custom_domain_name>` as a parent — Firebase
+  # honors subdomain wildcarding for non-public-suffix entries, so adding
+  # `preview.lifecoach.dev` covers every `pr-N.preview.lifecoach.dev`
+  # preview hostname without per-PR allowlist mutation.
+  extra_authorized_domains = concat(
+    var.firebase_extra_authorized_domains,
+    ["preview.${var.custom_domain_name}"],
+  )
+
+  depends_on = [module.apis]
+}
+
+# --- Custom domain (lifecoach.dev) ---------------------------------------
+
+module "domain" {
+  source     = "../../modules/domain"
+  project_id = var.project_id
+
+  domain_name        = var.custom_domain_name
+  registrant_contact = var.custom_domain_registrant_contact
 
   depends_on = [module.apis]
 }
@@ -279,4 +299,14 @@ output "sentry_dsn" {
 output "environment" {
   value       = var.environment
   description = "Used by deploy.sh to set NEXT_PUBLIC_SENTRY_ENVIRONMENT on web build-arg."
+}
+
+output "custom_domain_name" {
+  value       = module.domain.domain_name
+  description = "Apex domain (e.g. \"lifecoach.dev\"). Preview env reads this to build pr-N.preview.<domain>."
+}
+
+output "custom_domain_dns_zone" {
+  value       = module.domain.dns_zone_name
+  description = "Cloud DNS managed-zone name. Preview env writes per-PR CNAME records into this zone."
 }

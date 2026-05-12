@@ -583,12 +583,17 @@ Opening a PR triggers `.github/workflows/pr-preview-deploy.yml`:
 1. Builds + pushes both Docker images tagged `pr-<n>-<short_sha>`.
 2. `terraform apply` against the per-PR state slot at `gs://<dev_tfstate>/previews/<n>/` (the `infra/envs/preview/` module).
 3. Deploys two Cloud Run services: `lifecoach-agent-pr-<n>` and `lifecoach-web-pr-<n>`.
-4. Comments URLs + e2e outcome on the PR.
-5. Subsequent pushes roll the same services to the new image (cancellation via `concurrency: preview-pr-<n>`).
+4. Creates a Cloud Run domain mapping `pr-<n>.preview.lifecoach.dev` → `lifecoach-web-pr-<n>`, plus the matching CNAME in the dev project's Cloud DNS managed zone.
+5. Comments URLs + e2e outcome on the PR. Both URLs are surfaced:
+   - **`https://lifecoach-web-pr-<n>-…run.app`** — works immediately; Playwright targets this.
+   - **`https://pr-<n>.preview.lifecoach.dev`** — Firebase Auth–ready (passes the `actionCodeSettings.url` check for magic-link emails). First deploy of a new hostname has a ~15–30 minute Google-managed-cert warm-up before HTTPS works; subsequent deploys to the same hostname are instant.
+6. Subsequent pushes roll the same services to the new image (cancellation via `concurrency: preview-pr-<n>`).
 
-Closing the PR triggers `pr-preview-teardown.yml` which `terraform destroy`s the slot. A daily `preview-sweeper.yml` catches anything the close hook missed.
+Closing the PR triggers `pr-preview-teardown.yml` which `terraform destroy`s the slot — Cloud Run services, domain mapping, and DNS record all go in one transaction. A daily `preview-sweeper.yml` catches anything the close hook missed.
 
-Previews share dev's Firestore, GCS, Secret Manager, and runtime SAs — only the two Cloud Run services are per-PR. Spin-up: ~5 minutes. Idle cost: ~$0.
+**Why the custom domain.** Cloud Run preview hostnames live under `*.run.app`, which is on the [Public Suffix List](https://publicsuffix.org/). Firebase Auth's `authorizedDomains` allowlist supports subdomain wildcarding for non-public-suffix entries, but explicitly excludes public suffixes — so `run.app` in the allowlist matches *only* the literal string `run.app`, not any subdomain. Magic-link emails (`sendSignInLinkToEmail` → `actionCodeSettings.url`) check the continue URL against this allowlist and reject any *.run.app target with `auth/unauthorized-continue-uri`. Mapping every preview onto a single registered domain (`lifecoach.dev`, registered + DNS-hosted via the `infra/modules/domain/` Terraform module) sidesteps the issue with one allowlist entry of `preview.lifecoach.dev` that covers every PR.
+
+Previews share dev's Firestore, GCS, Secret Manager, runtime SAs, AND the Cloud DNS managed zone for `lifecoach.dev` — only the two Cloud Run services + their per-PR domain mapping + the matching CNAME record are per-PR. Spin-up: ~5 minutes (plus the cert lag the first time a hostname appears). Idle cost: ~$0.
 
 ### 11.2 Production deploy
 

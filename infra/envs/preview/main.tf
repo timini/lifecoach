@@ -103,6 +103,62 @@ module "web" {
   depends_on = [module.agent]
 }
 
+# --- Custom-domain mapping for the per-PR web service --------------------
+#
+# Why: the *.run.app preview URL works but `auth/unauthorized-continue-uri`
+# rejects it for Firebase magic-link emails (run.app is on the Public
+# Suffix List, so subdomain wildcarding in the authorized-domains allowlist
+# doesn't apply). Mapping each PR to a hostname under the custom domain
+# (registered + DNS-hosted in the dev env) means a single Firebase entry of
+# `preview.lifecoach.dev` covers every PR's preview hostname.
+#
+# Cert provisioning lag: Cloud Run requests a Google-managed cert via the
+# HTTP-01 challenge on first deploy. ~15-30 min wall-clock before HTTPS
+# works on a new hostname. The *.run.app URL works immediately and is
+# still posted alongside the custom URL in the PR comment, so reviewers
+# aren't blocked while the cert warms up.
+#
+# `count = ... ? 1 : 0` lets us land the TF before the dev domain
+# registration is actually applied. Once dev's apply completes and these
+# outputs flow through preview-deploy.sh, count flips and the mapping
+# materialises on the next preview deploy without a code change here.
+
+locals {
+  custom_domain_enabled = var.custom_domain_name != "" && var.custom_domain_dns_zone != ""
+  preview_hostname      = local.custom_domain_enabled ? "pr-${var.pr_number}.preview.${var.custom_domain_name}" : ""
+}
+
+resource "google_cloud_run_domain_mapping" "web" {
+  count    = local.custom_domain_enabled ? 1 : 0
+  project  = var.project_id
+  location = var.region
+  name     = local.preview_hostname
+
+  metadata {
+    namespace = var.project_id
+  }
+
+  spec {
+    route_name = "lifecoach-web-pr-${var.pr_number}"
+  }
+
+  depends_on = [module.web]
+}
+
+# DNS record so the mapping resolves. Cloud Run domain mappings return a
+# resource_records block listing the exact rrdata to publish; we point at
+# `ghs.googlehosted.com` (the documented target for Cloud Run mappings in
+# regions that haven't migrated to per-region IPs).
+resource "google_dns_record_set" "preview_cname" {
+  count        = local.custom_domain_enabled ? 1 : 0
+  project      = var.project_id
+  managed_zone = var.custom_domain_dns_zone
+  name         = "${local.preview_hostname}."
+  type         = "CNAME"
+  ttl          = 300
+  rrdatas      = ["ghs.googlehosted.com."]
+}
+
 # --- Outputs --------------------------------------------------------------
 
 output "agent_url" {
@@ -112,7 +168,12 @@ output "agent_url" {
 
 output "web_url" {
   value       = module.web.url
-  description = "Per-PR web Cloud Run URL — the one to open in a browser / point Playwright at."
+  description = "Per-PR web Cloud Run URL — the *.run.app fallback. Used by Playwright + always available immediately on deploy."
+}
+
+output "custom_web_url" {
+  value       = local.custom_domain_enabled ? "https://${local.preview_hostname}" : ""
+  description = "Per-PR web URL under the custom domain (https://pr-N.preview.<domain>). Empty when the custom-domain mapping is disabled (dev env hasn't been applied with the domain module yet, or rolling back). NOTE: first deploy of a new PR has a ~15-30 min cert-provisioning lag before HTTPS works on this URL."
 }
 
 output "pr_number" {
