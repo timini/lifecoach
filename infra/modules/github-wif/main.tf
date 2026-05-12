@@ -111,6 +111,21 @@ locals {
     # Terraform refreshes (and could update) the WIF pool + provider it
     # runs through. Without read perms on the pool, plan fails on a 403.
     "roles/iam.workloadIdentityPoolAdmin",
+    # Cloud DNS — needed to write per-PR CNAMEs into the lifecoach.dev
+    # managed zone (preview env) and to manage the zone resource itself
+    # (dev env). Without this the per-PR preview Terraform 403s on
+    # google_dns_record_set create/destroy and the deploy / teardown
+    # workflows fail mid-apply. `roles/dns.admin` is the standard role;
+    # the narrower `roles/dns.reader + roles/dns.peer` combo can't write
+    # records.
+    "roles/dns.admin",
+    # Cloud Domains — `deploy-dev.yml` runs a full dev `terraform apply`
+    # on every merge to main, which refreshes `google_clouddomains_registration`
+    # state. Without read perms, plan fails on a 403. The resource itself
+    # is `prevent_destroy = true`, so admin here is for refresh/diff
+    # under normal operation; the initial registration is user-driven
+    # from a laptop with the user's own gcloud auth.
+    "roles/domains.admin",
   ])
 }
 

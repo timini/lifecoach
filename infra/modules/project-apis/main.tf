@@ -50,6 +50,13 @@ locals {
     # Places (for "nearby interesting places" context)
     "places.googleapis.com",
 
+    # Custom domain + DNS (see infra/modules/domain/). Cloud Domains
+    # registers + manages the lifecoach.dev registration; Cloud DNS hosts
+    # the managed zone the registration delegates to + holds the per-PR
+    # preview CNAME records the preview env writes.
+    "domains.googleapis.com",
+    "dns.googleapis.com",
+
     # Observability
     "logging.googleapis.com",
     "monitoring.googleapis.com",
