@@ -43,6 +43,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import os
 import re
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -173,7 +174,7 @@ class SessionReader(Protocol):
 
     async def get_session(self, *, app_name: str, user_id: str, session_id: str) -> Any | None: ...
 
-    async def list_sessions(self, *, app_name: str, user_id: str) -> list[Any]: ...
+    async def list_sessions(self, *, app_name: str, user_id: str) -> Any: ...
 
 
 @dataclass
@@ -200,6 +201,12 @@ class CreateAppDeps:
     workspace_tokens_store: WorkspaceTokensStore | None = None
     workspace_oauth_client: WorkspaceOAuthClient | None = None
     user_meta_store: UserMetaStore | None = None
+    # Abuse controls for the billable /chat path. Defaults are disabled so
+    # unit tests and local fakes keep their historical behaviour; production
+    # wiring enables them from env with conservative defaults.
+    chat_rate_limit_per_minute: int | None = None
+    max_anonymous_turns: int | None = None
+    max_free_turns: int | None = None
     now: Callable[[], datetime] = field(
         default_factory=lambda: lambda: datetime.now(ZoneInfo("UTC"))
     )
@@ -241,6 +248,54 @@ def _coerce_tier(value: Any) -> Tier:
     return "pro" if value == "pro" else "free"
 
 
+def _positive_int_env(name: str, default: int) -> int:
+    """Read a positive integer env var, falling back on bad/missing values."""
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning("invalid integer env %s=%r; using %d", name, raw, default)
+        return default
+    if value <= 0:
+        logger.warning("non-positive integer env %s=%r; using %d", name, raw, default)
+        return default
+    return value
+
+
+def _client_key(request: Request) -> str:
+    """Best-effort caller key for per-instance abuse throttling.
+
+    Cloud Run places the peer address on the ASGI request; keep this value
+    ahead of any spoofable forwarding headers. Header fallbacks are only for
+    local proxies/tests that do not populate request.client.
+    """
+    if request.client is not None and request.client.host:
+        return request.client.host
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[-1].strip() or "unknown"
+    real_ip = request.headers.get("x-real-ip")
+    return real_ip.strip() if real_ip else "unknown"
+
+
+def _over_fixed_window_limit(
+    buckets: dict[str, tuple[int, int]], *, key: str, limit: int, now_ms: int
+) -> tuple[bool, int]:
+    """Return (over_limit, retry_after_seconds) for a simple 60s fixed window."""
+    window_ms = 60_000
+    window_start = (now_ms // window_ms) * window_ms
+    bucket_start, count = buckets.get(key, (window_start, 0))
+    if bucket_start != window_start:
+        bucket_start = window_start
+        count = 0
+    count += 1
+    buckets[key] = (bucket_start, count)
+    retry_after = max(1, int((bucket_start + window_ms - now_ms + 999) // 1000))
+    return count > limit, retry_after
+
+
 # --- App factory ---------------------------------------------------------
 
 
@@ -249,6 +304,7 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
     and returns an Express handler; we accept the same and return a
     FastAPI app (mountable + ASGI-testable)."""
     app = FastAPI()
+    chat_rate_buckets: dict[str, tuple[int, int]] = {}
 
     # ---- /health ---------------------------------------------------------
 
@@ -522,6 +578,20 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                 status_code=400,
             )
 
+        if deps.chat_rate_limit_per_minute is not None:
+            over_limit, retry_after = _over_fixed_window_limit(
+                chat_rate_buckets,
+                key=_client_key(request),
+                limit=deps.chat_rate_limit_per_minute,
+                now_ms=_now_ms(),
+            )
+            if over_limit:
+                return JSONResponse(
+                    {"error": "rate_limited", "retryAfterSeconds": retry_after},
+                    status_code=429,
+                    headers={"Retry-After": str(retry_after)},
+                )
+
         # Auth + workspace-grant inspection -------------------------------
         t0 = _now_ms()
         timings: dict[str, int] = {}
@@ -704,6 +774,21 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
             )
         )
         usage_policy = usage_machine.policy()
+
+        if tier != "pro":
+            anonymous_cap = deps.max_anonymous_turns
+            free_cap = deps.max_free_turns
+            if machine.current() == "anonymous" and anonymous_cap is not None:
+                if chat_turn_count > anonymous_cap:
+                    return JSONResponse(
+                        {"error": "anonymous_turn_limit_exceeded", "limit": anonymous_cap},
+                        status_code=402,
+                    )
+            elif free_cap is not None and chat_turn_count > free_cap:
+                return JSONResponse(
+                    {"error": "free_turn_limit_exceeded", "limit": free_cap},
+                    status_code=402,
+                )
 
         has_interacted_today = _session_has_user_interaction(existing_session)
         location_ctx: LocationCtx | None = LocationCtx(coord=coord) if coord else None

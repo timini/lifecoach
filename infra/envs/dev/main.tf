@@ -134,6 +134,10 @@ module "agent" {
       GOOGLE_CLOUD_LOCATION = "global"
       NODE_ENV              = "production"
       FIREBASE_PROJECT_ID   = var.project_id
+      REQUIRE_AUTH               = "true"
+      CHAT_RATE_LIMIT_PER_MINUTE = "20"
+      MAX_ANONYMOUS_TURNS        = "25"
+      MAX_FREE_TURNS             = "100"
       # Name follows the gcs-user-bucket module's convention so we don't have
       # to pass the output (avoids a cycle between agent and user_bucket).
       USER_BUCKET = "lifecoach-users-${var.environment}-${var.project_id}"

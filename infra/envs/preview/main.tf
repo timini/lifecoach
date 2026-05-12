@@ -53,6 +53,10 @@ module "agent" {
       GOOGLE_CLOUD_LOCATION     = "global"
       NODE_ENV                  = "production"
       FIREBASE_PROJECT_ID       = var.project_id
+      REQUIRE_AUTH               = "true"
+      CHAT_RATE_LIMIT_PER_MINUTE = "20"
+      MAX_ANONYMOUS_TURNS        = "25"
+      MAX_FREE_TURNS             = "100"
       # Reuses dev's user bucket. The bucket name follows the gcs-user-bucket
       # module's `lifecoach-users-${environment}-${project_id}` convention; we
       # hardcode `dev` here because previews share dev's bucket.

@@ -47,7 +47,13 @@ from lifecoach_agent.oauth.workspace_client import (
     create_workspace_oauth_client,
 )
 from lifecoach_agent.practices import get_enabled_practices
-from lifecoach_agent.server import CreateAppDeps, RunnerForParams, SessionReader, create_app
+from lifecoach_agent.server import (
+    CreateAppDeps,
+    RunnerForParams,
+    SessionReader,
+    _positive_int_env,
+    create_app,
+)
 from lifecoach_agent.storage.firestore_session import (
     FirestoreSessionService,
     create_firestore_session_service,
@@ -244,7 +250,7 @@ def _build_calendar_events_fetcher() -> Any:
 
     def _build_service(access_token: str) -> Any:
         from google.oauth2.credentials import Credentials
-        from googleapiclient.discovery import build  # type: ignore[import-untyped]
+        from googleapiclient.discovery import build
 
         # Credentials.__init__ has untyped kwargs.
         creds = Credentials(token=access_token)  # type: ignore[no-untyped-call]
@@ -353,16 +359,16 @@ def build_app() -> Any:
         app_name: str = APP_NAME
 
         async def get_session(self, *, app_name: str, user_id: str, session_id: str) -> Any:
-            data = await session_service.get_session(
+            data_any: Any = await session_service.get_session(
                 app_name=app_name, user_id=user_id, session_id=session_id
             )
-            if data is None:
+            if data_any is None:
                 return None
             # The summary client reads `state` and `events` attributes.
             return type(
                 "SessionView",
                 (),
-                {"state": data.get("state", {}), "events": data.get("events", [])},
+                {"state": data_any.get("state", {}), "events": data_any.get("events", [])},
             )()
 
         async def save_summary(
@@ -449,7 +455,7 @@ def build_app() -> Any:
         runner: Any = Runner(
             app_name=APP_NAME,
             agent=agent,
-            session_service=session_service,  # type: ignore[arg-type]
+            session_service=session_service,
         )
         return runner
 
@@ -461,14 +467,20 @@ def build_app() -> Any:
                 app_name=app_name, user_id=user_id, session_id=session_id
             )
 
-        async def list_sessions(self, *, app_name: str, user_id: str) -> list[Any]:
+        async def list_sessions(self, *, app_name: str, user_id: str) -> Any:
             return await session_service.list_sessions(app_name=app_name, user_id=user_id)
 
     deps = CreateAppDeps(
         runner_for=runner_for,
         session_reader=_SessionReaderAdapter(),
         verify_token=firebase_admin_verifier(),
-        require_auth=os.environ.get("REQUIRE_AUTH") == "true",
+        # Production must not expose billable LLM turns to unauthenticated
+        # callers. Terraform sets REQUIRE_AUTH=true; default to true here as a
+        # defense-in-depth guard if the env var is omitted.
+        require_auth=os.environ.get("REQUIRE_AUTH", "true").lower() == "true",
+        chat_rate_limit_per_minute=_positive_int_env("CHAT_RATE_LIMIT_PER_MINUTE", 20),
+        max_anonymous_turns=_positive_int_env("MAX_ANONYMOUS_TURNS", 25),
+        max_free_turns=_positive_int_env("MAX_FREE_TURNS", 100),
         weather=weather,
         places=places,
         places_token_provider=places_token_provider,

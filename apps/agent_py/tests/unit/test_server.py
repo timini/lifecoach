@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -159,7 +159,7 @@ class _FakeReader(SessionReader):
     ) -> dict[str, Any] | None:
         return self._sessions.get(session_id)
 
-    async def list_sessions(self, *, app_name: str, user_id: str) -> list[Any]:
+    async def list_sessions(self, *, app_name: str, user_id: str) -> Any:
         return list(self._sessions.values())
 
 
@@ -338,7 +338,7 @@ class _FakeOAuth:
 def _make_workspace_app() -> tuple[Any, Any]:
     fs = FakeFirestore()
     oauth = _FakeOAuth()
-    store = create_workspace_tokens_store(firestore=fs, oauth_client=oauth)
+    store = create_workspace_tokens_store(firestore=cast(Any, fs), oauth_client=oauth)
 
     async def _verifier(_token: str) -> VerifiedClaims:
         return VerifiedClaims(uid="u1")
@@ -476,6 +476,88 @@ async def test_chat_emits_initial_padding_comment_to_flush_gfe_buffer() -> None:
     assert text.startswith(": " + (" " * 4096))
 
 
+@dataclass
+class _MetaDoc:
+    chatTurnCount: int
+    tier: str = "free"
+
+
+class _FixedMetaStore:
+    def __init__(self, count: int, tier: str = "free") -> None:
+        self.count = count
+        self.tier = tier
+
+    async def increment_turn_count(self, _uid: str) -> _MetaDoc:
+        return _MetaDoc(chatTurnCount=self.count, tier=self.tier)
+
+    async def set_tier(self, _uid: str, tier: str) -> _MetaDoc:
+        self.tier = tier
+        return _MetaDoc(chatTurnCount=self.count, tier=self.tier)
+
+
+@pytest.mark.asyncio
+async def test_chat_rate_limits_before_running_model() -> None:
+    runner = FakeRunner(events_per_call=[[_model_text("first")], [_model_text("second")]])
+    app = _make_app(runner=runner, deps_overrides={"chat_rate_limit_per_minute": 1})
+    async with _client(app) as c:
+        first = await c.post("/chat", json={"userId": "u1", "sessionId": "s1", "message": "hi"})
+        assert first.status_code == 200
+        second = await c.post("/chat", json={"userId": "u1", "sessionId": "s1", "message": "again"})
+    assert second.status_code == 429
+    assert second.json()["error"] == "rate_limited"
+    assert runner.calls_made == 1
+
+
+@pytest.mark.asyncio
+async def test_chat_blocks_anonymous_users_after_turn_cap() -> None:
+    async def _verifier(_token: str) -> VerifiedClaims:
+        return VerifiedClaims(uid="anon-uid", firebase=FirebaseClaim(sign_in_provider="anonymous"))
+
+    runner = FakeRunner(events_per_call=[[_model_text("should not run")]])
+    app = _make_app(
+        runner=runner,
+        deps_overrides={
+            "verify_token": _verifier,
+            "user_meta_store": _FixedMetaStore(26),
+            "max_anonymous_turns": 25,
+        },
+    )
+    async with _client(app) as c:
+        res = await c.post(
+            "/chat",
+            json={"userId": "anon-uid", "sessionId": "s1", "message": "hi"},
+            headers={"Authorization": "Bearer x"},
+        )
+    assert res.status_code == 402
+    assert res.json() == {"error": "anonymous_turn_limit_exceeded", "limit": 25}
+    assert runner.calls_made == 0
+
+
+@pytest.mark.asyncio
+async def test_chat_blocks_free_signed_in_users_after_turn_cap() -> None:
+    async def _verifier(_token: str) -> VerifiedClaims:
+        return VerifiedClaims(uid="u1", firebase=FirebaseClaim(sign_in_provider="google.com"))
+
+    runner = FakeRunner(events_per_call=[[_model_text("should not run")]])
+    app = _make_app(
+        runner=runner,
+        deps_overrides={
+            "verify_token": _verifier,
+            "user_meta_store": _FixedMetaStore(101),
+            "max_free_turns": 100,
+        },
+    )
+    async with _client(app) as c:
+        res = await c.post(
+            "/chat",
+            json={"userId": "u1", "sessionId": "s1", "message": "hi"},
+            headers={"Authorization": "Bearer x"},
+        )
+    assert res.status_code == 402
+    assert res.json() == {"error": "free_turn_limit_exceeded", "limit": 100}
+    assert runner.calls_made == 0
+
+
 @pytest.mark.asyncio
 async def test_chat_uses_token_uid_over_body_uid_for_scoped_reads() -> None:
     """When auth verifies, the claims uid drives downstream stores —
@@ -505,7 +587,7 @@ async def test_chat_uses_token_uid_over_body_uid_for_scoped_reads() -> None:
     app = _make_app(
         runner=runner,
         deps_overrides={
-            "profile_store": _Tracking(),  # type: ignore[arg-type]
+            "profile_store": _Tracking(),
             "verify_token": _verifier,
         },
     )
@@ -556,7 +638,7 @@ async def test_history_serves_session_round_trip_via_firestore_service() -> None
     consumes is satisfied by `FirestoreSessionService` (production
     wiring) — independent of the test fakes used elsewhere."""
     fs = FakeFirestore()
-    svc = create_firestore_session_service(firestore=fs)
+    svc = create_firestore_session_service(firestore=cast(Any, fs))
     await svc.create_session(app_name="lifecoach", user_id="u1", session_id="day-1")
 
     class _Reader(SessionReader):
@@ -565,7 +647,7 @@ async def test_history_serves_session_round_trip_via_firestore_service() -> None
         async def get_session(self, *, app_name: str, user_id: str, session_id: str) -> Any | None:
             return await svc.get_session(app_name=app_name, user_id=user_id, session_id=session_id)
 
-        async def list_sessions(self, *, app_name: str, user_id: str) -> list[Any]:
+        async def list_sessions(self, *, app_name: str, user_id: str) -> Any:
             return await svc.list_sessions(app_name=app_name, user_id=user_id)
 
     app = _make_app(deps_overrides={"session_reader": _Reader()})
