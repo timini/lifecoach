@@ -582,6 +582,138 @@ async def test_chat_uses_token_uid_over_body_uid_for_scoped_reads() -> None:
     assert "spoofed" not in seen_uids
 
 
+# --- /chat walls (issue #64) ---------------------------------------------
+
+
+@dataclass
+class _FakeUserMetaStore:
+    """Returns a fixed `chatTurnCount` on increment — lets us pin a /chat
+    request into a specific UsageState without writing to Firestore."""
+
+    chat_turn_count: int
+    tier: str = "free"
+
+    async def increment_turn_count(self, uid: str) -> Any:
+        from lifecoach_agent.storage.user_meta import UserMetaDoc
+
+        return UserMetaDoc(
+            uid=uid,
+            chatTurnCount=self.chat_turn_count,
+            firstSeenAt="2026-05-12T00:00:00Z",
+            tier=self.tier,  # type: ignore[arg-type]
+            updatedAt="2026-05-12T00:00:00Z",
+        )
+
+
+@pytest.mark.asyncio
+async def test_chat_walls_anonymous_at_25_turns_short_circuits() -> None:
+    """An anonymous user at chatTurnCount=25 hits `free_wall`. The server
+    must emit `event: wall` with `reason=free_limit, cta=auth_user` and
+    `event: done`, and the model runner must NOT be invoked. Cost ceiling
+    enforcement — no prompt regression can re-open this path."""
+    runner = FakeRunner(events_per_call=[[_model_text("should not run")]])
+    meta = _FakeUserMetaStore(chat_turn_count=25)
+    app = _make_app(runner=runner, deps_overrides={"user_meta_store": meta})
+    async with (
+        _client(app) as c,
+        c.stream(
+            "POST",
+            "/chat",
+            json={"userId": "u1", "sessionId": "s1", "message": "hi"},
+        ) as res,
+    ):
+        text = await _drain(res)
+    assert "event: wall" in text
+    assert '"reason": "free_limit"' in text
+    assert '"cta": "auth_user"' in text
+    assert "event: done" in text
+    # Critical: the model was NEVER invoked. The string "should not run"
+    # is whatever the runner WOULD have emitted; its absence proves the
+    # short-circuit happened.
+    assert "should not run" not in text
+    assert runner.calls_made == 0
+
+
+@pytest.mark.asyncio
+async def test_chat_walls_signed_in_at_100_turns_short_circuits() -> None:
+    """A signed-in (google_linked) free-tier user at chatTurnCount=100
+    hits `signed_in_wall`. Different reason + CTA (upgrade_to_pro)."""
+
+    async def _verifier(_token: str) -> VerifiedClaims:
+        return VerifiedClaims(
+            uid="signed-in-uid",
+            firebase=FirebaseClaim(sign_in_provider="google.com"),
+        )
+
+    runner = FakeRunner(events_per_call=[[_model_text("should not run")]])
+    meta = _FakeUserMetaStore(chat_turn_count=100, tier="free")
+    app = _make_app(
+        runner=runner,
+        deps_overrides={
+            "user_meta_store": meta,
+            "verify_token": _verifier,
+        },
+    )
+    async with (
+        _client(app) as c,
+        c.stream(
+            "POST",
+            "/chat",
+            json={"userId": "u1", "sessionId": "s1", "message": "hi"},
+            headers={"Authorization": "Bearer x"},
+        ) as res,
+    ):
+        text = await _drain(res)
+    assert "event: wall" in text
+    assert '"reason": "free_signed_in_limit"' in text
+    assert '"cta": "upgrade_to_pro"' in text
+    assert runner.calls_made == 0
+
+
+@pytest.mark.asyncio
+async def test_chat_does_not_wall_below_threshold() -> None:
+    """An anonymous user at chatTurnCount=24 is just below the wall —
+    they should still get a normal SSE stream with a model reply. Confirms
+    the boundary doesn't fire prematurely."""
+    runner = FakeRunner(events_per_call=[[_model_text("under the cap")]])
+    meta = _FakeUserMetaStore(chat_turn_count=24)
+    app = _make_app(runner=runner, deps_overrides={"user_meta_store": meta})
+    async with (
+        _client(app) as c,
+        c.stream(
+            "POST",
+            "/chat",
+            json={"userId": "u1", "sessionId": "s1", "message": "hi"},
+        ) as res,
+    ):
+        text = await _drain(res)
+    assert "event: wall" not in text
+    assert "under the cap" in text
+    assert runner.calls_made == 1
+
+
+@pytest.mark.asyncio
+async def test_chat_pro_tier_bypasses_walls_indefinitely() -> None:
+    """A pro-tier user at chatTurnCount=999 is in `pro` state — no wall,
+    full model. The wall is a free-tier safety, not a hard cap on
+    everyone."""
+    runner = FakeRunner(events_per_call=[[_model_text("pro reply")]])
+    meta = _FakeUserMetaStore(chat_turn_count=999, tier="pro")
+    app = _make_app(runner=runner, deps_overrides={"user_meta_store": meta})
+    async with (
+        _client(app) as c,
+        c.stream(
+            "POST",
+            "/chat",
+            json={"userId": "u1", "sessionId": "s1", "message": "hi"},
+        ) as res,
+    ):
+        text = await _drain(res)
+    assert "event: wall" not in text
+    assert "pro reply" in text
+    assert runner.calls_made == 1
+
+
 # --- /goals --------------------------------------------------------------
 
 

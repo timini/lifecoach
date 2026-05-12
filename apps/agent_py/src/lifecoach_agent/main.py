@@ -440,6 +440,17 @@ def build_app() -> Any:
             for ptool in practice.tools(deps, uid):
                 tools.append(ptool)
 
+        # Wall states (free_wall / signed_in_wall) have `model is None` and
+        # `walled=True`. server.py short-circuits before calling runner_for
+        # for those, so we should never see a None model here — assert it
+        # explicitly so a regression in the short-circuit logic surfaces
+        # loudly instead of crashing later in the ADK runner with a
+        # confusing error.
+        assert usage_policy.model is not None, (
+            f"runner_for invoked with no model — state={usage_policy.state}, "
+            "walled={usage_policy.walled}. The server should short-circuit "
+            "walled requests before reaching here."
+        )
         agent = build_root_agent_for(ctx, tools, model=usage_policy.model)
         # `FirestoreSessionService` doesn't yet subclass ADK's
         # `BaseSessionService` — that landing is tracked alongside the
