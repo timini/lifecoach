@@ -55,6 +55,21 @@ def test_style_rules_present() -> None:
     assert "STYLE:" in out
 
 
+def test_style_rules_encourage_light_formatting() -> None:
+    out = build_instruction(_base_ctx())
+    assert "Use light Markdown formatting" in out
+    assert "short headings" in out
+    assert "0–2 relevant emojis" in out
+    assert "never decorative spam" in out
+    assert "For simple emotional replies, skip heavy structure" in out
+
+
+def test_style_rules_allow_scannable_bullets() -> None:
+    out = build_instruction(_base_ctx())
+    assert "scannable bullets" in out
+    assert "Never use bullet lists unless" not in out
+
+
 def test_user_state_block_present() -> None:
     out = build_instruction(_base_ctx())
     assert "USER_STATE: anonymous" in out
