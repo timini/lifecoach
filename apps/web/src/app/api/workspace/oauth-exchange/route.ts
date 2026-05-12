@@ -22,12 +22,17 @@ export async function POST(request: Request): Promise<Response> {
   if (!agent) return Response.json({ error: 'AGENT_URL not configured' }, { status: 500 });
 
   const auth = request.headers.get('authorization') ?? '';
+  const agentSecret = process.env.AGENT_SHARED_SECRET;
   if (!auth) return Response.json({ error: 'unauthenticated' }, { status: 401 });
 
   const body = await request.text();
   const upstream = await fetch(`${agent}/workspace/oauth-exchange`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', authorization: auth },
+    headers: {
+      'content-type': 'application/json',
+      authorization: auth,
+      ...(agentSecret ? { 'x-lifecoach-agent-secret': agentSecret } : {}),
+    },
     body,
   });
   if (upstream.status >= 400) {

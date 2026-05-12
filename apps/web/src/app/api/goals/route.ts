@@ -11,8 +11,12 @@ export async function GET(request: Request): Promise<Response> {
   if (!agent) return Response.json({ error: 'AGENT_URL not configured' }, { status: 500 });
 
   const auth = request.headers.get('authorization') ?? '';
+  const agentSecret = process.env.AGENT_SHARED_SECRET;
   const upstream = await fetch(`${agent}/goals?userId=${encodeURIComponent(userId)}`, {
-    headers: auth ? { authorization: auth } : {},
+    headers: {
+      ...(auth ? { authorization: auth } : {}),
+      ...(agentSecret ? { 'x-lifecoach-agent-secret': agentSecret } : {}),
+    },
   });
   if (upstream.status >= 400) {
     const text = await upstream.text().catch(() => '');

@@ -16,10 +16,14 @@ export async function GET(request: Request): Promise<Response> {
   if (!agent) return Response.json({ error: 'AGENT_URL not configured' }, { status: 500 });
 
   const auth = request.headers.get('authorization') ?? '';
+  const agentSecret = process.env.AGENT_SHARED_SECRET;
   if (!auth) return Response.json({ error: 'unauthenticated' }, { status: 401 });
 
   const upstream = await fetch(`${agent}/workspace/status`, {
-    headers: { authorization: auth },
+    headers: {
+      authorization: auth,
+      ...(agentSecret ? { 'x-lifecoach-agent-secret': agentSecret } : {}),
+    },
   });
   if (upstream.status >= 400) {
     return Response.json(

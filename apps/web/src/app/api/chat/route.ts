@@ -27,11 +27,13 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const authHeader = request.headers.get('authorization') ?? '';
+  const agentSecret = process.env.AGENT_SHARED_SECRET;
   const upstream = await fetch(`${agentUrl}/chat`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       ...(authHeader ? { authorization: authHeader } : {}),
+      ...(agentSecret ? { 'x-lifecoach-agent-secret': agentSecret } : {}),
     },
     body: JSON.stringify({
       userId,

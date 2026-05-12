@@ -20,12 +20,14 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   const authHeader = request.headers.get('authorization') ?? '';
+  const agentSecret = process.env.AGENT_SHARED_SECRET;
   const upstream = await fetch(
     `${agentUrl}/history?userId=${encodeURIComponent(userId)}&sessionId=${encodeURIComponent(sessionId)}`,
     {
       method: 'GET',
       headers: {
         ...(authHeader ? { authorization: authHeader } : {}),
+        ...(agentSecret ? { 'x-lifecoach-agent-secret': agentSecret } : {}),
       },
     },
   );

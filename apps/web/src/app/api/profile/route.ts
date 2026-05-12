@@ -18,11 +18,13 @@ export async function GET(request: Request): Promise<Response> {
   const agent = agentUrl();
   if (!agent) return Response.json({ error: 'AGENT_URL not configured' }, { status: 500 });
 
+  const agentSecret = process.env.AGENT_SHARED_SECRET;
   const upstream = await fetch(`${agent}/profile?userId=${encodeURIComponent(userId)}`, {
     headers: {
       ...(request.headers.get('authorization')
         ? { authorization: request.headers.get('authorization') as string }
         : {}),
+      ...(agentSecret ? { 'x-lifecoach-agent-secret': agentSecret } : {}),
     },
   });
   if (upstream.status >= 400) {
@@ -41,6 +43,7 @@ export async function PATCH(request: Request): Promise<Response> {
   if (!agent) return Response.json({ error: 'AGENT_URL not configured' }, { status: 500 });
 
   const auth = request.headers.get('authorization') ?? '';
+  const agentSecret = process.env.AGENT_SHARED_SECRET;
   if (!auth) {
     // The agent requires a verified token for PATCH; fail fast on the web
     // side rather than round-tripping to get the same 401.
@@ -49,7 +52,11 @@ export async function PATCH(request: Request): Promise<Response> {
   const body = await request.text();
   const upstream = await fetch(`${agent}/profile`, {
     method: 'PATCH',
-    headers: { 'content-type': 'application/json', authorization: auth },
+    headers: {
+      'content-type': 'application/json',
+      authorization: auth,
+      ...(agentSecret ? { 'x-lifecoach-agent-secret': agentSecret } : {}),
+    },
     body,
   });
   if (upstream.status >= 400) {

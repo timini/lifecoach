@@ -523,6 +523,62 @@ async def test_chat_uses_token_uid_over_body_uid_for_scoped_reads() -> None:
     assert "spoofed" not in seen_uids
 
 
+@pytest.mark.asyncio
+async def test_chat_rejects_missing_internal_secret_before_llm() -> None:
+    runner = FakeRunner(events_per_call=[[_model_text("should not run")]])
+    app = _make_app(runner=runner, deps_overrides={"internal_api_secret": "s3cr3t"})
+    async with _client(app) as c:
+        res = await c.post(
+            "/chat",
+            json={"userId": "u1", "sessionId": "s1", "message": "hi"},
+        )
+    assert res.status_code == 403
+    assert runner.calls_made == 0
+
+
+@pytest.mark.asyncio
+async def test_chat_allows_matching_internal_secret() -> None:
+    runner = FakeRunner(events_per_call=[[_model_text("ok")]])
+    app = _make_app(runner=runner, deps_overrides={"internal_api_secret": "s3cr3t"})
+    async with (
+        _client(app) as c,
+        c.stream(
+            "POST",
+            "/chat",
+            json={"userId": "u1", "sessionId": "s1", "message": "hi"},
+            headers={"x-lifecoach-agent-secret": "s3cr3t"},
+        ) as res,
+    ):
+        text = await _drain(res)
+    assert res.status_code == 200
+    assert "ok" in text
+
+
+@pytest.mark.asyncio
+async def test_chat_enforces_free_turn_limit_before_llm() -> None:
+    class _Meta:
+        async def increment_turn_count(self, uid: str) -> Any:
+            return type("Doc", (), {"chatTurnCount": 101, "tier": "free"})()
+
+    runner = FakeRunner(events_per_call=[[_model_text("should not run")]])
+    app = _make_app(
+        runner=runner,
+        deps_overrides={
+            "user_meta_store": _Meta(),
+            "enforce_usage_limits": True,
+            "free_turn_limit": 100,
+        },
+    )
+    async with _client(app) as c:
+        res = await c.post(
+            "/chat",
+            json={"userId": "u1", "sessionId": "s1", "message": "hi"},
+        )
+    assert res.status_code == 429
+    assert res.json() == {"error": "free_turn_limit_exceeded", "limit": 100}
+    assert runner.calls_made == 0
+
+
 # --- /goals --------------------------------------------------------------
 
 

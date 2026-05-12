@@ -66,13 +66,14 @@ describe('POST /api/chat', () => {
     );
   });
 
-  it('forwards auth header, location, and timezone to the agent', async () => {
+  it('forwards auth header, internal secret, location, and timezone to the agent', async () => {
     const fetchSpy = vi.fn().mockResolvedValue(
       // null body → Response has no default content-type header, which
       // exercises the `?? 'text/event-stream'` fallback branch.
       new Response(null, { status: 200 }),
     );
     vi.stubGlobal('fetch', fetchSpy);
+    process.env.AGENT_SHARED_SECRET = 'shared-test-secret';
 
     const req = new Request('http://localhost/api/chat', {
       method: 'POST',
@@ -95,6 +96,7 @@ describe('POST /api/chat', () => {
     const [, init] = call as [unknown, RequestInit];
     const headers = init.headers as Record<string, string>;
     expect(headers.authorization).toBe('Bearer tok123');
+    expect(headers['x-lifecoach-agent-secret']).toBe('shared-test-secret');
     const forwarded = JSON.parse(init.body as string);
     expect(forwarded).toMatchObject({
       location: { lat: -37.81, lng: 144.96 },

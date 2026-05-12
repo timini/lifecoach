@@ -30,6 +30,7 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const auth = request.headers.get('authorization') ?? '';
+  const agentSecret = process.env.AGENT_SHARED_SECRET;
   if (!auth) {
     return Response.json({ error: 'unauthenticated' }, { status: 401 });
   }
@@ -40,7 +41,11 @@ export async function POST(request: Request): Promise<Response> {
 
   const upstream = await fetch(`${agent}/profile`, {
     method: 'PATCH',
-    headers: { 'content-type': 'application/json', authorization: auth },
+    headers: {
+      'content-type': 'application/json',
+      authorization: auth,
+      ...(agentSecret ? { 'x-lifecoach-agent-secret': agentSecret } : {}),
+    },
     body: JSON.stringify({ profile: { language } }),
   });
   if (upstream.status >= 400) {

@@ -48,6 +48,7 @@ import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
+from os import environ
 from typing import Any, Protocol, cast
 from zoneinfo import ZoneInfo
 
@@ -176,6 +177,10 @@ class SessionReader(Protocol):
     async def list_sessions(self, *, app_name: str, user_id: str) -> list[Any]: ...
 
 
+FREE_TURN_LIMIT_ENV = "LIFECOACH_FREE_TURN_LIMIT"
+DEFAULT_FREE_TURN_LIMIT = 100
+
+
 @dataclass
 class CreateAppDeps:
     """Mirrors the TS `CreateAppDeps`. Tests construct one with fakes;
@@ -185,6 +190,9 @@ class CreateAppDeps:
     session_reader: SessionReader | None = None
     verify_token: TokenVerifier | None = None
     require_auth: bool = False
+    internal_api_secret: str | None = None
+    enforce_usage_limits: bool = False
+    free_turn_limit: int = DEFAULT_FREE_TURN_LIMIT
     weather: WeatherClient | None = None
     places: PlacesClient | None = None
     places_token_provider: Callable[[], Awaitable[str | None]] | None = None
@@ -206,6 +214,29 @@ class CreateAppDeps:
 
 
 # --- Helpers for endpoint auth -------------------------------------------
+
+
+def _internal_secret_authorized(request: Request, deps: CreateAppDeps) -> bool:
+    """Validate the optional app-to-agent shared secret.
+
+    When configured, this prevents callers from bypassing the Next.js API
+    route and hitting the agent service directly to spend LLM tokens.
+    """
+    if not deps.internal_api_secret:
+        return True
+    supplied = request.headers.get("x-lifecoach-agent-secret") or ""
+    return supplied == deps.internal_api_secret
+
+
+def free_turn_limit_from_env() -> int:
+    raw = environ.get(FREE_TURN_LIMIT_ENV)
+    if raw is None or raw == "":
+        return DEFAULT_FREE_TURN_LIMIT
+    try:
+        parsed = int(raw)
+    except ValueError:
+        return DEFAULT_FREE_TURN_LIMIT
+    return max(1, parsed)
 
 
 async def _verify(request: Request, deps: CreateAppDeps) -> VerifiedClaims | None:
@@ -260,6 +291,8 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
 
     @app.get("/history")
     async def history(request: Request) -> JSONResponse:
+        if not _internal_secret_authorized(request, deps):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
         user_id = request.query_params.get("userId")
         session_id = request.query_params.get("sessionId")
         if not user_id or not session_id:
@@ -305,6 +338,8 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
 
     @app.get("/sessions")
     async def sessions(request: Request) -> JSONResponse:
+        if not _internal_secret_authorized(request, deps):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
         claims = await _verify(request, deps)
         if deps.require_auth and claims is None:
             return JSONResponse({"error": "unauthenticated"}, status_code=401)
@@ -354,6 +389,8 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
 
     @app.get("/profile")
     async def get_profile(request: Request) -> JSONResponse:
+        if not _internal_secret_authorized(request, deps):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
         user_id = request.query_params.get("userId")
         if not user_id:
             return JSONResponse({"error": "userId is required"}, status_code=400)
@@ -381,6 +418,8 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
 
     @app.patch("/profile")
     async def patch_profile(request: Request) -> JSONResponse:
+        if not _internal_secret_authorized(request, deps):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
         try:
             body = await request.json()
         except Exception:  # noqa: BLE001
@@ -403,6 +442,8 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
 
     @app.get("/goals")
     async def get_goals(request: Request) -> JSONResponse:
+        if not _internal_secret_authorized(request, deps):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
         user_id = request.query_params.get("userId")
         if not user_id:
             return JSONResponse({"error": "userId is required"}, status_code=400)
@@ -422,6 +463,8 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
 
     @app.post("/workspace/oauth-exchange")
     async def workspace_oauth_exchange(request: Request) -> JSONResponse:
+        if not _internal_secret_authorized(request, deps):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
         try:
             body = await request.json()
         except Exception:  # noqa: BLE001
@@ -460,6 +503,8 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
 
     @app.get("/workspace/status")
     async def workspace_status(request: Request) -> JSONResponse:
+        if not _internal_secret_authorized(request, deps):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
         claims = await _verify(request, deps)
         if claims is None:
             return JSONResponse({"error": "unauthenticated"}, status_code=401)
@@ -481,6 +526,8 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
 
     @app.delete("/workspace")
     async def workspace_delete(request: Request) -> JSONResponse:
+        if not _internal_secret_authorized(request, deps):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
         claims = await _verify(request, deps)
         if claims is None:
             return JSONResponse({"error": "unauthenticated"}, status_code=401)
@@ -501,6 +548,8 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
 
     @app.post("/chat")
     async def chat(request: Request) -> Any:
+        if not _internal_secret_authorized(request, deps):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
         try:
             body = await request.json()
         except Exception:  # noqa: BLE001
@@ -694,6 +743,14 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
 
         chat_turn_count = int(meta.get("chatTurnCount", 0)) if isinstance(meta, dict) else 0
         tier: Tier = _coerce_tier(meta.get("tier")) if isinstance(meta, dict) else "free"
+        if deps.enforce_usage_limits and tier != "pro" and chat_turn_count > deps.free_turn_limit:
+            return JSONResponse(
+                {
+                    "error": "free_turn_limit_exceeded",
+                    "limit": deps.free_turn_limit,
+                },
+                status_code=429,
+            )
         timings["prepMs"] = tick()
 
         usage_machine = UsageStateMachine.from_inputs(

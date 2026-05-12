@@ -47,7 +47,13 @@ from lifecoach_agent.oauth.workspace_client import (
     create_workspace_oauth_client,
 )
 from lifecoach_agent.practices import get_enabled_practices
-from lifecoach_agent.server import CreateAppDeps, RunnerForParams, SessionReader, create_app
+from lifecoach_agent.server import (
+    CreateAppDeps,
+    RunnerForParams,
+    SessionReader,
+    create_app,
+    free_turn_limit_from_env,
+)
 from lifecoach_agent.storage.firestore_session import (
     FirestoreSessionService,
     create_firestore_session_service,
@@ -468,7 +474,10 @@ def build_app() -> Any:
         runner_for=runner_for,
         session_reader=_SessionReaderAdapter(),
         verify_token=firebase_admin_verifier(),
-        require_auth=os.environ.get("REQUIRE_AUTH") == "true",
+        require_auth=os.environ.get("REQUIRE_AUTH", "true").lower() != "false",
+        internal_api_secret=os.environ.get("AGENT_SHARED_SECRET"),
+        enforce_usage_limits=os.environ.get("ENFORCE_USAGE_LIMITS", "true").lower() != "false",
+        free_turn_limit=free_turn_limit_from_env(),
         weather=weather,
         places=places,
         places_token_provider=places_token_provider,
