@@ -792,6 +792,8 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                 deps.memory_enabled if deps.memory_enabled is not None else deps.memory is not None
             ),
             nudge_mode=usage_policy.nudge_mode,
+            usage_state=usage_policy.state,
+            chat_turn_count=chat_turn_count,
             has_interacted_today=has_interacted_today,
             yesterday_summary=yesterday_summary,
             week_summary=week_summary,

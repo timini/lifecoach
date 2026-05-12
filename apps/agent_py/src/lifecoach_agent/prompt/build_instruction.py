@@ -22,9 +22,12 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 from lifecoach_agent.state import (
+    ANON_WALL_FROM,
+    SIGNED_IN_WALL_FROM,
     DailyFlowInput,
     DailyFlowMachine,
     NudgeMode,
+    UsageState,
     UserState,
     policy_for,
 )
@@ -170,6 +173,16 @@ class InstructionContext:
     memories: list[Memory] = field(default_factory=list)
     memory_enabled: bool = False
     nudge_mode: NudgeMode | None = None
+    # The full usage state (not just the nudge label) — needed so directive
+    # resolution + credit-count blocks can branch on the specific state
+    # (`free_throttled` carries an extra THROTTLED_NOTICE on top of the
+    # signup_hard directive, etc.).
+    usage_state: UsageState | None = None
+    # Turn count for the user's lifetime; surfaced verbatim in the
+    # `USAGE:` credit-count block so the model can say "free turn N of M"
+    # truthfully. None when the prompt builder is called from a context
+    # without it (eval framework defaults to 0).
+    chat_turn_count: int = 0
     has_interacted_today: bool = False
     yesterday_summary: str | None = None
     week_summary: str | None = None
@@ -212,22 +225,91 @@ ERROR HANDLING — every workspace tool returns { status:"ok", ... } or { status
 archive_messages also returns a per-id failed[] when only some ids fail; handle that by surfacing those few to the user. NEVER mention "certificate", "discovery", "scope", "token", "401/403/etc" in user-facing text. Speak like a friend."""
 
 
-SIGNUP_NUDGE_DIRECTIVE = (
-    "SIGNUP_NUDGE: this user is still anonymous and has been chatting for a while. "
-    "When a moment fits naturally — at most once or twice per session — suggest "
-    "creating an account so you can remember them across devices. Lean on a "
-    "benefit they've already felt (e.g. \"so I remember the kids' names next time\"). "
-    "Never nag, never block the conversation on it. The auth_user tool is available "
-    "when the user agrees."
+SIGNUP_SOFT_DIRECTIVE = (
+    "SIGNUP_NUDGE (soft): this user is still anonymous. When a moment fits "
+    "naturally — AT MOST ONCE per session — offer them an account so you can "
+    "remember them across devices. One sentence; lean on a benefit they've "
+    'already felt (e.g. "so I remember the kids\' names next time"). Never '
+    "nag, never block the conversation on it. The auth_user tool is "
+    "available when they agree."
 )
 
 
-PRO_NUDGE_DIRECTIVE = (
-    "PRO_NUDGE: this user has chatted with you many times on the free plan. If a "
-    "moment arises where Pro would genuinely help (deeper analysis, faster replies, "
-    "no daily nudges), call upgrade_to_pro. Don't pitch Pro every turn — once per "
-    "session is enough. Don't oversell."
+SIGNUP_HARD_DIRECTIVE = (
+    "SIGNUP_NUDGE (hard): this user is still anonymous and approaching their "
+    f"free-tier ceiling of {ANON_WALL_FROM} turns. Surface the offer more "
+    "explicitly now: every 2 turns include a single short line that names the "
+    'constraint (e.g. "a few free turns left — signing in keeps things rolling"). '
+    'If the user says ANYTHING persistence-adjacent — "can you remember this", '
+    '"save this", "will you know me next time", "I\'ll be back tomorrow" — '
+    'call auth_user({mode:"google"}) THIS TURN. No clarifying question first.'
 )
+
+
+PRO_SOFT_DIRECTIVE = (
+    "PRO_NUDGE (soft): this user has chatted with you many times on the free "
+    "plan. If a moment arises where Pro would genuinely help — deeper analysis, "
+    "longer sessions, workspace-heavy work — mention it ONCE per session, in one "
+    "sentence. The upgrade_to_pro tool is available when they agree. Don't pitch "
+    "Pro every turn. Don't oversell."
+)
+
+
+PRO_HARD_DIRECTIVE = (
+    "PRO_NUDGE (hard): this signed-in user is deep into the free tier and "
+    f"approaching the {SIGNED_IN_WALL_FROM}-chat ceiling. Every 5 turns include "
+    'a single line that names the constraint (e.g. "this is your Nth chat — '
+    'Pro removes the limit"). If they mention wanting more depth / longer '
+    "sessions / a heavier workspace flow, call upgrade_to_pro this turn."
+)
+
+
+THROTTLED_NOTICE_DIRECTIVE = (
+    "THROTTLED: you're currently running on a lighter model to bound free-tier "
+    "cost. If the user notices reduced reasoning depth or speed, answer "
+    "truthfully — \"yes, you're on the lighter model right now; signing in "
+    'unlocks the better one" — and offer auth_user. Never pretend otherwise.'
+)
+
+
+def format_usage_credits(ctx: InstructionContext) -> str:
+    """Emit a truthful credit-count block. Only present for the three
+    states where the agent should be naming the constraint by number:
+    `free_signup_hard` (10–14), `free_throttled` (15–24), and
+    `pro_pitch_hard` (50–99). Wall states never reach the prompt
+    builder; soft/fresh states intentionally omit the count to keep
+    the first impression frictionless."""
+    if ctx.usage_state == "free_signup_hard" or ctx.usage_state == "free_throttled":
+        return (
+            f"USAGE: This is the user's free turn {ctx.chat_turn_count} of "
+            f'{ANON_WALL_FROM}. Mention this naturally if it fits — "a few free '
+            'turns left", "approaching the free limit" — but do not lead with '
+            "it. NEVER fabricate a different number. After the limit the user "
+            "must sign in to keep chatting."
+        )
+    if ctx.usage_state == "pro_pitch_hard":
+        return (
+            f"USAGE: This is the user's chat number {ctx.chat_turn_count} of "
+            f"{SIGNED_IN_WALL_FROM} on the free signed-in tier. Mention naturally "
+            'every few turns — "approaching the free chat limit" — but do not '
+            "lead with it. NEVER fabricate a different number. After the limit "
+            "Pro removes the cap."
+        )
+    return ""
+
+
+def _nudge_directive_for(mode: NudgeMode | None) -> str:
+    """Map nudge_mode to the directive block injected into the prompt.
+    Returns empty string for `none` / `None` so the joiner skips it."""
+    if mode == "signup_soft":
+        return SIGNUP_SOFT_DIRECTIVE
+    if mode == "signup_hard":
+        return SIGNUP_HARD_DIRECTIVE
+    if mode == "pro_soft":
+        return PRO_SOFT_DIRECTIVE
+    if mode == "pro_hard":
+        return PRO_HARD_DIRECTIVE
+    return ""
 
 
 STYLE_RULES = """STYLE:
@@ -714,10 +796,15 @@ def build_instruction(ctx: InstructionContext) -> str:
         format_examples(ctx),
         f"USER_STATE: {ctx.user_state}",
         f"STATE_DIRECTIVE: {directive}",
-        # Tier-driven nudges. At most one fires per turn; UsageStateMachine
-        # computes the right one server-side from (userState, chatCount, tier).
-        SIGNUP_NUDGE_DIRECTIVE if ctx.nudge_mode == "signup" else "",
-        PRO_NUDGE_DIRECTIVE if ctx.nudge_mode == "pro" else "",
+        # Funnel-driven nudges. UsageStateMachine computes the right nudge
+        # intensity server-side from (userState, chatCount, tier).
+        # `_nudge_directive_for` maps the mode → directive text; the
+        # THROTTLED_NOTICE rides on top of signup_hard when we've actually
+        # downgraded to flash-lite. `format_usage_credits` emits a truthful
+        # "turn N of M" block for the hard / throttled / pro_hard states.
+        _nudge_directive_for(ctx.nudge_mode),
+        THROTTLED_NOTICE_DIRECTIVE if ctx.usage_state == "free_throttled" else "",
+        format_usage_credits(ctx),
         # Workspace cheat-sheet only appears when the user has actually
         # connected Workspace.
         WORKSPACE_CHEATSHEET if ctx.user_state == "workspace_connected" else "",
