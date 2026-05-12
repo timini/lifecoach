@@ -126,6 +126,13 @@ locals {
     # under normal operation; the initial registration is user-driven
     # from a laptop with the user's own gcloud auth.
     "roles/domains.admin",
+    # Vertex AI predict — the chat-quality e2e spec uses the deployer SA's
+    # ADC to call Gemini directly as the LLM judge. Without this it 403s
+    # on aiplatform.endpoints.predict and the e2e step fails silently
+    # (continue-on-error swallows the exit code). The agent's runtime SA
+    # already has this role for its own model calls; the deployer needs
+    # it independently for the judge.
+    "roles/aiplatform.user",
   ])
 }
 
