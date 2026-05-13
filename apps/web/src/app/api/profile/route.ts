@@ -1,3 +1,5 @@
+import { agentInternalHeaders } from '../../../lib/agentHeaders';
+
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +25,7 @@ export async function GET(request: Request): Promise<Response> {
       ...(request.headers.get('authorization')
         ? { authorization: request.headers.get('authorization') as string }
         : {}),
+      ...agentInternalHeaders(),
     },
   });
   if (upstream.status >= 400) {
@@ -49,7 +52,11 @@ export async function PATCH(request: Request): Promise<Response> {
   const body = await request.text();
   const upstream = await fetch(`${agent}/profile`, {
     method: 'PATCH',
-    headers: { 'content-type': 'application/json', authorization: auth },
+    headers: {
+      'content-type': 'application/json',
+      authorization: auth,
+      ...agentInternalHeaders(),
+    },
     body,
   });
   if (upstream.status >= 400) {

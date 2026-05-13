@@ -1,3 +1,5 @@
+import { agentInternalHeaders } from '../../../lib/agentHeaders';
+
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
@@ -12,7 +14,7 @@ export async function GET(request: Request): Promise<Response> {
 
   const auth = request.headers.get('authorization') ?? '';
   const upstream = await fetch(`${agent}/goals?userId=${encodeURIComponent(userId)}`, {
-    headers: auth ? { authorization: auth } : {},
+    headers: { ...(auth ? { authorization: auth } : {}), ...agentInternalHeaders() },
   });
   if (upstream.status >= 400) {
     const text = await upstream.text().catch(() => '');

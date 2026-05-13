@@ -30,6 +30,7 @@ from lifecoach_agent.storage.profile_history import (
     ProfileHistoryEntry,
     create_profile_history_store,
 )
+from lifecoach_agent.storage.user_meta import UserMetaDoc
 from lifecoach_agent.storage.user_profile import create_user_profile_store
 from lifecoach_agent.storage.workspace_tokens import create_workspace_tokens_store
 from tests.unit.storage._fakes import FakeBucket, FakeFirestore
@@ -96,6 +97,25 @@ class FakeRunner:
                 yield e
 
         return gen()
+
+
+@dataclass
+class FakeUserMetaStore:
+    """Minimal user-meta store for usage-limit tests."""
+
+    next_count: int
+    tier: str = "free"
+    calls: int = 0
+
+    async def increment_turn_count(self, uid: str) -> UserMetaDoc:
+        self.calls += 1
+        return UserMetaDoc(
+            uid=uid,
+            chatTurnCount=self.next_count,
+            firstSeenAt="2026-05-06T09:00:00Z",
+            tier=self.tier,  # type: ignore[arg-type]
+            updatedAt="2026-05-06T09:00:00Z",
+        )
 
 
 def _model_text(text: str) -> dict[str, Any]:
@@ -474,6 +494,45 @@ async def test_chat_emits_initial_padding_comment_to_flush_gfe_buffer() -> None:
         text = await _drain(res)
     # First line is `: <4096 spaces>\n\n`. Use a length-based check.
     assert text.startswith(": " + (" " * 4096))
+
+
+@pytest.mark.asyncio
+async def test_chat_blocks_anonymous_llm_calls_after_hard_limit() -> None:
+    runner = FakeRunner(events_per_call=[[_model_text("should-not-run")]])
+    meta = FakeUserMetaStore(next_count=20)
+    app = _make_app(runner=runner, deps_overrides={"user_meta_store": meta})
+    async with _client(app) as c:
+        res = await c.post("/chat", json={"userId": "u1", "sessionId": "s1", "message": "hi"})
+    assert res.status_code == 429
+    assert res.json()["error"] == "usage_limit_exceeded"
+    assert res.json()["usageState"] == "free_blocked"
+    assert res.headers.get("retry-after") == "86400"
+    assert runner.calls_made == 0
+    assert meta.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_chat_blocks_signed_in_free_llm_calls_after_hard_limit() -> None:
+    async def _verifier(_token: str) -> VerifiedClaims:
+        return VerifiedClaims(uid="real-uid", firebase=FirebaseClaim(sign_in_provider="google.com"))
+
+    runner = FakeRunner(events_per_call=[[_model_text("should-not-run")]])
+    app = _make_app(
+        runner=runner,
+        deps_overrides={
+            "user_meta_store": FakeUserMetaStore(next_count=100),
+            "verify_token": _verifier,
+        },
+    )
+    async with _client(app) as c:
+        res = await c.post(
+            "/chat",
+            json={"userId": "spoofed", "sessionId": "s1", "message": "hi"},
+            headers={"Authorization": "Bearer x"},
+        )
+    assert res.status_code == 429
+    assert res.json()["usageState"] == "free_signed_in_blocked"
+    assert runner.calls_made == 0
 
 
 @pytest.mark.asyncio

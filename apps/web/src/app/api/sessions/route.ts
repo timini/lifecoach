@@ -1,3 +1,5 @@
+import { agentInternalHeaders } from '../../../lib/agentHeaders';
+
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +21,7 @@ export async function GET(request: Request): Promise<Response> {
     method: 'GET',
     headers: {
       ...(authHeader ? { authorization: authHeader } : {}),
+      ...agentInternalHeaders(),
     },
   });
 

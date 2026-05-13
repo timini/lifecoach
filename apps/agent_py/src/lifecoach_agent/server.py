@@ -203,9 +203,29 @@ class CreateAppDeps:
     now: Callable[[], datetime] = field(
         default_factory=lambda: lambda: datetime.now(ZoneInfo("UTC"))
     )
+    # Service-to-service shared secret. The web proxy (apps/web/src/app/api/*)
+    # attaches `x-agent-internal-bearer: <secret>` on every forwarded call;
+    # the agent rejects requests without a matching header. Blocks direct
+    # attacker calls to the *.run.app URL that bypass the proxy (and the
+    # browser, and Firebase Auth). None = disabled (tests / local dev);
+    # production wiring in main.py reads AGENT_INTERNAL_BEARER from env.
+    internal_bearer: str | None = None
 
 
 # --- Helpers for endpoint auth -------------------------------------------
+
+
+def _internal_auth_ok(request: Request, deps: CreateAppDeps) -> bool:
+    """Constant-time match the x-agent-internal-bearer header against the
+    configured shared secret. When `internal_bearer` is None, all requests
+    pass (tests / local). When set, the header must match exactly."""
+    if not deps.internal_bearer:
+        return True
+    return request.headers.get("x-agent-internal-bearer") == deps.internal_bearer
+
+
+def _internal_auth_error() -> JSONResponse:
+    return JSONResponse({"error": "agent_internal_auth_required"}, status_code=401)
 
 
 async def _verify(request: Request, deps: CreateAppDeps) -> VerifiedClaims | None:
@@ -249,6 +269,18 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
     and returns an Express handler; we accept the same and return a
     FastAPI app (mountable + ASGI-testable)."""
     app = FastAPI()
+
+    # Service-to-service shared secret. The web proxy attaches
+    # `x-agent-internal-bearer` on every forwarded call; this middleware
+    # rejects requests that don't match. Without it, an attacker could
+    # hit the *.run.app URL directly and burn LLM spend, bypassing
+    # both the browser and Firebase Auth. /health is exempt so Cloud
+    # Run's load-balancer probes still work (no secret on those).
+    @app.middleware("http")
+    async def _internal_bearer_gate(request: Request, call_next):  # type: ignore[no-untyped-def]
+        if request.url.path != "/health" and not _internal_auth_ok(request, deps):
+            return _internal_auth_error()
+        return await call_next(request)
 
     # ---- /health ---------------------------------------------------------
 
@@ -586,14 +618,64 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
             except Exception:  # noqa: BLE001
                 return []
 
-        async def _meta_call() -> dict[str, Any]:
-            if deps.user_meta_store is None:
-                return {"chatTurnCount": 0, "tier": "free"}
+        t_meta0 = _now_ms()
+        if deps.user_meta_store is None:
+            # No store wired (tests / local dev only). Treat as a fresh user;
+            # safe because the production path always has a store and free-tier
+            # limits are enforced from the machine's reading of the real count.
+            meta: dict[str, Any] = {"chatTurnCount": 0, "tier": "free"}
+        else:
             try:
-                doc = await deps.user_meta_store.increment_turn_count(effective_user_id)
-                return {"chatTurnCount": doc.chatTurnCount, "tier": doc.tier}
-            except Exception:  # noqa: BLE001
-                return {"chatTurnCount": 0, "tier": "free"}
+                meta_doc = await deps.user_meta_store.increment_turn_count(
+                    effective_user_id,
+                )
+                meta = {"chatTurnCount": meta_doc.chatTurnCount, "tier": meta_doc.tier}
+            except Exception as err:  # noqa: BLE001
+                # FAIL CLOSED: if the userMeta read/increment fails (Firestore
+                # outage, permission regression, transient storage failure),
+                # we MUST NOT silently fall through with chatTurnCount=0 — that
+                # would defeat the free-tier hard cap on every storage hiccup
+                # and let an attacker drive unbounded LLM spend by inducing
+                # Firestore errors. Return 503 (service degraded) so the
+                # client retries; the proxy will surface the message.
+                logger.exception(
+                    "chat.usage_meta_failed",
+                    extra={
+                        "user_id": effective_user_id,
+                        "error_type": type(err).__name__,
+                    },
+                )
+                return JSONResponse(
+                    {
+                        "error": "usage_metering_unavailable",
+                        "message": "Chat is temporarily unavailable. Try again in a moment.",
+                    },
+                    status_code=503,
+                    headers={"Retry-After": "30"},
+                )
+        timings["metaMs"] = _now_ms() - t_meta0
+
+        chat_turn_count = int(meta.get("chatTurnCount", 0))
+        tier: Tier = _coerce_tier(meta.get("tier"))
+        usage_machine = UsageStateMachine.from_inputs(
+            UsageInputs(
+                user_state=machine.current(),
+                chat_count=chat_turn_count,
+                tier=tier,
+            )
+        )
+        usage_policy = usage_machine.policy()
+        if not usage_policy.llm_allowed:
+            return JSONResponse(
+                {
+                    "error": "usage_limit_exceeded",
+                    "message": usage_policy.limit_message or "Chat limit reached.",
+                    "usageState": usage_policy.state,
+                    "chatTurnCount": chat_turn_count,
+                },
+                status_code=429,
+                headers={"Retry-After": "86400"},
+            )
 
         t_parallel0 = _now_ms()
         results = await asyncio.gather(
@@ -637,7 +719,6 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                 if deps.memory is not None
                 else _empty_list()
             ),
-            _timed(_meta_call()),
             _timed(
                 deps.session_reader.get_session(
                     app_name=deps.session_reader.app_name,
@@ -675,7 +756,6 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
             (user_profile, profile_ms),
             (recent_goal_updates, goals_ms),
             (memories, memory_ms),
-            (meta, meta_ms),
             (existing_session, _existing_session_ms),
             (yesterday_summary, yesterday_summary_ms),
             (week_summary, week_summary_ms),
@@ -688,22 +768,9 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
         timings["profileMs"] = profile_ms
         timings["goalsMs"] = goals_ms
         timings["memoryMs"] = memory_ms
-        timings["metaMs"] = meta_ms
         timings["yesterdaySummaryMs"] = yesterday_summary_ms
         timings["weekSummaryMs"] = week_summary_ms
-
-        chat_turn_count = int(meta.get("chatTurnCount", 0)) if isinstance(meta, dict) else 0
-        tier: Tier = _coerce_tier(meta.get("tier")) if isinstance(meta, dict) else "free"
         timings["prepMs"] = tick()
-
-        usage_machine = UsageStateMachine.from_inputs(
-            UsageInputs(
-                user_state=machine.current(),
-                chat_count=chat_turn_count,
-                tier=tier,
-            )
-        )
-        usage_policy = usage_machine.policy()
 
         has_interacted_today = _session_has_user_interaction(existing_session)
         location_ctx: LocationCtx | None = LocationCtx(coord=coord) if coord else None

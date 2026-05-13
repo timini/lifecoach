@@ -151,7 +151,26 @@ export function useChatStream({
           }),
         });
 
-        if (!res.body) {
+        if (!res.ok) {
+          const body = (await res.json().catch(() => ({}))) as { detail?: string };
+          let detail: string | null = null;
+          if (body.detail) {
+            try {
+              const parsed = JSON.parse(body.detail) as { message?: unknown };
+              detail = typeof parsed.message === 'string' ? parsed.message : null;
+            } catch {
+              detail = null;
+            }
+          }
+          const message = detail ?? 'Chat limit reached. Please try again later.';
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId && m.role === 'assistant'
+                ? { ...m, elements: [{ kind: 'text', text: message }], answered: true }
+                : m,
+            ),
+          );
+        } else if (!res.body) {
           const raw = await res.text();
           for (const block of raw.split(/\n\n+/)) {
             applyOps(assistantId, parseSseBlock(block));

@@ -1,3 +1,5 @@
+import { agentInternalHeaders } from '../../../../lib/agentHeaders';
+
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +21,7 @@ export async function GET(request: Request): Promise<Response> {
   if (!auth) return Response.json({ error: 'unauthenticated' }, { status: 401 });
 
   const upstream = await fetch(`${agent}/workspace/status`, {
-    headers: { authorization: auth },
+    headers: { authorization: auth, ...agentInternalHeaders() },
   });
   if (upstream.status >= 400) {
     return Response.json(
