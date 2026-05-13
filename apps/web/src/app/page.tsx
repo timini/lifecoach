@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { featurePages } from '../lib/marketing/feature-pages';
 
 const capabilities = [
   {
@@ -53,6 +54,9 @@ export default function LandingPage() {
             <a href="#use-cases" className="transition hover:text-foreground">
               Use cases
             </a>
+            <a href="/blog" className="transition hover:text-foreground">
+              Blog
+            </a>
           </div>
           <a
             href="/chat"
@@ -65,16 +69,16 @@ export default function LandingPage() {
         <div className="mx-auto grid max-w-7xl gap-12 pb-16 pt-16 lg:grid-cols-[1.04fr_0.96fr] lg:items-center lg:pb-24 lg:pt-24">
           <div>
             <p className="mb-5 inline-flex rounded-full border border-accent/30 bg-accent/10 px-4 py-2 text-sm font-semibold text-foreground">
-              AI life coaching that knows the shape of your day
+              The AI assistant that prevents overwhelm
             </p>
             <h1 className="max-w-4xl text-balance font-serif text-5xl font-semibold leading-[1.02] tracking-tight text-foreground sm:text-6xl lg:text-7xl">
-              A calmer way to decide what matters next.
+              A calmer way through the admin pile.
             </h1>
             <p className="mt-6 max-w-2xl text-pretty text-lg leading-8 text-muted-foreground sm:text-xl">
-              Lifecoach is a warm, conversational companion for planning your day, staying honest
-              about goals, and turning messy life admin into small next steps. It remembers what
-              matters, understands your local context, and can help inside Gmail, Calendar, and
-              Tasks when you connect Workspace.
+              Lifecoach is a warm, conversational companion for people whose executive function and
+              daily admin are the bottleneck — ADHD, depression, burnout, anxiety, peri/menopause,
+              new-parent fog, and the ordinary overwhelm of modern life. It remembers what matters,
+              understands your context, and turns the pile into one humane next step.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <a
@@ -205,6 +209,40 @@ export default function LandingPage() {
         </div>
       </section>
 
+      <section className="px-5 py-16 sm:px-8 lg:px-12">
+        <div className="mx-auto max-w-7xl">
+          <div className="max-w-3xl">
+            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-accent">
+              How it helps
+            </p>
+            <h2 className="mt-3 font-serif text-4xl font-semibold leading-tight sm:text-5xl">
+              One product, specific pages for the moments people actually search for.
+            </h2>
+            <p className="mt-5 text-lg leading-8 text-muted-foreground">
+              The architecture stays broad; the entry points get precise. Start with overwhelm,
+              ADHD, depression, anxiety, wellness, career, menopause, or personal-assistant admin.
+            </p>
+          </div>
+          <div className="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            {featurePages.map((page) => (
+              <a
+                key={page.topic}
+                href={`/how-it-helps/${page.topic}`}
+                className="rounded-[1.5rem] border border-border bg-background/80 p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-accent"
+              >
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">
+                  {page.audience}
+                </p>
+                <h3 className="mt-3 font-serif text-2xl font-semibold leading-tight text-foreground">
+                  {page.title}
+                </h3>
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">{page.description}</p>
+              </a>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <section id="privacy" className="px-5 py-16 sm:px-8 lg:px-12">
         <div className="mx-auto max-w-7xl rounded-[2.5rem] border border-border bg-[#fbf7ef]/80 p-8 shadow-sm sm:p-10 lg:p-12">
           <div className="grid gap-10 lg:grid-cols-[0.8fr_1.2fr]">
@@ -238,7 +276,7 @@ export default function LandingPage() {
           </h2>
           <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-muted-foreground">
             Tell Lifecoach what is on your mind today. It will help you find the next grounded,
-            doable move.
+            doable move without asking you to become a different person first.
           </p>
           <a
             href="/chat"
