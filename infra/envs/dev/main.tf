@@ -33,13 +33,19 @@ module "firebase_auth" {
   # invalid". Passed via var to break a cycle (web -> firebase_auth -> web).
   # Hardcoded in terraform.tfvars because the Cloud Run URL is stable.
   #
-  # We also append `preview.<custom_domain_name>` as a parent — Firebase
-  # honors subdomain wildcarding for non-public-suffix entries, so adding
-  # `preview.lifecoach.dev` covers every `pr-N.preview.lifecoach.dev`
-  # preview hostname without per-PR allowlist mutation.
+  # Firebase Auth's subdomain wildcarding works from registrable-domain
+  # entries (the apex), not from arbitrary mid-level subdomain entries.
+  # Adding `preview.<domain>` alone was insufficient to cover
+  # `pr-N.preview.<domain>` — Firebase rejected continueUrls with
+  # `auth/unauthorized-continue-uri`. Adding the apex as well lets the
+  # wildcard match every host under it (including `pr-N.preview.<domain>`
+  # and the apex itself, useful if we ever serve the marketing site there).
   extra_authorized_domains = concat(
     var.firebase_extra_authorized_domains,
-    ["preview.${var.custom_domain_name}"],
+    [
+      var.custom_domain_name,
+      "preview.${var.custom_domain_name}",
+    ],
   )
 
   depends_on = [module.apis]
