@@ -325,7 +325,7 @@ Reassembled every turn. Section order is stable; conditionals are noted.
 
 ```
 PERSONA_HEADER          warm, supportive coach
-STYLE_RULES             short replies, no bullets, every turn produces a visible reply
+STYLE_RULES             short replies, light Markdown / 0–2 grounded emojis when helpful, every turn produces a visible reply
 INFO_CAPTURE            (cond) info-capture rules — anonymous users
 POST_TOOL_REFLECTION    (cond) reflection guide — when conversation has tool turns
 EXAMPLES                (cond) BAD/GOOD few-shot pairs
