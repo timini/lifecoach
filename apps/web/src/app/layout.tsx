@@ -1,13 +1,17 @@
 import '@lifecoach/ui/styles.css';
+import type { Metadata } from 'next';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getMessages } from 'next-intl/server';
 import type { ReactNode } from 'react';
 import { SentryBootstrap } from '../components/SentryBootstrap';
 
-export const metadata = {
-  title: 'Lifecoach — AI life coaching for your actual day',
+export const metadata: Metadata = {
+  title: 'Lifecoach — the AI assistant that prevents overwhelm',
   description:
-    'A warm AI life coach that remembers your goals, understands your context, and helps you plan the next grounded step.',
+    'A warm AI assistant for overwhelm, ADHD, depression, and daily admin that helps you choose the next grounded step.',
+  verification: process.env.GOOGLE_SITE_VERIFICATION
+    ? { google: process.env.GOOGLE_SITE_VERIFICATION }
+    : undefined,
 };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
