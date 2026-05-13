@@ -5,9 +5,13 @@ import type { ReactNode } from 'react';
 import { SentryBootstrap } from '../components/SentryBootstrap';
 
 export const metadata = {
-  title: 'Lifecoach — AI life coaching for your actual day',
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'https://lifecoach.ai'),
+  title: 'Lifecoach — the AI assistant that prevents overwhelm',
   description:
-    'A warm AI life coach that remembers your goals, understands your context, and helps you plan the next grounded step.',
+    'A warm AI assistant for ADHD, depression, burnout, anxiety, career, wellness, and daily admin when executive function is the bottleneck.',
+  verification: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION
+    ? { google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION }
+    : undefined,
 };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
