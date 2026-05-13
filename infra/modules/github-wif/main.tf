@@ -138,11 +138,11 @@ locals {
     # global addresses and Google-managed SSL certs — the full set of
     # resources `infra/envs/preview/main.tf` creates per PR to route
     # pr-N.preview.<custom_domain> to the per-PR Cloud Run web service.
-    # We use the broad networkAdmin (rather than the narrower
-    # loadBalancerAdmin alone) because Serverless NEG creation also
-    # touches compute.networkEndpointGroups which loadBalancerAdmin
-    # doesn't cover.
-    "roles/compute.networkAdmin",
+    # `roles/compute.networkAdmin` (which sounds like the right answer)
+    # only grants USE/ATTACH on networkEndpointGroups, not CREATE — and
+    # also doesn't include sslCertificates.create. `loadBalancerAdmin`
+    # covers both the NEG and cert lifecycle plus everything else LB.
+    "roles/compute.loadBalancerAdmin",
   ])
 }
 
