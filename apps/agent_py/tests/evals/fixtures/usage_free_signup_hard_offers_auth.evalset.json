@@ -1,0 +1,54 @@
+{
+  "eval_set_id": "usage_free_signup_hard_offers_auth",
+  "agent_module": "tests.evals.eval_anon_signup_hard_agent",
+  "name": "anonymous user at turn 12 — persistence-adjacent ask fires auth_user immediately",
+  "description": "Hard-signup window (turns 10–14). The SIGNUP_HARD directive instructs the agent: \"if the user says anything persistence-adjacent — 'can you remember', 'save this', 'will you know me next time' — call auth_user({mode:'google'}) THIS TURN. No clarifying question.\" This is the load-bearing nudge — the agent ratchets from soft mention to active tool fire once the user signals they want continuity. The USAGE credit-count block adds truthful turn numbers (free turn 12 of 25). Sibling of the WORKSPACE-ASK TRIGGER fixture but at funnel-position 12 instead of fresh.",
+  "eval_cases": [
+    {
+      "eval_id": "case_01_persistence_ask_can_you_remember",
+      "session_input": {
+        "app_name": "lifecoach",
+        "user_id": "test-user-hard-remember",
+        "state": {
+          "_lifecoach_user_state": "anonymous",
+          "_lifecoach_now": "2026-05-12T09:00:00+01:00"
+        }
+      },
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [
+              { "text": "can you remember this conversation so we can pick it up tomorrow?" }
+            ],
+            "role": "user"
+          },
+          "intermediate_data": {
+            "tool_uses": [{ "name": "auth_user", "args": { "mode": "google" } }]
+          }
+        }
+      ]
+    },
+    {
+      "eval_id": "case_02_persistence_ask_save_this",
+      "session_input": {
+        "app_name": "lifecoach",
+        "user_id": "test-user-hard-save",
+        "state": {
+          "_lifecoach_user_state": "anonymous",
+          "_lifecoach_now": "2026-05-12T09:00:00+01:00"
+        }
+      },
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [{ "text": "I want to save this so I don't lose the thread" }],
+            "role": "user"
+          },
+          "intermediate_data": {
+            "tool_uses": [{ "name": "auth_user", "args": { "mode": "google" } }]
+          }
+        }
+      ]
+    }
+  ]
+}

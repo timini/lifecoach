@@ -105,16 +105,61 @@ def test_workspace_cheatsheet_only_when_workspace_connected() -> None:
     assert "archive_messages" in out_ws
 
 
-def test_signup_nudge_only_when_nudge_mode_signup() -> None:
+def test_signup_soft_only_when_nudge_mode_signup_soft() -> None:
     out_none = build_instruction(_base_ctx())
-    assert "SIGNUP_NUDGE:" not in out_none
-    out_signup = build_instruction(_base_ctx(nudge_mode="signup"))
-    assert "SIGNUP_NUDGE:" in out_signup
+    assert "SIGNUP_NUDGE" not in out_none
+    out_soft = build_instruction(_base_ctx(nudge_mode="signup_soft"))
+    assert "SIGNUP_NUDGE (soft)" in out_soft
+    # Soft mode never names a turn count — that's hard's job.
+    assert "USAGE:" not in out_soft
 
 
-def test_pro_nudge_only_when_nudge_mode_pro() -> None:
-    out_pro = build_instruction(_base_ctx(nudge_mode="pro"))
-    assert "PRO_NUDGE:" in out_pro
+def test_signup_hard_emits_hard_directive_only() -> None:
+    out_hard = build_instruction(
+        _base_ctx(nudge_mode="signup_hard", usage_state="free_signup_hard", chat_turn_count=12)
+    )
+    assert "SIGNUP_NUDGE (hard)" in out_hard
+    # Soft variant must not also be present.
+    assert "SIGNUP_NUDGE (soft)" not in out_hard
+    # Credit-count block is present with the truthful turn number.
+    assert "free turn 12 of 25" in out_hard
+
+
+def test_throttled_notice_only_when_state_is_throttled() -> None:
+    out_signup_hard_only = build_instruction(
+        _base_ctx(nudge_mode="signup_hard", usage_state="free_signup_hard", chat_turn_count=12)
+    )
+    assert "THROTTLED:" not in out_signup_hard_only
+    out_throttled = build_instruction(
+        _base_ctx(nudge_mode="signup_hard", usage_state="free_throttled", chat_turn_count=18)
+    )
+    assert "THROTTLED:" in out_throttled
+    # Hard directive still rides on top of the throttled notice.
+    assert "SIGNUP_NUDGE (hard)" in out_throttled
+
+
+def test_pro_soft_emits_soft_directive_only() -> None:
+    out_soft = build_instruction(_base_ctx(nudge_mode="pro_soft"))
+    assert "PRO_NUDGE (soft)" in out_soft
+    assert "PRO_NUDGE (hard)" not in out_soft
+    assert "USAGE:" not in out_soft
+
+
+def test_pro_hard_emits_hard_directive_with_credit_count() -> None:
+    out_hard = build_instruction(
+        _base_ctx(nudge_mode="pro_hard", usage_state="pro_pitch_hard", chat_turn_count=75)
+    )
+    assert "PRO_NUDGE (hard)" in out_hard
+    assert "PRO_NUDGE (soft)" not in out_hard
+    assert "chat number 75 of 100" in out_hard
+
+
+def test_no_nudge_when_mode_is_none() -> None:
+    out = build_instruction(_base_ctx(nudge_mode="none"))
+    assert "SIGNUP_NUDGE" not in out
+    assert "PRO_NUDGE" not in out
+    assert "USAGE:" not in out
+    assert "THROTTLED:" not in out
 
 
 def test_location_unknown_when_no_location() -> None:

@@ -261,6 +261,30 @@ def _coerce_tier(value: Any) -> Tier:
     return "pro" if value == "pro" else "free"
 
 
+async def _emit_wall_stream(policy: UsagePolicy) -> AsyncIterator[bytes]:
+    """SSE generator for walled requests — emits one `event: wall` with
+    the wall's reason + CTA, then `event: done`. No model is invoked.
+
+    The FE parses the `wall` event into a `{kind: 'wall', reason, cta}`
+    AssistantElement and renders it as a full-card paywall via
+    `WallPrompt`. CTA targets:
+      - `auth_user`        → sign-in flow (free anonymous wall)
+      - `upgrade_to_pro`   → pro upgrade flow (free signed-in wall)
+    """
+    # Cloud Run / GFE buffer flush — same shape as `stream()` to keep the
+    # FE's SSE chunk-arrival behaviour identical between walled and
+    # non-walled responses.
+    yield b": " + (b" " * 4096) + b"\n\n"
+    payload = json.dumps(
+        {
+            "reason": policy.wall_reason,
+            "cta": policy.wall_cta,
+        }
+    ).encode("utf-8")
+    yield b"event: wall\ndata: " + payload + b"\n\n"
+    yield b"event: done\ndata: {}\n\n"
+
+
 # --- App factory ---------------------------------------------------------
 
 
@@ -657,25 +681,15 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
 
         chat_turn_count = int(meta.get("chatTurnCount", 0))
         tier: Tier = _coerce_tier(meta.get("tier"))
-        usage_machine = UsageStateMachine.from_inputs(
-            UsageInputs(
-                user_state=machine.current(),
-                chat_count=chat_turn_count,
-                tier=tier,
-            )
-        )
-        usage_policy = usage_machine.policy()
-        if not usage_policy.llm_allowed:
-            return JSONResponse(
-                {
-                    "error": "usage_limit_exceeded",
-                    "message": usage_policy.limit_message or "Chat limit reached.",
-                    "usageState": usage_policy.state,
-                    "chatTurnCount": chat_turn_count,
-                },
-                status_code=429,
-                headers={"Retry-After": "86400"},
-            )
+        # The UsageStateMachine + walled short-circuit moved BELOW the
+        # parallel context fetch (see ~line 800) so the per-turn metering
+        # still lands but the wall-side SSE stream (event: wall) is emitted
+        # via the same path the runner uses — keeping the FE's
+        # chunk-arrival behaviour identical between walled and non-walled
+        # responses. The earlier inline 429 JSON response (added by the
+        # security-audit synthesis) is replaced by the wall SSE event so
+        # the FE can render the WallPrompt paywall card from the same
+        # `assistantElement` machinery it already uses.
 
         t_parallel0 = _now_ms()
         results = await asyncio.gather(
@@ -772,6 +786,52 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
         timings["weekSummaryMs"] = week_summary_ms
         timings["prepMs"] = tick()
 
+        usage_machine = UsageStateMachine.from_inputs(
+            UsageInputs(
+                user_state=machine.current(),
+                chat_count=chat_turn_count,
+                tier=tier,
+            )
+        )
+        usage_policy = usage_machine.policy()
+
+        # Walled states short-circuit BEFORE prompt build / runner construction.
+        # The FE renders a paywall card from the `event: wall` payload; no
+        # model is invoked. Cost ceiling for the free tier is enforced here —
+        # no prompt tuning can re-open this path.
+        if usage_policy.walled:
+            print(
+                json.dumps(
+                    {
+                        "msg": "chat.turn",
+                        "uid": effective_user_id,
+                        "sessionId": session_id,
+                        "state": machine.current(),
+                        "authenticated": claims is not None,
+                        "chatTurnCount": chat_turn_count,
+                        "tier": tier,
+                        "usageState": usage_policy.state,
+                        "model": None,
+                        "nudgeMode": usage_policy.nudge_mode,
+                        "walled": True,
+                        "wallReason": usage_policy.wall_reason,
+                        "wallCta": usage_policy.wall_cta,
+                        "totalMs": tick(),
+                        "timings": timings,
+                    },
+                    default=str,
+                )
+            )
+            return StreamingResponse(
+                _emit_wall_stream(usage_policy),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache, no-transform",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                },
+            )
+
         has_interacted_today = _session_has_user_interaction(existing_session)
         location_ctx: LocationCtx | None = LocationCtx(coord=coord) if coord else None
 
@@ -792,6 +852,8 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                 deps.memory_enabled if deps.memory_enabled is not None else deps.memory is not None
             ),
             nudge_mode=usage_policy.nudge_mode,
+            usage_state=usage_policy.state,
+            chat_turn_count=chat_turn_count,
             has_interacted_today=has_interacted_today,
             yesterday_summary=yesterday_summary,
             week_summary=week_summary,
@@ -1011,6 +1073,7 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                             "usageState": usage_policy.state,
                             "model": usage_policy.model,
                             "nudgeMode": usage_policy.nudge_mode,
+                            "walled": False,
                             "totalMs": tick(),
                             "timings": timings,
                         },

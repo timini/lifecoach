@@ -7,6 +7,7 @@ import { Bubble } from '../molecules/bubble';
 import { ChoicePrompt } from '../molecules/choice-prompt';
 import { ToolCallBadge } from '../molecules/tool-call-badge';
 import { UpgradePrompt } from '../molecules/upgrade-prompt';
+import { type WallCta, WallPrompt, type WallReason } from '../molecules/wall-prompt';
 import { WorkspacePrompt } from '../molecules/workspace-prompt';
 import { Renderer, library as openUILibrary } from '../openui/library';
 import { Markdown } from './markdown';
@@ -17,6 +18,7 @@ export type ChatStreamElement =
   | { kind: 'auth'; mode: 'google' | 'email'; email?: string }
   | { kind: 'workspace' }
   | { kind: 'upgrade' }
+  | { kind: 'wall'; reason: WallReason; cta: WallCta }
   | {
       kind: 'tool-call';
       id: string;
@@ -62,6 +64,12 @@ export interface ChatStreamProps {
   onEmailSignIn: (email: string) => void;
   onConnectWorkspace: () => void;
   onProInterest: () => void;
+  /** Fired when the wall card's CTA is `auth_user` and the user clicks
+   * "Sign in with Google". Defaults to `onGoogleSignIn` if omitted. */
+  onWallAuthUser?: () => void;
+  /** Fired when the wall card's CTA is `upgrade_to_pro` and the user
+   * clicks "I'm interested in Pro". Defaults to `onProInterest`. */
+  onWallUpgradeToPro?: () => void;
 }
 
 // Detects OpenUI Lang tags in assistant text. Mirrors the legacy gate from
@@ -81,7 +89,14 @@ export function ChatStream({
   onEmailSignIn,
   onConnectWorkspace,
   onProInterest,
+  onWallAuthUser,
+  onWallUpgradeToPro,
 }: ChatStreamProps) {
+  // Wall-card handlers default to the existing flows. The wall lives inside
+  // the assistant transcript so we deliberately reuse the same OAuth /
+  // upgrade-interest plumbing already wired to AuthPrompt / UpgradePrompt.
+  const wallAuth = onWallAuthUser ?? onGoogleSignIn;
+  const wallUpgrade = onWallUpgradeToPro ?? onProInterest;
   return (
     <>
       {messages.map((m) => {
@@ -104,6 +119,8 @@ export function ChatStream({
             onEmailSignIn={onEmailSignIn}
             onConnectWorkspace={onConnectWorkspace}
             onProInterest={onProInterest}
+            onWallAuthUser={wallAuth}
+            onWallUpgradeToPro={wallUpgrade}
           />
         );
       })}
@@ -132,6 +149,8 @@ interface AssistantGroupProps {
   onEmailSignIn: (email: string) => void;
   onConnectWorkspace: () => void;
   onProInterest: () => void;
+  onWallAuthUser: () => void;
+  onWallUpgradeToPro: () => void;
 }
 
 function AssistantGroup({
@@ -144,6 +163,8 @@ function AssistantGroup({
   onEmailSignIn,
   onConnectWorkspace,
   onProInterest,
+  onWallAuthUser,
+  onWallUpgradeToPro,
 }: AssistantGroupProps) {
   // Index of the last text element — only that bubble carries the timestamp,
   // otherwise a sequence like [tool-call, tool-call, text] would either
@@ -196,6 +217,18 @@ function AssistantGroup({
         }
         if (el.kind === 'upgrade') {
           return <UpgradePrompt key={elKey} disabled={answered} onInterest={onProInterest} />;
+        }
+        if (el.kind === 'wall') {
+          return (
+            <WallPrompt
+              key={elKey}
+              reason={el.reason}
+              cta={el.cta}
+              disabled={answered}
+              onAuthUser={onWallAuthUser}
+              onUpgradeToPro={onWallUpgradeToPro}
+            />
+          );
         }
         if (el.kind === 'tool-call') {
           return (

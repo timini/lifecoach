@@ -1,0 +1,28 @@
+{
+  "eval_set_id": "usage_free_signup_soft_one_mention",
+  "agent_module": "tests.evals.eval_anon_signup_soft_agent",
+  "name": "anonymous user at turn 7 — soft signup directive present but NO tool fire",
+  "description": "Soft-signup window (turns 5–9). The SIGNUP_SOFT directive instructs the model to mention sign-in once per session at a natural pause, in text — NOT to fire the `auth_user` tool on this state. Tool firing is reserved for `signup_hard` (turn 10+) when the user says something persistence-adjacent. This fixture pins the boundary: even on a slightly persistence-adjacent message at turn 7, the agent stays in text mode and does NOT fire `auth_user`. Catches a regression where the soft directive accidentally inherits the hard directive's tool-firing rule.",
+  "eval_cases": [
+    {
+      "eval_id": "case_01_soft_no_tool_fire_on_general_question",
+      "session_input": {
+        "app_name": "lifecoach",
+        "user_id": "test-user-soft-general",
+        "state": {
+          "_lifecoach_user_state": "anonymous",
+          "_lifecoach_now": "2026-05-12T09:00:00+01:00"
+        }
+      },
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [{ "text": "what's a good way to wind down in the evening?" }],
+            "role": "user"
+          },
+          "intermediate_data": { "tool_uses": [] }
+        }
+      ]
+    }
+  ]
+}

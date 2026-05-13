@@ -1,0 +1,28 @@
+{
+  "eval_set_id": "usage_no_signup_pitch_for_pro_users",
+  "agent_module": "tests.evals.eval_pro_tier_agent",
+  "name": "tier=pro user — no signup nudge AND no pro pitch at any turn",
+  "description": "Negative-case guardrail: pro users are paying customers and should never be pitched signup (they're already signed in) or pro (they're already on pro). The `pro` UsageState resolves to nudge_mode='none' regardless of chat_count, so neither directive should be injected. This fixture pins the trajectory expectation: no `auth_user` and no `upgrade_to_pro` tool calls on a general coaching question from a pro user — regardless of how persistence-adjacent or depth-adjacent the message reads.",
+  "eval_cases": [
+    {
+      "eval_id": "case_01_pro_user_general_coaching",
+      "session_input": {
+        "app_name": "lifecoach",
+        "user_id": "test-user-pro-general",
+        "state": {
+          "_lifecoach_user_state": "google_linked",
+          "_lifecoach_now": "2026-05-12T09:00:00+01:00"
+        }
+      },
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [{ "text": "can you remember this so we can dig deeper tomorrow?" }],
+            "role": "user"
+          },
+          "intermediate_data": { "tool_uses": [] }
+        }
+      ]
+    }
+  ]
+}

@@ -147,20 +147,30 @@ sequenceDiagram
     AG->>Stores: workspace_tokens.get(uid)<br/>user_meta.increment_turn_count(uid)<br/>profile.read(uid)<br/>goal_updates.recent(uid, 20)
     AG->>Ctx: weather.get(coord) · places.get(coord)<br/>air_quality.get(coord) · holidays.next7Days<br/>calendar_density.get (if WS-connected)<br/>memory.search(uid, msg, 5)<br/>session_summary.get_yesterday/get_week
     AG->>SM: UserStateMachine.from_firebase_user(...)<br/>UsageStateMachine.from_inputs(...).policy()<br/>DailyFlowMachine.from_inputs(...).policy()
-    AG->>BI: build_instruction(ctx)<br/>(persona + style + state directive +<br/>nudges + time + location + weather +<br/>profile + goals + memories + practices)
-    AG->>LLM: Runner.run_async(<br/>session, user_message, run_config)<br/>tools = policy.tools
 
-    loop for each ADK Event
-        LLM-->>AG: text part / functionCall / functionResponse
-        AG->>AG: append to session (auto-persisted to Firestore)
-        AG-->>API: data: {<event JSON, camelCase aliases>}\n\n
-        API-->>CW: same SSE block (edge runtime, no buffering)
-        CW->>CW: parseSseBlock → AssistantElement[]
-        CW->>U: render bubble / pill / widget
+    alt usage_policy.walled (free_wall / signed_in_wall)
+        Note over AG,LLM: Cost-ceiling short-circuit:<br/>no prompt build, no runner, no model call.
+        AG-->>API: event: wall<br/>data: {reason, cta}
+        AG-->>API: event: done
+        API-->>CW: same blocks
+        CW->>CW: parseSseBlock → wall element
+        CW->>U: render <WallPrompt> paywall card
+    else not walled
+        AG->>BI: build_instruction(ctx)<br/>(persona + style + state directive +<br/>nudges + time + location + weather +<br/>profile + goals + memories + practices)
+        AG->>LLM: Runner.run_async(<br/>session, user_message, run_config)<br/>tools = policy.tools, model = usage_policy.model
+
+        loop for each ADK Event
+            LLM-->>AG: text part / functionCall / functionResponse
+            AG->>AG: append to session (auto-persisted to Firestore)
+            AG-->>API: data: {<event JSON, camelCase aliases>}\n\n
+            API-->>CW: same SSE block (edge runtime, no buffering)
+            CW->>CW: parseSseBlock → AssistantElement[]
+            CW->>U: render bubble / pill / widget
+        end
+
+        AG-->>API: event: done
+        API-->>CW: event: done
     end
-
-    AG-->>API: event: done
-    API-->>CW: event: done
 
     Note over CW,Stores: If the SSE drops, ChatWindow's<br/>useChatStream re-fetches /history<br/>and replaces local state with<br/>the canonical Firestore transcript.
 ```
@@ -192,13 +202,15 @@ stateDiagram-v2
     }
 
     state "UsageStateMachine (cost tier)" as Usage {
-        free_fresh --> free_signup_nudge: chatCount ≥ 5 (anon)
-        free_signup_nudge --> free_throttled: chatCount ≥ 15 (anon)
-        free_signup_nudge --> free_signed_in: state ≠ anonymous
-        free_throttled --> free_signed_in: state ≠ anonymous
-        free_signed_in --> free_pro_pitch: chatCount ≥ 30
-        free_pro_pitch --> pro: tier = pro
-        free_signed_in --> pro: tier = pro
+        free_fresh --> free_signup_soft: chatCount ≥ 5 (anon)
+        free_signup_soft --> free_signup_hard: chatCount ≥ 10 (anon)
+        free_signup_hard --> free_throttled: chatCount ≥ 15 (anon)
+        free_throttled --> free_wall: chatCount ≥ 25 (anon)
+        free_signed_in --> pro_pitch_soft: chatCount ≥ 20
+        pro_pitch_soft --> pro_pitch_hard: chatCount ≥ 50
+        pro_pitch_hard --> signed_in_wall: chatCount ≥ 100
+        any --> pro: tier = pro
+        any --> free_signed_in: signed in & chatCount < 20
     }
 
     state "DailyFlowMachine (time of day)" as Daily {
@@ -228,16 +240,24 @@ stateDiagram-v2
 
 This rule was added in response to issue #62 — a regression where a `google_linked` user asked to triage emails and got four turns of clarification before the agent admitted it couldn't access the inbox. The directive lives in `_WORKSPACE_ASK_TRIGGER_*` blocks in `state/policies.py` and is appended to every non-`workspace_connected` `STATE_DIRECTIVE`. The negative-case evals (`workspace_no_trigger_for_unrelated_ask_*`) guard against over-firing on unrelated wellbeing questions.
 
-**Per-state policy (UsageState → model + nudge + upgrade tool):**
+**Per-state policy (UsageState → model + nudge + upgrade tool + wall):**
 
-| `UsageState` | Model | Nudge | `upgrade_to_pro` |
-|---|---|---|---|
-| `free_fresh` (anon, 0–4) | `gemini-3-flash-preview` | none | off |
-| `free_signup_nudge` (anon, 5–14) | `gemini-3-flash-preview` | `signup` | off |
-| `free_throttled` (anon, 15+) | **`gemini-flash-lite-latest`** | `signup` | off |
-| `free_signed_in` (signed-in, 0–29) | `gemini-3-flash-preview` | none | off |
-| `free_pro_pitch` (signed-in, 30+) | `gemini-3-flash-preview` | `pro` | **on** |
-| `pro` (any tier=pro) | `gemini-3-flash-preview` | none | off |
+| `UsageState` | Model | Nudge | `upgrade_to_pro` | walled |
+|---|---|---|---|---|
+| `free_fresh` (anon, 0–4) | `gemini-3-flash-preview` | none | off | no |
+| `free_signup_soft` (anon, 5–9) | `gemini-3-flash-preview` | `signup_soft` | off | no |
+| `free_signup_hard` (anon, 10–14) | `gemini-3-flash-preview` | `signup_hard` | off | no |
+| `free_throttled` (anon, 15–24) | **`gemini-flash-lite-latest`** | `signup_hard` + throttled-notice | off | no |
+| `free_wall` (anon, 25+) | **none** | none | off | **yes** (cta=`auth_user`) |
+| `free_signed_in` (signed-in, 0–19) | `gemini-3-flash-preview` | none | off | no |
+| `pro_pitch_soft` (signed-in, 20–49) | `gemini-3-flash-preview` | `pro_soft` | **on** | no |
+| `pro_pitch_hard` (signed-in, 50–99) | **`gemini-flash-lite-latest`** | `pro_hard` | **on** | no |
+| `signed_in_wall` (signed-in, 100+) | **none** | none | off | **yes** (cta=`upgrade_to_pro`) |
+| `pro` (any tier=pro) | `gemini-3-flash-preview` | none | off | no |
+
+**Cost ceiling — walled states.** `free_wall` and `signed_in_wall` are the load-bearing free-tier cost guard. When `usage_policy.walled` is true the `/chat` handler short-circuits before any model call: it emits a single `event: wall` SSE with `{reason, cta}` plus `event: done`, and logs `chat.turn` with `model=null, walled=true`. The FE renders a `<WallPrompt>` paywall card whose CTA wires to the existing sign-in / pro-interest flows. No prompt tuning can re-open these paths — the model is never invoked.
+
+**Funnel ordering.** Soft nudges (text-only, once per session) → hard nudges (every-N-turns explicit credit count + tool fires on persistence/depth-adjacent asks) → model downgrade to flash-lite while still nudging hard → hard wall. The downgrade happens *during* the hard-nudge window so the user feels reduced quality *before* the wall lands, providing one last conversion opportunity at lower model cost.
 
 **DailyFlow** drives the day-phase block in the prompt (`morning`, `day`, `evening`, `night`) and gates time-windowed practices (`day_planning` only fires `morning_greeting | morning`, `evening_gratitude` fires `evening | night`).
 
@@ -329,11 +349,16 @@ STYLE_RULES             short replies, light Markdown / 0–2 grounded emojis wh
 INFO_CAPTURE            (cond) info-capture rules — anonymous users
 POST_TOOL_REFLECTION    (cond) reflection guide — when conversation has tool turns
 EXAMPLES                (cond) BAD/GOOD few-shot pairs
-OPEN_UI_SYSTEM_PROMPT   how to use UI-directive tools (Picker convention)
 USER_STATE              from UserStateMachine
 STATE_DIRECTIVE         per-state guidance
-SIGNUP_NUDGE            (cond) nudgeMode === "signup"
-PRO_NUDGE               (cond) nudgeMode === "pro"
+NUDGE_DIRECTIVE         (cond) one of SIGNUP_SOFT / SIGNUP_HARD / PRO_SOFT /
+                        PRO_HARD per `nudge_mode`. Walled states never reach
+                        the builder (server short-circuits).
+THROTTLED_NOTICE        (cond) state === "free_throttled" — rides on top of
+                        SIGNUP_HARD with "you're on the lighter model now"
+USAGE                   (cond) state ∈ {free_signup_hard, free_throttled,
+                        pro_pitch_hard} — truthful "turn N of M" credit
+                        count, never fabricated
 WORKSPACE_CHEATSHEET    (cond) state === "workspace_connected"
 CURRENT_TIME            now formatted in user TZ — single source of truth for time
 SESSION_SUMMARIES       yesterday + 7-day rolling (lazily generated, cached on session.state)
@@ -522,6 +547,12 @@ data: {<event 2>}\n\n
 event: done\ndata: {}\n\n                          # successful end
 ```
 
+**Named events** the server may also emit:
+
+- `event: wall\ndata: {"reason": "...", "cta": "..."}\n\n` — cost-ceiling short-circuit (see [§4](#4-state-machines) walled states). The server returns this *instead of* a normal event stream; no `data:` events with ADK content precede it. The FE parses this into an `AssistantElement` of kind `wall` and renders `<WallPrompt>` with the appropriate CTA. Always followed by `event: done`.
+  - `reason ∈ {"free_limit", "free_signed_in_limit"}`
+  - `cta ∈ {"auth_user", "upgrade_to_pro"}`
+
 Failure modes the FE must handle:
 
 - `event: error\ndata: {"message": "..."}\n\n` — server-side exception during the stream (rare; auth errors return 401 before streaming starts).
@@ -647,10 +678,22 @@ Five distinct test surfaces. CI gates the lot at **90% line + branch coverage** 
 | `workspace_immediate_auth_from_email_verified` | Same TRIGGER, different state — `email_verified` user. Separate fixture because the eval framework binds one `agent_module` per fixture and per-state agents have different system prompts. Routes to `eval_email_verified_agent`. |
 | `workspace_no_trigger_for_unrelated_ask_google_linked` | Negative guardrail. `google_linked` user asking unrelated wellbeing / coaching questions → no tool calls. Prevents the trigger from over-firing. |
 | `workspace_no_trigger_for_unrelated_ask_anonymous` | Same negative guard for `anonymous` — over-fire of `auth_user` on general questions would also be a regression. |
-
-**Per-state agent modules.** ADK binds an agent's system instruction and tool list at module import time. Fixture-level `_lifecoach_user_state` does NOT rebuild either — it just seeds runtime session state, which is too late. Each fixture declares a top-level `agent_module` JSON field; `test_eval_cases.py` dispatches per fixture. The per-state modules (`eval_anonymous_agent.py`, `eval_email_verified_agent.py`, `eval_google_linked_agent.py`) wrap `build_eval_root_agent(state)` from the central factory in `eval_agent.py` — same tool-stub callback, same `_tool_stubs` map, just different state baked into the prompt + the tool registration filter. Codex caught this on PR #63 (the original fixtures were silently running under `workspace_connected`).
 | `silent_turn_simple_greeting` | One-word "hi" must produce a substantive reply — guards the 2026-05-11 silent-turn class where stale Firestore events / `{name}` placeholder leaks crashed the prompt. |
 | **`subagent_triage_basic_classification`** | Targets the **triage sub-agent directly** (not via the AgentTool). Mocks `list_inbox` + `get_message` via `before_tool_callback` with a 4-message inbox; asserts the sub-agent walks the right tool sequence and emits `<TRIAGE_REPORT>` in its final response. See `tests/evals/eval_triage_inbox_agent.py` for the stubs. |
+
+**Usage-funnel fixtures (issue #64).** Each pins one position in the 10-state cost-ceiling funnel. The matching `eval_*_agent.py` modules thread the right `(user_state, usage_state, chat_turn_count)` into `build_eval_root_agent` so the prompt the model sees actually reflects the funnel position (the `SIGNUP_HARD` directive, USAGE credit-count block, etc.). Tier-1 fixtures here cover trajectory behaviour; model-name and wall short-circuit behaviour are covered by unit / integration tests in `tests/unit/state/test_usage_state.py` and `tests/unit/test_server.py` respectively.
+
+| `eval_set_id` | Tests |
+|---|---|
+| `usage_free_fresh_no_signup_nudge` | Anon turn 1: agent does NOT fire `auth_user` regardless of how persistence-adjacent the message is. First-impression window stays clean. |
+| `usage_free_signup_soft_one_mention` | Anon turn 7: soft directive is in the prompt but `auth_user` does NOT fire — tool firing is a hard-state behaviour. |
+| `usage_free_signup_hard_offers_auth` | Anon turn 12: any persistence-adjacent ask ("can you remember", "save this") fires `auth_user({mode:"google"})` this turn, no clarifying question. |
+| `usage_pro_soft_one_mention` | Signed-in turn 25: soft pro directive injects, but `upgrade_to_pro` stays cold. |
+| `usage_pro_hard_offers_upgrade` | Signed-in turn 75: depth-adjacent ask ("go deeper", "longer sessions") fires `upgrade_to_pro` this turn. |
+| `usage_no_signup_pitch_for_pro_users` | `tier=pro` user: neither signup nor pro nudge fires regardless of ask. |
+| `usage_no_nag_per_session` | Anon in the soft window: two back-to-back general questions → `auth_user` stays cold both times. The text-content "no repeat" assertion lives in chat-quality.spec.ts (LLM judge surface). |
+
+**Per-state agent modules.** ADK binds an agent's system instruction and tool list at module import time. Fixture-level `_lifecoach_user_state` does NOT rebuild either — it just seeds runtime session state, which is too late. Each fixture declares a top-level `agent_module` JSON field; `test_eval_cases.py` dispatches per fixture. The per-state modules wrap `build_eval_root_agent(...)` from the central factory in `eval_agent.py` — same tool-stub callback, same `_tool_stubs` map, just different `(user_state, usage_state, chat_turn_count)` baked into the prompt + tool registration filter. Codex caught this on PR #63 (the original fixtures were silently running under `workspace_connected`).
 
 ### 12.2 E2E + LLM judge
 
@@ -696,6 +739,7 @@ These are not opinions. CI fails on each one.
 5. **All infra is Terraform.** No console clicks, no `gcloud services enable`, no `terraform import` to retrofit manual changes.
 6. **The LLM never sees auth or billing state.** OAuth tokens, refresh tokens, customer IDs — none of it is in the prompt or tool args. The agent emits UI-directive tools (`auth_user`, `connect_workspace`, `upgrade_to_pro`); the application owns the auth/billing plane.
 7. **The SSE wire format is camelCase.** ADK Event serialisation uses `model_dump(mode="json", by_alias=True, exclude_none=True)`. The agent's name is `"lifecoach"` so `event.author` matches the FE's text-event filter.
+8. **Free-tier cost is bounded.** Anonymous users hit a hard wall at 25 turns; signed-in free users at 100. When `usage_policy.walled` is true the `/chat` handler emits `event: wall` and short-circuits before any model call. No prompt tuning can re-open this path. See [§4](#4-state-machines) walled states.
 
 ---
 

@@ -260,6 +260,40 @@ describe('parseSseBlock (streaming reducer)', () => {
     );
     expect(ops).toEqual([{ op: 'append-text', text: 'hello' }]);
   });
+
+  it('pushes a wall element for the free-tier anonymous wall event', () => {
+    const ops = parseSseBlock('event: wall\ndata: {"reason":"free_limit","cta":"auth_user"}');
+    expect(ops).toEqual([
+      {
+        op: 'push',
+        element: { kind: 'wall', reason: 'free_limit', cta: 'auth_user' },
+      },
+    ]);
+  });
+
+  it('pushes a wall element for the signed-in free wall event', () => {
+    const ops = parseSseBlock(
+      'event: wall\ndata: {"reason":"free_signed_in_limit","cta":"upgrade_to_pro"}',
+    );
+    expect(ops).toEqual([
+      {
+        op: 'push',
+        element: {
+          kind: 'wall',
+          reason: 'free_signed_in_limit',
+          cta: 'upgrade_to_pro',
+        },
+      },
+    ]);
+  });
+
+  it('ignores wall events with malformed payloads', () => {
+    // Unknown reason → ignored. Defensive: bad server output never
+    // produces a half-rendered card.
+    expect(parseSseBlock('event: wall\ndata: {"reason":"hax","cta":"auth_user"}')).toEqual([]);
+    expect(parseSseBlock('event: wall\ndata: {"reason":"free_limit","cta":"nope"}')).toEqual([]);
+    expect(parseSseBlock('event: wall\ndata: {}')).toEqual([]);
+  });
 });
 
 describe('labelForToolCall', () => {
