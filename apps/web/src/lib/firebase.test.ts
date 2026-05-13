@@ -89,6 +89,22 @@ describe('firebase welcome verification email', () => {
     expect(result).toEqual({ user: linked, convertedAnonymousUser: true });
   });
 
+  it('does NOT mark an already-identified user linking Google as a conversion', async () => {
+    // The email_verified state still exposes the Google linking button
+    // (packages/user-state/src/policies.ts). When that user links Google,
+    // the snapshot of isAnonymous must be the pre-link value (false), so
+    // the welcome-email call site doesn't fire a duplicate verification
+    // email to an identity that's already been welcomed.
+    authState.currentUser = fakeUser({ uid: 'identified-1', isAnonymous: false });
+    const linked = fakeUser({ uid: 'identified-1', isAnonymous: false });
+    mocks.linkWithPopup.mockResolvedValueOnce({ user: linked });
+    const { linkWithGoogleResult } = await import('./firebase');
+
+    const result = await linkWithGoogleResult();
+
+    expect(result).toEqual({ user: linked, convertedAnonymousUser: false });
+  });
+
   it('does NOT mark existing-account recovery as a conversion', async () => {
     // Path: linkWithPopup rejects with credential-already-in-use, code
     // falls back to signInWithCredential. UID changes, the anon UID is
@@ -166,6 +182,34 @@ describe('firebase welcome verification email', () => {
     );
 
     expect(second).toBe(true);
+    expect(mocks.sendSignInLinkToEmail).toHaveBeenCalledTimes(2);
+  });
+
+  it('allows a resend after the TTL has elapsed (recovery from lost/expired email)', async () => {
+    // The guard is timestamp-based and expires after WELCOME_GUARD_TTL_MS.
+    // Without this, a user whose first email got lost / filtered would be
+    // unable to request a replacement until they signed out + back in.
+    const { sendWelcomeVerificationEmail, WELCOME_GUARD_TTL_MS } = await import('./firebase');
+
+    const realDateNow = Date.now;
+    const t0 = 1_700_000_000_000;
+    Date.now = () => t0;
+    const first = await sendWelcomeVerificationEmail('tim@example.com', 'https://app.example/chat');
+    expect(first).toBe(true);
+
+    // Just before the TTL window closes — still blocked.
+    Date.now = () => t0 + WELCOME_GUARD_TTL_MS - 1;
+    expect(await sendWelcomeVerificationEmail('tim@example.com', 'https://app.example/chat')).toBe(
+      false,
+    );
+
+    // After the TTL — allowed again.
+    Date.now = () => t0 + WELCOME_GUARD_TTL_MS + 1;
+    expect(await sendWelcomeVerificationEmail('tim@example.com', 'https://app.example/chat')).toBe(
+      true,
+    );
+
+    Date.now = realDateNow;
     expect(mocks.sendSignInLinkToEmail).toHaveBeenCalledTimes(2);
   });
 

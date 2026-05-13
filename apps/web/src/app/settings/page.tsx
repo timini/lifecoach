@@ -218,16 +218,28 @@ export default function SettingsPage() {
   }
 
   async function handleLinkGoogle() {
+    let linked: Awaited<ReturnType<typeof linkWithGoogleResult>>;
     try {
-      const result = await linkWithGoogleResult();
-      setUser(result.user);
-      // Anon→Google conversion gets the welcome; recovered existing-account
-      // sign-ins skip it (they already received one on first signup).
-      if (result.convertedAnonymousUser && result.user.email) {
-        await sendWelcomeVerificationEmail(result.user.email, window.location.href);
-      }
+      linked = await linkWithGoogleResult();
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : String(err));
+      return;
+    }
+    setUser(linked.user);
+
+    // Welcome email send is best-effort and runs AFTER linking succeeds.
+    // A failure here (quota, network, etc.) must not turn into "auth
+    // failed" — the Google account IS linked. ChatWindow treats this
+    // path the same way; surface the issue separately if at all.
+    if (linked.convertedAnonymousUser && linked.user.email) {
+      try {
+        await sendWelcomeVerificationEmail(linked.user.email, window.location.href);
+      } catch (emailErr) {
+        // Intentionally non-fatal. Log via console so we can spot a
+        // pattern in dev/preview if a transient outage hits a real user.
+        // eslint-disable-next-line no-console
+        console.warn('welcome email send failed (non-fatal)', emailErr);
+      }
     }
   }
 

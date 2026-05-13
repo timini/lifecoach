@@ -137,10 +137,16 @@ export async function linkWithGoogleResult(): Promise<GoogleLinkResult> {
   const auth = firebaseAuth();
   const user = auth.currentUser;
   if (!user) throw new Error('no current user — sign-in must complete first');
+  // Snapshot `isAnonymous` BEFORE `linkWithPopup` — it flips to false on
+  // a successful link. Without the snapshot we'd report every Google-link
+  // (including the legitimate `email_verified → google` upgrade in Settings)
+  // as an anonymous conversion, and the call-site would trigger a duplicate
+  // welcome email to an already-identified user.
+  const wasAnonymous = user.isAnonymous;
   const provider = new GoogleAuthProvider();
   try {
     const cred = await linkWithPopup(user, provider);
-    return { user: cred.user, convertedAnonymousUser: true };
+    return { user: cred.user, convertedAnonymousUser: wasAnonymous };
   } catch (err) {
     const credential = credentialFromAuthError(err);
     if (credential) {
@@ -188,16 +194,28 @@ function credentialFromAuthError(
  * key is keyed on the auth identity so a fresh anon → Google upgrade still
  * sends one welcome even if a prior anon UID had one sent on its behalf.
  *
+ * The guard stores the send timestamp (ms) and is honored only within
+ * WELCOME_GUARD_TTL_MS. After that, a resend is allowed — covers the case
+ * where the first email got lost in spam or expired before the user
+ * clicked through. The guard is also cleared in completeEmailSignInLink
+ * once the user successfully returns via the link, so a later "send me
+ * another" from the same browser session works immediately.
+ *
  * Returns `true` when an email was sent, `false` when the guard skipped it.
  */
+export const WELCOME_GUARD_TTL_MS = 5 * 60_000; // 5 minutes
+
 export async function sendWelcomeVerificationEmail(
   email: string,
   returnUrl: string,
 ): Promise<boolean> {
   const auth = firebaseAuth();
   const guardKey = welcomeSentKey(auth.currentUser?.uid ?? 'anon', email);
-  if (typeof window !== 'undefined' && window.localStorage.getItem(guardKey) === 'true') {
-    return false;
+  if (typeof window !== 'undefined') {
+    const recordedAt = parseGuardTimestamp(window.localStorage.getItem(guardKey));
+    if (recordedAt !== null && Date.now() - recordedAt < WELCOME_GUARD_TTL_MS) {
+      return false;
+    }
   }
   await sendSignInLinkToEmail(auth, email, {
     url: withWelcomeFlag(returnUrl),
@@ -205,9 +223,20 @@ export async function sendWelcomeVerificationEmail(
   });
   if (typeof window !== 'undefined') {
     window.localStorage.setItem(EMAIL_PENDING_KEY, email);
-    window.localStorage.setItem(guardKey, 'true');
+    window.localStorage.setItem(guardKey, String(Date.now()));
   }
   return true;
+}
+
+function parseGuardTimestamp(raw: string | null): number | null {
+  if (raw === null) return null;
+  // Back-compat: older entries stored the literal "true". Treat them as
+  // a stale guard that has effectively no timestamp — return Date.now()
+  // so the TTL check below treats them as "just sent" once, then they'll
+  // be overwritten on next call.
+  if (raw === 'true') return Date.now();
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) ? n : null;
 }
 
 /**
@@ -258,14 +287,24 @@ export async function completeEmailSignInLink(currentUrl: string): Promise<User 
   const user = auth.currentUser;
   if (!user) {
     const cred = await signInWithEmailLink(auth, email, currentUrl);
-    window.localStorage.removeItem(EMAIL_PENDING_KEY);
+    clearWelcomeAndPendingGuards(cred.user.uid, email);
     return cred.user;
   }
 
   const credential = EmailAuthProvider.credentialWithLink(email, currentUrl);
   const linked = await linkWithCredential(user, credential);
-  window.localStorage.removeItem(EMAIL_PENDING_KEY);
+  clearWelcomeAndPendingGuards(linked.user.uid, email);
   return linked.user;
+}
+
+function clearWelcomeAndPendingGuards(uid: string, email: string): void {
+  // Called once the email-link returns successfully — the welcome email
+  // clearly arrived. Clearing the resend guard lets the user request a
+  // fresh email from this browser immediately (e.g. for a new account)
+  // without waiting out the TTL.
+  if (typeof window === 'undefined') return;
+  window.localStorage.removeItem(EMAIL_PENDING_KEY);
+  window.localStorage.removeItem(welcomeSentKey(uid, email));
 }
 
 /**
