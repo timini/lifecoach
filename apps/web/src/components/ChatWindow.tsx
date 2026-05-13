@@ -38,7 +38,16 @@ import { type Message, useChatStream } from '../lib/useChatStream';
 import { connectWorkspace, fetchWorkspaceStatus } from '../lib/workspace';
 import { DebugPanel, type SessionsOutcome } from './DebugPanel';
 
-export function ChatWindow() {
+type ChatWindowProps = {
+  // Pre-fills the composer textarea on mount. Set by `/chat?prompt=…`
+  // (the marketing/SEO funnel CTAs at /how-it-helps/[topic]). We seed
+  // the value rather than auto-submit so the user can adjust the
+  // wording — and so the message doesn't fire before the anon Firebase
+  // session is ready.
+  initialPrompt?: string;
+};
+
+export function ChatWindow({ initialPrompt }: ChatWindowProps = {}) {
   const t = useTranslations('chat');
   const [user, setUser] = useState<User | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -49,7 +58,7 @@ export function ChatWindow() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'live' | 'past'>('live');
   const [sessions, setSessions] = useState<SessionItem[]>([]);
-  const [composerValue, setComposerValue] = useState('');
+  const [composerValue, setComposerValue] = useState(initialPrompt ?? '');
   const [lastSessionsOutcome, setLastSessionsOutcome] = useState<SessionsOutcome | null>(null);
   const [lastAccountMenuOpenChange, setLastAccountMenuOpenChange] = useState<{
     open: boolean;
