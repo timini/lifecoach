@@ -93,6 +93,9 @@ jobs:
           # Also extract individual fields for the e2e step.
           echo "agent_url=$(echo "$out" | jq -r .agent_url)" >> "$GITHUB_OUTPUT"
           echo "web_url=$(echo "$out" | jq -r .web_url)" >> "$GITHUB_OUTPUT"
+          # custom_web_url is empty until dev's domain module is applied;
+          # downstream steps render it conditionally.
+          echo "custom_web_url=$(echo "$out" | jq -r '.custom_web_url // ""')" >> "$GITHUB_OUTPUT"
 
       # Comment the URL straight after deploy — before e2e runs — so the PR
       # author can start poking at the preview while Playwright catches up.
@@ -103,19 +106,30 @@ jobs:
         env:
           AGENT_URL: ${{ steps.deploy.outputs.agent_url }}
           WEB_URL: ${{ steps.deploy.outputs.web_url }}
+          CUSTOM_WEB_URL: ${{ steps.deploy.outputs.custom_web_url }}
           E2E_OUTCOME: running
         with:
           script: |
             const agentUrl = process.env.AGENT_URL;
             const webUrl = process.env.WEB_URL;
+            const customWebUrl = process.env.CUSTOM_WEB_URL;
             const e2eOutcome = process.env.E2E_OUTCOME;
             const e2eEmoji = e2eOutcome === 'success' ? '✅' : (e2eOutcome === 'running' ? '⏳' : '❌');
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
 
+            // The .run.app URL is always immediately reachable. The custom
+            // domain (when enabled) is on a 15-30 min cert-provisioning lag
+            // for first-time hostnames; surface it as a secondary line with
+            // a note so reviewers don't think the preview is broken if
+            // they try lifecoach.dev too early.
+            const webLines = [`- **Web:** ${webUrl}`];
+            if (customWebUrl) {
+              webLines.push(`- **Web (custom domain, Firebase Auth-ready):** ${customWebUrl}  _— first deploy of a new hostname has a ~15-30 min HTTPS-cert warm-up. The .run.app URL above works immediately and is what Playwright targets._`);
+            }
             const body = [
               '### 🚀 Preview deployed',
               '',
-              `- **Web:** ${webUrl}`,
+              ...webLines,
               `- **Agent:** ${agentUrl}`,
               '',
               `**E2E:** ${e2eEmoji} \`${e2eOutcome}\` — see [the run](${runUrl}) for details.`,
@@ -201,19 +215,25 @@ jobs:
         env:
           AGENT_URL: ${{ steps.deploy.outputs.agent_url }}
           WEB_URL: ${{ steps.deploy.outputs.web_url }}
+          CUSTOM_WEB_URL: ${{ steps.deploy.outputs.custom_web_url }}
           E2E_OUTCOME: ${{ steps.e2e.outcome }}
         with:
           script: |
             const agentUrl = process.env.AGENT_URL;
             const webUrl = process.env.WEB_URL;
+            const customWebUrl = process.env.CUSTOM_WEB_URL;
             const e2eOutcome = process.env.E2E_OUTCOME;
             const e2eEmoji = e2eOutcome === 'success' ? '✅' : (e2eOutcome === 'running' ? '⏳' : '❌');
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
 
+            const webLines = [`- **Web:** ${webUrl}`];
+            if (customWebUrl) {
+              webLines.push(`- **Web (custom domain, Firebase Auth-ready):** ${customWebUrl}  _— first deploy of a new hostname has a ~15-30 min HTTPS-cert warm-up. The .run.app URL above works immediately and is what Playwright targets._`);
+            }
             const body = [
               '### 🚀 Preview deployed',
               '',
-              `- **Web:** ${webUrl}`,
+              ...webLines,
               `- **Agent:** ${agentUrl}`,
               '',
               `**E2E:** ${e2eEmoji} \`${e2eOutcome}\` — see [the run](${runUrl}) for details.`,

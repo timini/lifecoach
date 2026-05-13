@@ -60,3 +60,17 @@ variable "sentry_dsn" {
   default     = ""
   description = "Sentry DSN — read from dev's terraform output by preview-deploy.sh and forwarded as a -var. Empty disables telemetry on the preview agent."
 }
+
+# --- Custom-domain mapping (lifecoach.dev) -------------------------------
+
+variable "custom_domain_name" {
+  type        = string
+  default     = ""
+  description = "Apex domain registered in the dev env (e.g. \"lifecoach.dev\"). Read from dev's terraform output by preview-deploy.sh. Empty disables the per-PR domain mapping (preview is reachable only via the *.run.app URL — used during the rollout before lifecoach.dev was registered)."
+}
+
+variable "custom_domain_dns_zone" {
+  type        = string
+  default     = ""
+  description = "Cloud DNS managed-zone name for the custom domain (e.g. \"lifecoach-dev\"). Read from dev's terraform output. Empty disables the per-PR domain mapping along with custom_domain_name."
+}

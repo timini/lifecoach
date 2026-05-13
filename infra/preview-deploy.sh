@@ -75,6 +75,13 @@ dev_tfvar() {
 }
 SENTRY_DSN_VALUE="$(dev_tfvar sentry_dsn)"
 
+# Custom-domain wiring — output may not exist yet on first deploy after
+# this feature lands (dev apply hasn't run with the domain module). The
+# `|| true` keeps the script working in both states; preview TF's
+# `custom_domain_enabled` local gates the mapping accordingly.
+CUSTOM_DOMAIN_NAME="$(cd "${DEV_DIR}" && terraform output -raw custom_domain_name 2>/dev/null || true)"
+CUSTOM_DOMAIN_ZONE="$(cd "${DEV_DIR}" && terraform output -raw custom_domain_dns_zone 2>/dev/null || true)"
+
 # --- Docker auth + builds + pushes -----------------------------------------
 
 log "Configuring Docker auth for ${REGION}-docker.pkg.dev"
@@ -140,7 +147,9 @@ apply_preview() {
       -var="firebase_auth_domain=${FIREBASE_AUTH_DOMAIN}" \
       -var="firebase_app_id=${FIREBASE_APP_ID}" \
       -var="google_oauth_client_id=${GOOGLE_OAUTH_CLIENT_ID}" \
-      -var="sentry_dsn=${SENTRY_DSN_VALUE}" >&2
+      -var="sentry_dsn=${SENTRY_DSN_VALUE}" \
+      -var="custom_domain_name=${CUSTOM_DOMAIN_NAME}" \
+      -var="custom_domain_dns_zone=${CUSTOM_DOMAIN_ZONE}" >&2
   )
 }
 
@@ -150,8 +159,11 @@ apply_preview
 
 AGENT_URL="$(cd "${PREVIEW_DIR}" && terraform output -raw agent_url)"
 WEB_URL="$(cd "${PREVIEW_DIR}" && terraform output -raw web_url)"
+# Empty string when the custom-domain feature isn't enabled on this env.
+CUSTOM_WEB_URL="$(cd "${PREVIEW_DIR}" && terraform output -raw custom_web_url 2>/dev/null || true)"
 
 log "agent_url=${AGENT_URL}"
 log "web_url=${WEB_URL}"
-printf '{"agent_url":"%s","web_url":"%s","image_tag":"%s"}\n' \
-  "${AGENT_URL}" "${WEB_URL}" "${TAG}"
+[[ -n "${CUSTOM_WEB_URL}" ]] && log "custom_web_url=${CUSTOM_WEB_URL}"
+printf '{"agent_url":"%s","web_url":"%s","custom_web_url":"%s","image_tag":"%s"}\n' \
+  "${AGENT_URL}" "${WEB_URL}" "${CUSTOM_WEB_URL}" "${TAG}"

@@ -111,6 +111,38 @@ locals {
     # Terraform refreshes (and could update) the WIF pool + provider it
     # runs through. Without read perms on the pool, plan fails on a 403.
     "roles/iam.workloadIdentityPoolAdmin",
+    # Cloud DNS — needed to write per-PR CNAMEs into the lifecoach.dev
+    # managed zone (preview env) and to manage the zone resource itself
+    # (dev env). Without this the per-PR preview Terraform 403s on
+    # google_dns_record_set create/destroy and the deploy / teardown
+    # workflows fail mid-apply. `roles/dns.admin` is the standard role;
+    # the narrower `roles/dns.reader + roles/dns.peer` combo can't write
+    # records.
+    "roles/dns.admin",
+    # Cloud Domains — `deploy-dev.yml` runs a full dev `terraform apply`
+    # on every merge to main, which refreshes `google_clouddomains_registration`
+    # state. Without read perms, plan fails on a 403. The resource itself
+    # is `prevent_destroy = true`, so admin here is for refresh/diff
+    # under normal operation; the initial registration is user-driven
+    # from a laptop with the user's own gcloud auth.
+    "roles/domains.admin",
+    # Vertex AI predict — the chat-quality e2e spec uses the deployer SA's
+    # ADC to call Gemini directly as the LLM judge. Without this it 403s
+    # on aiplatform.endpoints.predict and the e2e step fails silently
+    # (continue-on-error swallows the exit code). The agent's runtime SA
+    # already has this role for its own model calls; the deployer needs
+    # it independently for the judge.
+    "roles/aiplatform.user",
+    # Per-PR HTTPS LB + Serverless NEG for preview custom domains. Covers
+    # forwarding rules, target proxies, URL maps, backend services, NEGs,
+    # global addresses and Google-managed SSL certs — the full set of
+    # resources `infra/envs/preview/main.tf` creates per PR to route
+    # pr-N.preview.<custom_domain> to the per-PR Cloud Run web service.
+    # `roles/compute.networkAdmin` (which sounds like the right answer)
+    # only grants USE/ATTACH on networkEndpointGroups, not CREATE — and
+    # also doesn't include sslCertificates.create. `loadBalancerAdmin`
+    # covers both the NEG and cert lifecycle plus everything else LB.
+    "roles/compute.loadBalancerAdmin",
   ])
 }
 

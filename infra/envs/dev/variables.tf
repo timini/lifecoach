@@ -70,3 +70,34 @@ variable "sentry_dsn" {
   default     = ""
   description = "Sentry DSN used by both apps/agent (runtime SENTRY_DSN env) and apps/web (NEXT_PUBLIC_SENTRY_DSN inlined at build time). Empty disables Sentry — both SDKs no-op. DSNs are public by Sentry's design (they're shipped in the browser bundle), so this is treated as a non-secret config value rather than a Secret Manager entry."
 }
+
+# --- Custom-domain registration (rootandrise.app) -------------------------
+# See infra/modules/domain/main.tf for why this exists. Set in
+# terraform.tfvars (the registrant_contact is sensitive — Cloud Domains
+# needs valid Whois data for verification but it's hidden in public Whois
+# via REDACTED_CONTACT_DATA).
+
+variable "custom_domain_name" {
+  type        = string
+  default     = "tranquil.coach"
+  description = "Apex domain DNS-hosted in this project. Registered externally at Porkbun (Cloud Domains does not sell .coach). Preview hostnames live at pr-N.preview.<domain>; Firebase Auth allowlist picks up preview.<domain> as a single subdomain-wildcard entry covering every PR. .coach is non-public-suffix so Firebase's subdomain wildcarding works."
+}
+
+variable "custom_domain_registrant_contact" {
+  type = object({
+    email          = string
+    phone_number   = string
+    postal_address = object({
+      region_code         = string
+      postal_code         = string
+      administrative_area = string
+      locality            = string
+      address_lines       = list(string)
+      recipients          = list(string)
+    })
+  })
+  default     = null
+  nullable    = true
+  sensitive   = true
+  description = "Whois registrant contact, only used when an apex is registered via Cloud Domains. tranquil.coach is at Porkbun so this is unused today; kept for future TF-managed apexes on Cloud Domains-supported TLDs. Set in terraform.tfvars (gitignored)."
+}
