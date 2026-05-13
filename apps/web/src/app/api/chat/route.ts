@@ -1,3 +1,5 @@
+import { agentInternalHeaders } from '../../../lib/agentHeaders';
+
 // Edge runtime so the upstream SSE stream from the agent is forwarded
 // chunk-by-chunk to the browser. Node runtime tends to buffer
 // ReadableStream bodies before flushing, defeating the agent's own
@@ -32,6 +34,7 @@ export async function POST(request: Request): Promise<Response> {
     headers: {
       'content-type': 'application/json',
       ...(authHeader ? { authorization: authHeader } : {}),
+      ...agentInternalHeaders(),
     },
     body: JSON.stringify({
       userId,
@@ -44,9 +47,12 @@ export async function POST(request: Request): Promise<Response> {
 
   if (upstream.status >= 400) {
     const text = await upstream.text().catch(() => '');
+    const retryAfter = upstream.headers.get('retry-after');
+    const headers = retryAfter ? { 'retry-after': retryAfter } : undefined;
+    const status = upstream.status === 429 ? 429 : 502;
     return Response.json(
       { error: 'Upstream agent error', detail: text.slice(0, 500) },
-      { status: 502 },
+      { status, headers },
     );
   }
 

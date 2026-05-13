@@ -469,6 +469,11 @@ def build_app() -> Any:
         session_reader=_SessionReaderAdapter(),
         verify_token=firebase_admin_verifier(),
         require_auth=os.environ.get("REQUIRE_AUTH") == "true",
+        # Service-to-service shared secret. Set by Terraform's secret_env
+        # on the agent's Cloud Run service; the web service receives the
+        # same value and forwards it as `x-agent-internal-bearer` on
+        # every proxied call. Empty/unset disables the check (tests).
+        internal_bearer=os.environ.get("AGENT_INTERNAL_BEARER") or None,
         weather=weather,
         places=places,
         places_token_provider=places_token_provider,

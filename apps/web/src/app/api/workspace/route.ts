@@ -1,3 +1,5 @@
+import { agentInternalHeaders } from '../../../lib/agentHeaders';
+
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +22,7 @@ export async function DELETE(request: Request): Promise<Response> {
 
   const upstream = await fetch(`${agent}/workspace`, {
     method: 'DELETE',
-    headers: { authorization: auth },
+    headers: { authorization: auth, ...agentInternalHeaders() },
   });
   if (upstream.status >= 400) {
     return Response.json(

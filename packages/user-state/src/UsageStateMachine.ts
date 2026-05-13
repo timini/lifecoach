@@ -27,6 +27,10 @@ export const SIGNUP_NUDGE_AFTER = 5;
 export const MODEL_DOWNGRADE_AFTER = 15;
 /** Signed-in free turns at which the LLM gains the upgrade_to_pro tool. */
 export const PRO_NUDGE_AFTER = 30;
+/** Anonymous free turns allowed before blocking LLM calls entirely. */
+export const ANONYMOUS_HARD_LIMIT_AFTER = 20;
+/** Signed-in free turns allowed before blocking LLM calls entirely. */
+export const FREE_HARD_LIMIT_AFTER = 100;
 
 export type Tier = 'free' | 'pro';
 
@@ -40,8 +44,10 @@ export type UsageState =
   | 'free_fresh'
   | 'free_signup_nudge'
   | 'free_throttled'
+  | 'free_blocked'
   | 'free_signed_in'
   | 'free_pro_pitch'
+  | 'free_signed_in_blocked'
   | 'pro';
 
 export interface UsagePolicy {
@@ -49,6 +55,8 @@ export interface UsagePolicy {
   model: Model;
   nudgeMode: NudgeMode;
   upgradeToolAvailable: boolean;
+  llmAllowed: boolean;
+  limitMessage?: string;
 }
 
 const POLICIES: Record<UsageState, UsagePolicy> = {
@@ -57,36 +65,58 @@ const POLICIES: Record<UsageState, UsagePolicy> = {
     model: 'gemini-3-flash-preview',
     nudgeMode: 'none',
     upgradeToolAvailable: false,
+    llmAllowed: true,
   },
   free_signup_nudge: {
     state: 'free_signup_nudge',
     model: 'gemini-3-flash-preview',
     nudgeMode: 'signup',
     upgradeToolAvailable: false,
+    llmAllowed: true,
   },
   free_throttled: {
     state: 'free_throttled',
     model: 'gemini-flash-lite-latest',
     nudgeMode: 'signup',
     upgradeToolAvailable: false,
+    llmAllowed: true,
+  },
+  free_blocked: {
+    state: 'free_blocked',
+    model: 'gemini-flash-lite-latest',
+    nudgeMode: 'signup',
+    upgradeToolAvailable: false,
+    llmAllowed: false,
+    limitMessage: 'Free anonymous chat limit reached. Sign in to continue.',
   },
   free_signed_in: {
     state: 'free_signed_in',
     model: 'gemini-3-flash-preview',
     nudgeMode: 'none',
     upgradeToolAvailable: false,
+    llmAllowed: true,
   },
   free_pro_pitch: {
     state: 'free_pro_pitch',
     model: 'gemini-3-flash-preview',
     nudgeMode: 'pro',
     upgradeToolAvailable: true,
+    llmAllowed: true,
+  },
+  free_signed_in_blocked: {
+    state: 'free_signed_in_blocked',
+    model: 'gemini-flash-lite-latest',
+    nudgeMode: 'pro',
+    upgradeToolAvailable: true,
+    llmAllowed: false,
+    limitMessage: 'Free chat limit reached. Upgrade to Pro to continue.',
   },
   pro: {
     state: 'pro',
     model: 'gemini-3-flash-preview',
     nudgeMode: 'none',
     upgradeToolAvailable: false,
+    llmAllowed: true,
   },
 };
 
@@ -128,6 +158,7 @@ function deriveState({ userState, chatCount, tier }: UsageInputs): UsageState {
   if (tier === 'pro') return 'pro';
 
   if (userState === 'anonymous') {
+    if (chatCount >= ANONYMOUS_HARD_LIMIT_AFTER) return 'free_blocked';
     if (chatCount < SIGNUP_NUDGE_AFTER) return 'free_fresh';
     if (chatCount < MODEL_DOWNGRADE_AFTER) return 'free_signup_nudge';
     return 'free_throttled';
@@ -137,6 +168,7 @@ function deriveState({ userState, chatCount, tier }: UsageInputs): UsageState {
   // workspace_connected. Pro nudge is a function of message count, not
   // workspace status — even workspace_connected users should get pitched
   // when they're heavy free users.
+  if (chatCount >= FREE_HARD_LIMIT_AFTER) return 'free_signed_in_blocked';
   if (chatCount < PRO_NUDGE_AFTER) return 'free_signed_in';
   return 'free_pro_pitch';
 }

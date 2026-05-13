@@ -21,6 +21,10 @@ SIGNUP_NUDGE_AFTER: Final[int] = 5
 MODEL_DOWNGRADE_AFTER: Final[int] = 15
 # Signed-in free turns at which the LLM gains the upgrade_to_pro tool.
 PRO_NUDGE_AFTER: Final[int] = 30
+# Anonymous free turns allowed before blocking LLM calls entirely.
+ANONYMOUS_HARD_LIMIT_AFTER: Final[int] = 20
+# Signed-in free turns allowed before blocking LLM calls entirely.
+FREE_HARD_LIMIT_AFTER: Final[int] = 100
 
 Tier = Literal["free", "pro"]
 Model = Literal["gemini-3-flash-preview", "gemini-flash-lite-latest"]
@@ -29,8 +33,10 @@ UsageState = Literal[
     "free_fresh",
     "free_signup_nudge",
     "free_throttled",
+    "free_blocked",
     "free_signed_in",
     "free_pro_pitch",
+    "free_signed_in_blocked",
     "pro",
 ]
 
@@ -41,6 +47,8 @@ class UsagePolicy:
     model: Model
     nudge_mode: NudgeMode
     upgrade_tool_available: bool
+    llm_allowed: bool
+    limit_message: str | None = None
 
 
 _POLICIES: dict[UsageState, UsagePolicy] = {
@@ -49,36 +57,58 @@ _POLICIES: dict[UsageState, UsagePolicy] = {
         model="gemini-3-flash-preview",
         nudge_mode="none",
         upgrade_tool_available=False,
+        llm_allowed=True,
     ),
     "free_signup_nudge": UsagePolicy(
         state="free_signup_nudge",
         model="gemini-3-flash-preview",
         nudge_mode="signup",
         upgrade_tool_available=False,
+        llm_allowed=True,
     ),
     "free_throttled": UsagePolicy(
         state="free_throttled",
         model="gemini-flash-lite-latest",
         nudge_mode="signup",
         upgrade_tool_available=False,
+        llm_allowed=True,
+    ),
+    "free_blocked": UsagePolicy(
+        state="free_blocked",
+        model="gemini-flash-lite-latest",
+        nudge_mode="signup",
+        upgrade_tool_available=False,
+        llm_allowed=False,
+        limit_message="Free anonymous chat limit reached. Sign in to continue.",
     ),
     "free_signed_in": UsagePolicy(
         state="free_signed_in",
         model="gemini-3-flash-preview",
         nudge_mode="none",
         upgrade_tool_available=False,
+        llm_allowed=True,
     ),
     "free_pro_pitch": UsagePolicy(
         state="free_pro_pitch",
         model="gemini-3-flash-preview",
         nudge_mode="pro",
         upgrade_tool_available=True,
+        llm_allowed=True,
+    ),
+    "free_signed_in_blocked": UsagePolicy(
+        state="free_signed_in_blocked",
+        model="gemini-flash-lite-latest",
+        nudge_mode="pro",
+        upgrade_tool_available=True,
+        llm_allowed=False,
+        limit_message="Free chat limit reached. Upgrade to Pro to continue.",
     ),
     "pro": UsagePolicy(
         state="pro",
         model="gemini-3-flash-preview",
         nudge_mode="none",
         upgrade_tool_available=False,
+        llm_allowed=True,
     ),
 }
 
@@ -116,6 +146,8 @@ def _derive_state(inputs: UsageInputs) -> UsageState:
         return "pro"
 
     if inputs.user_state == "anonymous":
+        if inputs.chat_count >= ANONYMOUS_HARD_LIMIT_AFTER:
+            return "free_blocked"
         if inputs.chat_count < SIGNUP_NUDGE_AFTER:
             return "free_fresh"
         if inputs.chat_count < MODEL_DOWNGRADE_AFTER:
@@ -126,6 +158,8 @@ def _derive_state(inputs: UsageInputs) -> UsageState:
     # workspace_connected. Pro nudge is a function of message count, not
     # workspace status — even workspace_connected users should get
     # pitched when they're heavy free users.
+    if inputs.chat_count >= FREE_HARD_LIMIT_AFTER:
+        return "free_signed_in_blocked"
     if inputs.chat_count < PRO_NUDGE_AFTER:
         return "free_signed_in"
     return "free_pro_pitch"

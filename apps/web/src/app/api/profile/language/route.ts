@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers';
 import { isLocale } from '../../../../i18n/routing';
+import { agentInternalHeaders } from '../../../../lib/agentHeaders';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -40,7 +41,11 @@ export async function POST(request: Request): Promise<Response> {
 
   const upstream = await fetch(`${agent}/profile`, {
     method: 'PATCH',
-    headers: { 'content-type': 'application/json', authorization: auth },
+    headers: {
+      'content-type': 'application/json',
+      authorization: auth,
+      ...agentInternalHeaders(),
+    },
     body: JSON.stringify({ profile: { language } }),
   });
   if (upstream.status >= 400) {

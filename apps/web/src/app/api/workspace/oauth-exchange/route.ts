@@ -1,3 +1,5 @@
+import { agentInternalHeaders } from '../../../../lib/agentHeaders';
+
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
@@ -27,7 +29,11 @@ export async function POST(request: Request): Promise<Response> {
   const body = await request.text();
   const upstream = await fetch(`${agent}/workspace/oauth-exchange`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', authorization: auth },
+    headers: {
+      'content-type': 'application/json',
+      authorization: auth,
+      ...agentInternalHeaders(),
+    },
     body,
   });
   if (upstream.status >= 400) {

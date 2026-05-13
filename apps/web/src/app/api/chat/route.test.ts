@@ -102,7 +102,7 @@ describe('POST /api/chat', () => {
     });
   });
 
-  it('propagates non-200 agent responses as 502', async () => {
+  it('maps generic non-200 agent responses to 502', async () => {
     vi.stubGlobal('fetch', mockFetchOnce('upstream error', 500));
 
     const req = new Request('http://localhost/api/chat', {
@@ -111,5 +111,25 @@ describe('POST /api/chat', () => {
     });
     const res = await POST(req);
     expect(res.status).toBe(502);
+  });
+
+  it('preserves usage-limit 429 responses from the agent', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response('{"error":"usage_limit_exceeded"}', {
+          status: 429,
+          headers: { 'retry-after': '86400' },
+        }),
+      ),
+    );
+
+    const req = new Request('http://localhost/api/chat', {
+      method: 'POST',
+      body: JSON.stringify({ userId: 'u', sessionId: 's', message: 'hi' }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(429);
+    expect(res.headers.get('retry-after')).toBe('86400');
   });
 });

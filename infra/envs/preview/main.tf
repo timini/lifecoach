@@ -72,6 +72,12 @@ module "agent" {
         secret_id = "GWS_OAUTH_CLIENT_SECRET"
         version   = "latest"
       }
+      # Same shared secret the dev (main) agent verifies. Created in
+      # infra/envs/dev/main.tf; this preview just references it by name.
+      AGENT_INTERNAL_BEARER = {
+        secret_id = "AGENT_INTERNAL_BEARER"
+        version   = "latest"
+      }
     },
   )
 
@@ -96,6 +102,14 @@ module "web" {
   env = {
     AGENT_URL = module.agent.url
     NODE_ENV  = "production"
+  }
+
+  # Forwarded to the per-PR agent on every proxied request.
+  secret_env = {
+    AGENT_INTERNAL_BEARER = {
+      secret_id = "AGENT_INTERNAL_BEARER"
+      version   = "latest"
+    }
   }
 
   allow_unauthenticated = true
