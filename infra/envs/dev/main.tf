@@ -257,6 +257,130 @@ module "web" {
   depends_on = [module.agent]
 }
 
+# --- Apex (tranquil.coach) HTTPS LB → main web Cloud Run service ---------
+#
+# Production routing for https://tranquil.coach. Same architecture as the
+# per-PR previews (HTTPS LB + Serverless NEG, see infra/envs/preview/main.tf
+# for the per-PR equivalent) — we avoid google_cloud_run_domain_mapping
+# because that API checks Search Console verified-owner status and Search
+# Console's UI rejects service-account emails as users ("email not found"),
+# so the deployer SA can never become a verified owner. The LB route uses
+# google_compute_managed_ssl_certificate with HTTP-01 challenge directly,
+# no Search Console involvement.
+#
+# Two forwarding rules share the same global anycast IP:
+#   - port 443 → HTTPS proxy → URL map → backend (the web service)
+#   - port 80  → HTTP proxy  → redirect URL map (301 to https://<host>)
+# The HTTP rule exists so users who type `tranquil.coach` (browsers send
+# http first) get redirected to HTTPS instead of a connection-refused.
+#
+# Cost: ~$36/mo (two forwarding rules at $0.025/hr each). Managed cert
+# provisioning lag on first apply is ~15-30 min wall-clock; the .run.app
+# URL on module.web stays available throughout for direct access.
+
+resource "google_compute_region_network_endpoint_group" "web_apex_neg" {
+  project               = var.project_id
+  name                  = "lifecoach-web-apex-neg"
+  region                = var.region
+  network_endpoint_type = "SERVERLESS"
+
+  cloud_run {
+    service = module.web.service_name
+  }
+}
+
+resource "google_compute_backend_service" "web_apex" {
+  project               = var.project_id
+  name                  = "lifecoach-web-apex-backend"
+  protocol              = "HTTPS"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  # timeout_sec is unsupported on Serverless-NEG backends (the upstream
+  # Cloud Run revision's request timeout applies, default 300s).
+
+  backend {
+    group = google_compute_region_network_endpoint_group.web_apex_neg.id
+  }
+}
+
+resource "google_compute_url_map" "web_apex" {
+  project         = var.project_id
+  name            = "lifecoach-web-apex-urlmap"
+  default_service = google_compute_backend_service.web_apex.id
+}
+
+resource "google_compute_managed_ssl_certificate" "web_apex" {
+  project = var.project_id
+  name    = "lifecoach-web-apex-cert"
+
+  managed {
+    domains = [var.custom_domain_name]
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "google_compute_target_https_proxy" "web_apex" {
+  project          = var.project_id
+  name             = "lifecoach-web-apex-https-proxy"
+  url_map          = google_compute_url_map.web_apex.id
+  ssl_certificates = [google_compute_managed_ssl_certificate.web_apex.id]
+}
+
+resource "google_compute_global_address" "web_apex_ip" {
+  project = var.project_id
+  name    = "lifecoach-web-apex-ip"
+}
+
+resource "google_compute_global_forwarding_rule" "web_apex_https" {
+  project               = var.project_id
+  name                  = "lifecoach-web-apex-fr-https"
+  ip_address            = google_compute_global_address.web_apex_ip.address
+  port_range            = "443"
+  target                = google_compute_target_https_proxy.web_apex.id
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+}
+
+# HTTP → HTTPS redirect, sharing the apex IP.
+
+resource "google_compute_url_map" "web_apex_http_redirect" {
+  project = var.project_id
+  name    = "lifecoach-web-apex-urlmap-http-redirect"
+
+  default_url_redirect {
+    https_redirect         = true
+    redirect_response_code = "MOVED_PERMANENTLY_DEFAULT"
+    strip_query            = false
+  }
+}
+
+resource "google_compute_target_http_proxy" "web_apex_http" {
+  project = var.project_id
+  name    = "lifecoach-web-apex-http-proxy"
+  url_map = google_compute_url_map.web_apex_http_redirect.id
+}
+
+resource "google_compute_global_forwarding_rule" "web_apex_http" {
+  project               = var.project_id
+  name                  = "lifecoach-web-apex-fr-http"
+  ip_address            = google_compute_global_address.web_apex_ip.address
+  port_range            = "80"
+  target                = google_compute_target_http_proxy.web_apex_http.id
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+}
+
+# A record at the apex points at the LB's anycast IP.
+
+resource "google_dns_record_set" "apex_a" {
+  project      = var.project_id
+  managed_zone = module.domain.dns_zone_name
+  name         = "${var.custom_domain_name}."
+  type         = "A"
+  ttl          = 300
+  rrdatas      = [google_compute_global_address.web_apex_ip.address]
+}
+
 # --- GitHub Actions WIF (deploys via OIDC, no long-lived keys) -----------
 
 module "github_wif" {
@@ -345,4 +469,9 @@ output "custom_domain_name" {
 output "custom_domain_dns_zone" {
   value       = module.domain.dns_zone_name
   description = "Cloud DNS managed-zone name. Preview env writes per-PR CNAME records into this zone."
+}
+
+output "apex_lb_ip" {
+  value       = google_compute_global_address.web_apex_ip.address
+  description = "Anycast IPv4 the apex (tranquil.coach) resolves to. Useful for sanity-checking `dig tranquil.coach` outside Terraform."
 }
