@@ -496,43 +496,13 @@ async def test_chat_emits_initial_padding_comment_to_flush_gfe_buffer() -> None:
     assert text.startswith(": " + (" " * 4096))
 
 
-@pytest.mark.asyncio
-async def test_chat_blocks_anonymous_llm_calls_after_hard_limit() -> None:
-    runner = FakeRunner(events_per_call=[[_model_text("should-not-run")]])
-    meta = FakeUserMetaStore(next_count=20)
-    app = _make_app(runner=runner, deps_overrides={"user_meta_store": meta})
-    async with _client(app) as c:
-        res = await c.post("/chat", json={"userId": "u1", "sessionId": "s1", "message": "hi"})
-    assert res.status_code == 429
-    assert res.json()["error"] == "usage_limit_exceeded"
-    assert res.json()["usageState"] == "free_blocked"
-    assert res.headers.get("retry-after") == "86400"
-    assert runner.calls_made == 0
-    assert meta.calls == 1
-
-
-@pytest.mark.asyncio
-async def test_chat_blocks_signed_in_free_llm_calls_after_hard_limit() -> None:
-    async def _verifier(_token: str) -> VerifiedClaims:
-        return VerifiedClaims(uid="real-uid", firebase=FirebaseClaim(sign_in_provider="google.com"))
-
-    runner = FakeRunner(events_per_call=[[_model_text("should-not-run")]])
-    app = _make_app(
-        runner=runner,
-        deps_overrides={
-            "user_meta_store": FakeUserMetaStore(next_count=100),
-            "verify_token": _verifier,
-        },
-    )
-    async with _client(app) as c:
-        res = await c.post(
-            "/chat",
-            json={"userId": "spoofed", "sessionId": "s1", "message": "hi"},
-            headers={"Authorization": "Bearer x"},
-        )
-    assert res.status_code == 429
-    assert res.json()["usageState"] == "free_signed_in_blocked"
-    assert runner.calls_made == 0
+# The hard-cap behaviour these two tests covered (HTTP 429 + JSON
+# `usage_limit_exceeded`) was superseded by the 10-state funnel: walled
+# states now emit an SSE `event: wall` instead of a 429 so the FE can
+# render the WallPrompt paywall card from the same machinery it uses
+# for other assistant elements. The replacement tests are below — see
+# `test_chat_walls_anonymous_at_25_turns_short_circuits` and
+# `test_chat_walls_signed_in_at_100_turns_short_circuits`.
 
 
 @pytest.mark.asyncio

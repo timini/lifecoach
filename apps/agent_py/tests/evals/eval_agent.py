@@ -318,7 +318,20 @@ def build_eval_root_agent(
         chat_turn_count=chat_turn_count,
     )
     tools = _make_stub_tools_for_state(state)
-    agent = build_root_agent_for(ctx, tools)
+    # Match production model selection so `free_throttled` /
+    # `pro_pitch_hard` evals run against flash-lite (the downgrade tier)
+    # rather than the default model. The eval agent's response shape is
+    # what we judge — running it on the same model production picks is
+    # the only way the trajectory eval reflects what real users see.
+    # `policy_for_usage` returns None.model only for walled states, which
+    # are tested via the integration smoke (event: wall short-circuit) —
+    # the trajectory eval never reaches a walled turn.
+    model_kwargs: dict[str, Any] = {}
+    if usage_state is not None:
+        policy = policy_for_usage(usage_state)
+        if policy.model is not None:
+            model_kwargs["model"] = policy.model
+    agent = build_root_agent_for(ctx, tools, **model_kwargs)
     agent.before_tool_callback = _stub_before_tool
     return agent
 
