@@ -16,9 +16,10 @@ const capabilities = [
 ];
 
 const workflows = [
-  'Morning plan built around energy, meetings, weather, and one real priority.',
-  'Inbox triage that separates noise from decisions and drafts the next step.',
-  'Evening reflection that captures wins, gratitude, and what to adjust tomorrow.',
+  'Overwhelm support that separates what is on fire from what can wait.',
+  'ADHD task initiation and inbox triage for the hour where starting is the task.',
+  'Depression-aware planning for low-energy days where one useful step counts.',
+  'Personal-assistant support across Gmail, Calendar, and Tasks when Workspace is connected.',
 ];
 
 const proofPoints = [
@@ -50,8 +51,8 @@ export default function LandingPage() {
             <a href="#privacy" className="transition hover:text-foreground">
               Privacy
             </a>
-            <a href="#use-cases" className="transition hover:text-foreground">
-              Use cases
+            <a href="/blog" className="transition hover:text-foreground">
+              Blog
             </a>
           </div>
           <a
@@ -65,16 +66,17 @@ export default function LandingPage() {
         <div className="mx-auto grid max-w-7xl gap-12 pb-16 pt-16 lg:grid-cols-[1.04fr_0.96fr] lg:items-center lg:pb-24 lg:pt-24">
           <div>
             <p className="mb-5 inline-flex rounded-full border border-accent/30 bg-accent/10 px-4 py-2 text-sm font-semibold text-foreground">
-              AI life coaching that knows the shape of your day
+              The AI assistant that prevents overwhelm
             </p>
             <h1 className="max-w-4xl text-balance font-serif text-5xl font-semibold leading-[1.02] tracking-tight text-foreground sm:text-6xl lg:text-7xl">
-              A calmer way to decide what matters next.
+              A calmer way to get unstuck from daily admin.
             </h1>
             <p className="mt-6 max-w-2xl text-pretty text-lg leading-8 text-muted-foreground sm:text-xl">
-              Lifecoach is a warm, conversational companion for planning your day, staying honest
-              about goals, and turning messy life admin into small next steps. It remembers what
-              matters, understands your local context, and can help inside Gmail, Calendar, and
-              Tasks when you connect Workspace.
+              Lifecoach is a warm, conversational assistant for people whose executive function and
+              daily admin are the bottleneck — ADHD, depression, burnout, perimenopause, new-parent
+              fog, and the overloaded weeks in between. It remembers what matters, understands your
+              local context, and can help inside Gmail, Calendar, and Tasks when you connect
+              Workspace.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <a
@@ -84,10 +86,10 @@ export default function LandingPage() {
                 Try the coach free
               </a>
               <a
-                href="#how-it-works"
+                href="/how-it-helps/overwhelm"
                 className="inline-flex items-center justify-center rounded-full border border-border bg-background/70 px-7 py-4 text-base font-semibold text-foreground transition hover:-translate-y-0.5 hover:border-accent"
               >
-                See the product
+                See overwhelm support
               </a>
             </div>
             <dl className="mt-10 grid max-w-2xl grid-cols-3 gap-3">
@@ -181,12 +183,12 @@ export default function LandingPage() {
               Where it helps
             </p>
             <h2 className="mt-4 font-serif text-4xl font-semibold leading-tight">
-              The daily operating system for people with more intent than bandwidth.
+              A multi-vertical support surface, without changing the product architecture.
             </h2>
             <p className="mt-5 text-background/75">
-              Lifecoach is built for the fuzzy middle between productivity apps and therapy: the
-              place where you need a thoughtful nudge, a practical plan, and a record of what you
-              said mattered.
+              Start with overwhelm, ADHD, depression, anxiety, wellness, career decisions,
+              perimenopause, or personal-assistant admin triage. Each path leads back to the same
+              coordinator and specialist coaching architecture.
             </p>
           </div>
           <div className="grid gap-4">
