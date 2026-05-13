@@ -89,7 +89,8 @@ firebase_build_args() {
   # Sentry — resolved from tfvars rather than terraform output so the
   # value is correct on the first deploy after introducing the variable.
   # Empty DSN = SDK no-ops; that's intentional, not a silent failure.
-  local sentry_dsn environment
+  local ga_measurement_id sentry_dsn environment
+  ga_measurement_id="$(tfvar google_analytics_measurement_id)"
   sentry_dsn="$(tfvar sentry_dsn)"
   environment="$(tfvar environment)"
   printf -- "--build-arg NEXT_PUBLIC_FIREBASE_API_KEY=%s " "${api_key}"
@@ -97,6 +98,7 @@ firebase_build_args() {
   printf -- "--build-arg NEXT_PUBLIC_FIREBASE_PROJECT_ID=%s " "${fb_project_id}"
   printf -- "--build-arg NEXT_PUBLIC_FIREBASE_APP_ID=%s " "${app_id}"
   printf -- "--build-arg NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID=%s " "${gws_client_id}"
+  printf -- "--build-arg NEXT_PUBLIC_GA_MEASUREMENT_ID=%s " "${ga_measurement_id}"
   printf -- "--build-arg NEXT_PUBLIC_SENTRY_DSN=%s " "${sentry_dsn}"
   printf -- "--build-arg NEXT_PUBLIC_SENTRY_ENVIRONMENT=%s " "${environment}"
 }
