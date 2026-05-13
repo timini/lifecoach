@@ -64,6 +64,29 @@ module "domain" {
   depends_on = [module.apis]
 }
 
+# --- Search Console domain verification ---------------------------------
+# Cloud Run's `google_cloud_run_domain_mapping` resource requires the
+# *caller* (the deploy SA) to be a verified Search Console owner of the
+# domain (or any parent). For a brand-new apex this is a one-time human
+# step: a property owner first verifies via a DNS TXT token, then adds
+# other owners (e.g. the deployer SA) via the Search Console UI.
+#
+# Token list is multi-valued so additional verifications can be appended
+# without churning the resource — Cloud DNS supports an arbitrary number
+# of TXT values on a single record set.
+
+resource "google_dns_record_set" "search_console_verification" {
+  project      = var.project_id
+  managed_zone = module.domain.dns_zone_name
+  name         = "${var.custom_domain_name}."
+  type         = "TXT"
+  ttl          = 300
+
+  rrdatas = [
+    "\"google-site-verification=XwlEfyK-89rP_EOcn85f3Dw7orLsIrpGrn7wZjasWZo\"",
+  ]
+}
+
 # --- mem0 API key secret --------------------------------------------------
 # The secret resource is created empty. Add the value once with:
 #   echo -n "$MEM0_KEY" | gcloud secrets versions add MEM0_API_KEY \
