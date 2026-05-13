@@ -99,6 +99,22 @@ export function onAuthChange(cb: (user: User | null) => void): () => void {
 }
 
 const EMAIL_PENDING_KEY = 'lifecoach.pendingEmail';
+const WELCOME_SENT_KEY_PREFIX = 'lifecoach.welcomeSent.';
+
+/**
+ * Result shape for `linkWithGoogleResult`. `convertedAnonymousUser=true` when
+ * we successfully promoted the current anonymous user to a Google identity
+ * (UID preserved); `false` when `linkWithPopup` failed and we recovered by
+ * signing into a pre-existing Google account (UID swap, fresh anon abandoned).
+ *
+ * Call sites use this to decide whether to send the welcome verification
+ * email — recovered existing accounts already received a welcome the first
+ * time they signed up.
+ */
+export interface GoogleLinkResult {
+  user: User;
+  convertedAnonymousUser: boolean;
+}
 
 /**
  * Link the current (anonymous) user to a Google account via popup. Preserves
@@ -110,23 +126,34 @@ const EMAIL_PENDING_KEY = 'lifecoach.pendingEmail';
  * `auth/credential-already-in-use`. We catch that, pull the credential out
  * of the error, and sign in to the existing account directly. The freshly-
  * minted anonymous user is abandoned — fine, it had no data.
+ *
+ * The `Result` variant returns an explicit `convertedAnonymousUser` flag so
+ * callers don't have to infer conversion-vs-recovery from error codes (which
+ * are swallowed inside this function). Use this for the welcome-email send
+ * site; the thin `linkWithGoogle()` wrapper is kept for legacy call sites
+ * that just need the User.
  */
-export async function linkWithGoogle(): Promise<User> {
+export async function linkWithGoogleResult(): Promise<GoogleLinkResult> {
   const auth = firebaseAuth();
   const user = auth.currentUser;
   if (!user) throw new Error('no current user — sign-in must complete first');
   const provider = new GoogleAuthProvider();
   try {
     const cred = await linkWithPopup(user, provider);
-    return cred.user;
+    return { user: cred.user, convertedAnonymousUser: true };
   } catch (err) {
     const credential = credentialFromAuthError(err);
     if (credential) {
       const cred = await signInWithCredential(auth, credential);
-      return cred.user;
+      return { user: cred.user, convertedAnonymousUser: false };
     }
     throw err;
   }
+}
+
+export async function linkWithGoogle(): Promise<User> {
+  const result = await linkWithGoogleResult();
+  return result.user;
 }
 
 /**
@@ -147,18 +174,66 @@ function credentialFromAuthError(
 }
 
 /**
- * Send a magic-link sign-in email. Caller stores the email so we can finish
- * linking when the user returns from the email link.
+ * Send the welcome email — a Firebase email-link that doubles as the
+ * email-verification credential. Clicking it returns the user to `returnUrl`;
+ * `completeEmailSignInLink` finishes the link onto the existing anonymous
+ * UID via `linkWithCredential`, so saved progress survives the conversion.
+ *
+ * The `?welcome=1` query flag rides on the URL so the return-side handler
+ * (and Firebase analytics / templates) can distinguish first-run welcome
+ * emails from ordinary re-auth magic links.
+ *
+ * Per-uid+email localStorage guard prevents accidental repeat sends from
+ * re-renders, double-clicks, or page reloads after a successful send. The
+ * key is keyed on the auth identity so a fresh anon → Google upgrade still
+ * sends one welcome even if a prior anon UID had one sent on its behalf.
+ *
+ * Returns `true` when an email was sent, `false` when the guard skipped it.
  */
-export async function sendEmailSignInLink(email: string, returnUrl: string): Promise<void> {
+export async function sendWelcomeVerificationEmail(
+  email: string,
+  returnUrl: string,
+): Promise<boolean> {
   const auth = firebaseAuth();
+  const guardKey = welcomeSentKey(auth.currentUser?.uid ?? 'anon', email);
+  if (typeof window !== 'undefined' && window.localStorage.getItem(guardKey) === 'true') {
+    return false;
+  }
   await sendSignInLinkToEmail(auth, email, {
-    url: returnUrl,
+    url: withWelcomeFlag(returnUrl),
     handleCodeInApp: true,
   });
   if (typeof window !== 'undefined') {
     window.localStorage.setItem(EMAIL_PENDING_KEY, email);
+    window.localStorage.setItem(guardKey, 'true');
   }
+  return true;
+}
+
+/**
+ * Back-compat alias for the email-signin call site (ChatWindow's email
+ * magic-link entry). Same machinery as the welcome path — the email-link
+ * sign-in flow IS the welcome for email signups.
+ */
+export async function sendEmailSignInLink(email: string, returnUrl: string): Promise<void> {
+  await sendWelcomeVerificationEmail(email, returnUrl);
+}
+
+function withWelcomeFlag(returnUrl: string): string {
+  try {
+    const url = new URL(returnUrl);
+    url.searchParams.set('welcome', '1');
+    return url.toString();
+  } catch {
+    // Defensive: returnUrl is always built from window.location.href in
+    // production. If somehow malformed, fall back to the raw value rather
+    // than blocking the whole sign-up flow on a URL-parsing edge case.
+    return returnUrl;
+  }
+}
+
+function welcomeSentKey(uid: string, email: string): string {
+  return `${WELCOME_SENT_KEY_PREFIX}${uid}.${email}`;
 }
 
 /**

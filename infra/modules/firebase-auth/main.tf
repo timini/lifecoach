@@ -66,10 +66,15 @@ resource "google_identity_platform_config" "auth" {
       "localhost",
       "${var.project_id}.firebaseapp.com",
       "${var.project_id}.web.app",
-      # Suffix match — covers every Cloud Run URL on this project (the main
-      # service plus every per-PR preview at lifecoach-{agent,web}-pr-<n>-
-      # <hash>-<region>.a.run.app), so preview envs don't have to mutate
-      # this allowlist on each PR.
+      # `run.app` is on the Public Suffix List, so Firebase accepts it as
+      # an entry but does NOT honor it as a subdomain wildcard — magic-link
+      # `actionCodeSettings.url` checks (which surface as
+      # `auth/unauthorized-continue-uri`) and OAuth popup checks both
+      # require the exact hostname. We keep `run.app` here defensively
+      # because some Firebase Auth flows DO consult it loosely, but every
+      # Cloud Run hostname we actually rely on must be listed verbatim
+      # via `extra_authorized_domains`. See the env-level tfvars for the
+      # explicit list (prod web URL + each open PR's preview host).
       "run.app",
     ],
     var.extra_authorized_domains,

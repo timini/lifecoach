@@ -25,8 +25,8 @@ import { LanguagePicker } from '../../components/LanguagePicker';
 import { isLocale } from '../../i18n/routing';
 import {
   ensureSignedIn,
-  linkWithGoogle,
-  sendEmailSignInLink,
+  linkWithGoogleResult,
+  sendWelcomeVerificationEmail,
   signOutCurrent,
 } from '../../lib/firebase';
 import {
@@ -219,8 +219,13 @@ export default function SettingsPage() {
 
   async function handleLinkGoogle() {
     try {
-      const upgraded = await linkWithGoogle();
-      setUser(upgraded);
+      const result = await linkWithGoogleResult();
+      setUser(result.user);
+      // Anon→Google conversion gets the welcome; recovered existing-account
+      // sign-ins skip it (they already received one on first signup).
+      if (result.convertedAnonymousUser && result.user.email) {
+        await sendWelcomeVerificationEmail(result.user.email, window.location.href);
+      }
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : String(err));
     }
@@ -229,7 +234,7 @@ export default function SettingsPage() {
   async function handleSendEmail() {
     if (!emailDraft.includes('@')) return;
     try {
-      await sendEmailSignInLink(emailDraft, window.location.href);
+      await sendWelcomeVerificationEmail(emailDraft, window.location.href);
       setEmailDraft('');
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : String(err));
