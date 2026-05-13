@@ -133,6 +133,16 @@ locals {
     # already has this role for its own model calls; the deployer needs
     # it independently for the judge.
     "roles/aiplatform.user",
+    # Per-PR HTTPS LB + Serverless NEG for preview custom domains. Covers
+    # forwarding rules, target proxies, URL maps, backend services, NEGs,
+    # global addresses and Google-managed SSL certs — the full set of
+    # resources `infra/envs/preview/main.tf` creates per PR to route
+    # pr-N.preview.<custom_domain> to the per-PR Cloud Run web service.
+    # We use the broad networkAdmin (rather than the narrower
+    # loadBalancerAdmin alone) because Serverless NEG creation also
+    # touches compute.networkEndpointGroups which loadBalancerAdmin
+    # doesn't cover.
+    "roles/compute.networkAdmin",
   ])
 }
 

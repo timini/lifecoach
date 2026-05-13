@@ -57,6 +57,14 @@ locals {
     "domains.googleapis.com",
     "dns.googleapis.com",
 
+    # Per-PR preview HTTPS LB + Serverless NEG. Cloud Run's first-gen
+    # domain-mapping API (google_cloud_run_domain_mapping) requires the
+    # deployer to be a verified Search Console owner of the parent
+    # domain — but Search Console's UI rejects service-account emails
+    # as users. The HTTPS LB + Serverless NEG path bypasses that check
+    # entirely. See infra/envs/preview/main.tf for the per-PR stack.
+    "compute.googleapis.com",
+
     # Observability
     "logging.googleapis.com",
     "monitoring.googleapis.com",

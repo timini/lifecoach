@@ -109,54 +109,142 @@ module "web" {
 # rejects it for Firebase magic-link emails (run.app is on the Public
 # Suffix List, so subdomain wildcarding in the authorized-domains allowlist
 # doesn't apply). Mapping each PR to a hostname under the custom domain
-# (registered + DNS-hosted in the dev env) means a single Firebase entry of
-# `preview.lifecoach.dev` covers every PR's preview hostname.
+# (DNS-hosted in the dev env) means a single Firebase entry of
+# `preview.<custom_domain>` covers every PR's preview hostname.
 #
-# Cert provisioning lag: Cloud Run requests a Google-managed cert via the
-# HTTP-01 challenge on first deploy. ~15-30 min wall-clock before HTTPS
-# works on a new hostname. The *.run.app URL works immediately and is
-# still posted alongside the custom URL in the PR comment, so reviewers
-# aren't blocked while the cert warms up.
+# Architecture: HTTPS Load Balancer + Serverless NEG (NOT
+# `google_cloud_run_domain_mapping`). The Cloud Run domain-mapping API
+# requires the deployer principal to be a verified Search Console owner
+# of the parent domain — but Search Console's UI rejects service-account
+# emails as users ("email not found"). The LB approach uses Google's
+# Certificate Manager (or the legacy compute managed-cert resource) to
+# provision certs via HTTP-01 directly, with no Search Console check.
+# Cleaner pattern overall: anycast IP, HTTP/3-ready, Cloud Armor-pluggable.
+#
+# Cost: ~$18/mo per active PR (global forwarding rule), $0 when destroyed.
+# Concurrent open PRs in this repo cap that at single-digit dollars in
+# practice — they get torn down on PR close by the teardown workflow.
+#
+# Cert provisioning lag: the managed cert needs the DNS A record visible
+# (it polls public resolvers via HTTP-01 challenge) before it transitions
+# from PROVISIONING → ACTIVE. ~15-30 min wall-clock on a fresh hostname.
+# The .run.app URL works immediately and is still posted alongside the
+# custom URL in the PR comment, so reviewers aren't blocked.
 #
 # `count = ... ? 1 : 0` lets us land the TF before the dev domain
-# registration is actually applied. Once dev's apply completes and these
-# outputs flow through preview-deploy.sh, count flips and the mapping
+# resources are actually applied. Once dev's apply completes and the
+# outputs flow through preview-deploy.sh, count flips and the LB stack
 # materialises on the next preview deploy without a code change here.
 
 locals {
   custom_domain_enabled = var.custom_domain_name != "" && var.custom_domain_dns_zone != ""
   preview_hostname      = local.custom_domain_enabled ? "pr-${var.pr_number}.preview.${var.custom_domain_name}" : ""
+  lb_resource_prefix    = "lifecoach-preview-pr-${var.pr_number}"
 }
 
-resource "google_cloud_run_domain_mapping" "web" {
-  count    = local.custom_domain_enabled ? 1 : 0
-  project  = var.project_id
-  location = var.region
-  name     = local.preview_hostname
+# Serverless NEG → wraps the per-PR Cloud Run web service so the LB can
+# target it as a backend. Regional resource, lives in the same region as
+# the Cloud Run service.
+resource "google_compute_region_network_endpoint_group" "web_neg" {
+  count                 = local.custom_domain_enabled ? 1 : 0
+  project               = var.project_id
+  name                  = "${local.lb_resource_prefix}-neg"
+  region                = var.region
+  network_endpoint_type = "SERVERLESS"
 
-  metadata {
-    namespace = var.project_id
-  }
-
-  spec {
-    route_name = "lifecoach-web-pr-${var.pr_number}"
+  cloud_run {
+    service = "lifecoach-web-pr-${var.pr_number}"
   }
 
   depends_on = [module.web]
 }
 
-# DNS record so the mapping resolves. Cloud Run domain mappings return a
-# resource_records block listing the exact rrdata to publish; we point at
-# `ghs.googlehosted.com` (the documented target for Cloud Run mappings in
-# regions that haven't migrated to per-region IPs).
-resource "google_dns_record_set" "preview_cname" {
+# Backend service wrapping the NEG. Single backend, no health-check
+# (serverless NEGs don't support them — Cloud Run owns the readiness
+# signal itself).
+resource "google_compute_backend_service" "web" {
+  count                 = local.custom_domain_enabled ? 1 : 0
+  project               = var.project_id
+  name                  = "${local.lb_resource_prefix}-backend"
+  protocol              = "HTTPS"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  # Match Cloud Run's default request timeout. The /api/chat SSE stream
+  # can run many seconds while Gemini reasons — 60s would clip long
+  # responses. 300s matches the underlying Cloud Run revision's timeout,
+  # so the LB never times out before the upstream does.
+  timeout_sec = 300
+
+  backend {
+    group = google_compute_region_network_endpoint_group.web_neg[0].id
+  }
+}
+
+# URL map: one path, one backend. No host-based routing since this LB
+# only serves the per-PR hostname; the cert restricts what's reachable
+# anyway.
+resource "google_compute_url_map" "web" {
+  count           = local.custom_domain_enabled ? 1 : 0
+  project         = var.project_id
+  name            = "${local.lb_resource_prefix}-urlmap"
+  default_service = google_compute_backend_service.web[0].id
+}
+
+# Google-managed SSL cert. Provisions via HTTP-01 once the A record below
+# is visible to Google's resolver. No Search Console involvement.
+resource "google_compute_managed_ssl_certificate" "web" {
+  count   = local.custom_domain_enabled ? 1 : 0
+  project = var.project_id
+  name    = "${local.lb_resource_prefix}-cert"
+
+  managed {
+    domains = [local.preview_hostname]
+  }
+
+  # The cert name can't be changed in place; if we ever needed a hostname
+  # change we'd create a new cert and switch the proxy over. Not relevant
+  # here since pr_number is fixed per PR.
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "google_compute_target_https_proxy" "web" {
+  count            = local.custom_domain_enabled ? 1 : 0
+  project          = var.project_id
+  name             = "${local.lb_resource_prefix}-https-proxy"
+  url_map          = google_compute_url_map.web[0].id
+  ssl_certificates = [google_compute_managed_ssl_certificate.web[0].id]
+}
+
+# Global anycast IPv4. Stable for the life of the PR; gets a fresh one
+# on each new PR via the resource name.
+resource "google_compute_global_address" "web_ip" {
+  count   = local.custom_domain_enabled ? 1 : 0
+  project = var.project_id
+  name    = "${local.lb_resource_prefix}-ip"
+}
+
+resource "google_compute_global_forwarding_rule" "web_https" {
+  count                 = local.custom_domain_enabled ? 1 : 0
+  project               = var.project_id
+  name                  = "${local.lb_resource_prefix}-fr"
+  ip_address            = google_compute_global_address.web_ip[0].address
+  port_range            = "443"
+  target                = google_compute_target_https_proxy.web[0].id
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+}
+
+# A record pointing the per-PR hostname at the LB IP. TTL 300s so a
+# stale record clears quickly after a PR is closed and the IP is reused
+# on a future PR by a different number.
+resource "google_dns_record_set" "preview_a" {
   count        = local.custom_domain_enabled ? 1 : 0
   project      = var.project_id
   managed_zone = var.custom_domain_dns_zone
   name         = "${local.preview_hostname}."
-  type         = "CNAME"
+  type         = "A"
   ttl          = 300
-  rrdatas      = ["ghs.googlehosted.com."]
+  rrdatas      = [google_compute_global_address.web_ip[0].address]
 }
 
 # --- Outputs --------------------------------------------------------------
