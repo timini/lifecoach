@@ -7,18 +7,29 @@
 # (operational pain + auth/unauthorized-continue-uri errors when missed).
 #
 # This module brings a non-public-suffix domain we own into the project,
-# managed entirely via Terraform. Once registered:
-#   - A single Firebase allowlist entry of `preview.lifecoach.dev` covers
-#     every `pr-N.preview.lifecoach.dev` subdomain.
+# managed entirely via Terraform. Once nameservers are pointed here:
+#   - A single Firebase allowlist entry of `preview.tranquil.coach` covers
+#     every `pr-N.preview.tranquil.coach` subdomain.
 #   - The preview env's google_cloud_run_domain_mapping points each PR's
-#     web service at its `pr-${pr_number}.preview.lifecoach.dev` hostname.
+#     web service at its `pr-${pr_number}.preview.tranquil.coach` hostname.
 #   - DNS records live in this module's google_dns_managed_zone; preview
 #     env writes per-PR CNAMEs into that zone.
 #
-# Cost: ~$12/yr domain renewal + ~$0.20/mo for the managed zone.
+# Registrar choice (register_via_cloud_domains):
+#   - true  → Cloud Domains registers the domain inside the project and
+#             delegates NS to the managed zone automatically. Only works
+#             for TLDs Cloud Domains sells (.app, .dev, .com, etc — NOT
+#             .coach, .ai, .io and many newer TLDs).
+#   - false → assume the domain is registered at an external registrar
+#             (Porkbun, Namecheap, …). Module only creates the Cloud DNS
+#             zone; you paste its name_servers output into the registrar's
+#             NS panel by hand.
 #
-# Reversibility caveat: google_clouddomains_registration is a sticky
-# resource. Once Cloud Domains accepts the registration request the
+# Cost: ~$12-100/yr domain renewal (varies by TLD/registrar) +
+#       ~$0.20/mo for the managed zone.
+#
+# Reversibility caveat (Cloud Domains path only): google_clouddomains_registration
+# is a sticky resource. Once Cloud Domains accepts the registration request the
 # domain is yours until it expires; removing the resource from Terraform
 # state does NOT unregister or refund. Treat the first apply as a real
 # commitment.
@@ -56,6 +67,12 @@ variable "region" {
   default     = "global"
 }
 
+variable "register_via_cloud_domains" {
+  type        = bool
+  default     = false
+  description = "When true, register the domain via Cloud Domains and delegate NS to the managed zone automatically. When false (default), only create the Cloud DNS zone — the caller is responsible for registering the domain at an external registrar and pasting the zone's name_servers output into the registrar's NS panel."
+}
+
 variable "registrant_contact" {
   type = object({
     email         = string
@@ -69,13 +86,22 @@ variable "registrant_contact" {
       recipients          = list(string)
     })
   })
-  description = "Whois registrant contact. Visibility is set to REDACTED_CONTACT_DATA so this never appears in public Whois, but Cloud Domains still needs valid values for verification."
+  default     = null
+  nullable    = true
+  description = "Whois registrant contact (Cloud Domains path only). Visibility is set to REDACTED_CONTACT_DATA so this never appears in public Whois, but Cloud Domains still needs valid values for verification. Ignored when register_via_cloud_domains=false."
   sensitive   = true
+
+  validation {
+    # Soft-validate: if registration is enabled the contact must be supplied.
+    # When disabled, null is allowed (and ignored).
+    condition     = var.registrant_contact != null || !var.register_via_cloud_domains
+    error_message = "registrant_contact is required when register_via_cloud_domains=true."
+  }
 }
 
 variable "yearly_price_units" {
   type        = string
-  description = "Expected yearly price in major currency units (\"12\" for $12 USD). Must match Cloud Domains' published price for the TLD; mismatch causes the apply to fail BEFORE billing, which is the correct behaviour — if Google ever changes the price we want a deliberate version bump rather than a silent surprise charge."
+  description = "Expected yearly price in major currency units (\"12\" for $12 USD). Must match Cloud Domains' published price for the TLD; mismatch causes the apply to fail BEFORE billing, which is the correct behaviour — if Google ever changes the price we want a deliberate version bump rather than a silent surprise charge. Ignored when register_via_cloud_domains=false."
   default     = "12"
 }
 
@@ -87,6 +113,8 @@ variable "yearly_price_currency" {
 # --- Registration ---------------------------------------------------------
 
 resource "google_clouddomains_registration" "domain" {
+  count = var.register_via_cloud_domains ? 1 : 0
+
   project  = var.project_id
   location = var.region
 

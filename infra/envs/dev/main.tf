@@ -45,14 +45,21 @@ module "firebase_auth" {
   depends_on = [module.apis]
 }
 
-# --- Custom domain (lifecoach.dev) ---------------------------------------
+# --- Custom domain (tranquil.coach) --------------------------------------
+# tranquil.coach is registered at Porkbun ($65/yr renewal — Cloud Domains
+# does not sell .coach). Only the Cloud DNS managed zone is created here;
+# Porkbun's NS records point at the zone's name_servers output.
 
 module "domain" {
   source     = "../../modules/domain"
   project_id = var.project_id
 
-  domain_name        = var.custom_domain_name
-  registrant_contact = var.custom_domain_registrant_contact
+  domain_name = var.custom_domain_name
+
+  # Domain is at Porkbun — don't try to register via Cloud Domains. The
+  # registrant_contact tfvar is retained for the case where we ever add a
+  # second TF-managed apex on a Cloud Domains-supported TLD.
+  register_via_cloud_domains = false
 
   depends_on = [module.apis]
 }
