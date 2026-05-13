@@ -278,6 +278,15 @@ module "web" {
 # provisioning lag on first apply is ~15-30 min wall-clock; the .run.app
 # URL on module.web stays available throughout for direct access.
 
+# All Compute resources below take `depends_on = [module.apis]` so a
+# fresh project (where `compute.googleapis.com` isn't already enabled)
+# can't race the API enablement during the first `terraform apply`.
+# Only the resources that don't already transit `module.web` (which
+# itself depends on module.apis) need the explicit edge — i.e. the
+# managed cert and the global address. We add it to the whole apex
+# stack for defense in depth so a future refactor doesn't reintroduce
+# the bug.
+
 resource "google_compute_region_network_endpoint_group" "web_apex_neg" {
   project               = var.project_id
   name                  = "lifecoach-web-apex-neg"
@@ -287,6 +296,8 @@ resource "google_compute_region_network_endpoint_group" "web_apex_neg" {
   cloud_run {
     service = module.web.service_name
   }
+
+  depends_on = [module.apis]
 }
 
 resource "google_compute_backend_service" "web_apex" {
@@ -300,12 +311,16 @@ resource "google_compute_backend_service" "web_apex" {
   backend {
     group = google_compute_region_network_endpoint_group.web_apex_neg.id
   }
+
+  depends_on = [module.apis]
 }
 
 resource "google_compute_url_map" "web_apex" {
   project         = var.project_id
   name            = "lifecoach-web-apex-urlmap"
   default_service = google_compute_backend_service.web_apex.id
+
+  depends_on = [module.apis]
 }
 
 resource "google_compute_managed_ssl_certificate" "web_apex" {
@@ -319,6 +334,8 @@ resource "google_compute_managed_ssl_certificate" "web_apex" {
   lifecycle {
     create_before_destroy = true
   }
+
+  depends_on = [module.apis]
 }
 
 resource "google_compute_target_https_proxy" "web_apex" {
@@ -326,11 +343,15 @@ resource "google_compute_target_https_proxy" "web_apex" {
   name             = "lifecoach-web-apex-https-proxy"
   url_map          = google_compute_url_map.web_apex.id
   ssl_certificates = [google_compute_managed_ssl_certificate.web_apex.id]
+
+  depends_on = [module.apis]
 }
 
 resource "google_compute_global_address" "web_apex_ip" {
   project = var.project_id
   name    = "lifecoach-web-apex-ip"
+
+  depends_on = [module.apis]
 }
 
 resource "google_compute_global_forwarding_rule" "web_apex_https" {
@@ -340,6 +361,8 @@ resource "google_compute_global_forwarding_rule" "web_apex_https" {
   port_range            = "443"
   target                = google_compute_target_https_proxy.web_apex.id
   load_balancing_scheme = "EXTERNAL_MANAGED"
+
+  depends_on = [module.apis]
 }
 
 # HTTP → HTTPS redirect, sharing the apex IP.
@@ -353,12 +376,16 @@ resource "google_compute_url_map" "web_apex_http_redirect" {
     redirect_response_code = "MOVED_PERMANENTLY_DEFAULT"
     strip_query            = false
   }
+
+  depends_on = [module.apis]
 }
 
 resource "google_compute_target_http_proxy" "web_apex_http" {
   project = var.project_id
   name    = "lifecoach-web-apex-http-proxy"
   url_map = google_compute_url_map.web_apex_http_redirect.id
+
+  depends_on = [module.apis]
 }
 
 resource "google_compute_global_forwarding_rule" "web_apex_http" {
@@ -368,6 +395,8 @@ resource "google_compute_global_forwarding_rule" "web_apex_http" {
   port_range            = "80"
   target                = google_compute_target_http_proxy.web_apex_http.id
   load_balancing_scheme = "EXTERNAL_MANAGED"
+
+  depends_on = [module.apis]
 }
 
 # A record at the apex points at the LB's anycast IP.
