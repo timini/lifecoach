@@ -8,6 +8,9 @@ export const metadata = {
   title: 'Lifecoach — AI life coaching for your actual day',
   description:
     'A warm AI life coach that remembers your goals, understands your context, and helps you plan the next grounded step.',
+  verification: {
+    google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION,
+  },
 };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {

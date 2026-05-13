@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { helpTopics } from '../content/seo';
 
 const capabilities = [
   {
@@ -13,12 +14,6 @@ const capabilities = [
     title: 'Works where your day already lives',
     body: 'Connect Google Workspace when you want help reading email, planning calendar moves, triaging tasks, or turning loose intent into a next action.',
   },
-];
-
-const workflows = [
-  'Morning plan built around energy, meetings, weather, and one real priority.',
-  'Inbox triage that separates noise from decisions and drafts the next step.',
-  'Evening reflection that captures wins, gratitude, and what to adjust tomorrow.',
 ];
 
 const proofPoints = [
@@ -50,8 +45,8 @@ export default function LandingPage() {
             <a href="#privacy" className="transition hover:text-foreground">
               Privacy
             </a>
-            <a href="#use-cases" className="transition hover:text-foreground">
-              Use cases
+            <a href="/blog" className="transition hover:text-foreground">
+              Blog
             </a>
           </div>
           <a
@@ -65,16 +60,16 @@ export default function LandingPage() {
         <div className="mx-auto grid max-w-7xl gap-12 pb-16 pt-16 lg:grid-cols-[1.04fr_0.96fr] lg:items-center lg:pb-24 lg:pt-24">
           <div>
             <p className="mb-5 inline-flex rounded-full border border-accent/30 bg-accent/10 px-4 py-2 text-sm font-semibold text-foreground">
-              AI life coaching that knows the shape of your day
+              AI assistance that prevents overwhelm
             </p>
             <h1 className="max-w-4xl text-balance font-serif text-5xl font-semibold leading-[1.02] tracking-tight text-foreground sm:text-6xl lg:text-7xl">
-              A calmer way to decide what matters next.
+              The AI assistant that prevents overwhelm.
             </h1>
             <p className="mt-6 max-w-2xl text-pretty text-lg leading-8 text-muted-foreground sm:text-xl">
-              Lifecoach is a warm, conversational companion for planning your day, staying honest
-              about goals, and turning messy life admin into small next steps. It remembers what
-              matters, understands your local context, and can help inside Gmail, Calendar, and
-              Tasks when you connect Workspace.
+              Lifecoach is a warm, conversational companion for executive function and daily admin:
+              ADHD task initiation, low-motivation planning, anxious loops, and the messy
+              inbox-calendar pile. It remembers what matters, understands your local context, and
+              can help inside Gmail, Calendar, and Tasks when you connect Workspace.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <a
@@ -181,25 +176,29 @@ export default function LandingPage() {
               Where it helps
             </p>
             <h2 className="mt-4 font-serif text-4xl font-semibold leading-tight">
-              The daily operating system for people with more intent than bandwidth.
+              Multi-vertical support for people whose daily admin became the bottleneck.
             </h2>
             <p className="mt-5 text-background/75">
-              Lifecoach is built for the fuzzy middle between productivity apps and therapy: the
-              place where you need a thoughtful nudge, a practical plan, and a record of what you
-              said mattered.
+              The same Lifecoach product now has focused entry points for overwhelm, ADHD,
+              depression, anxiety, wellness, career decisions, peri/menopause, and personal admin
+              triage — each with its own language, examples, and search intent.
             </p>
           </div>
-          <div className="grid gap-4">
-            {workflows.map((workflow, index) => (
-              <div
-                key={workflow}
-                className="flex gap-5 rounded-[1.75rem] border border-border bg-background/80 p-6 shadow-sm"
+          <div className="grid gap-4 sm:grid-cols-2">
+            {helpTopics.map((topic) => (
+              <a
+                key={topic.slug}
+                href={`/how-it-helps/${topic.slug}`}
+                className="rounded-[1.75rem] border border-border bg-background/80 p-6 shadow-sm transition hover:-translate-y-1 hover:border-accent hover:shadow-xl hover:shadow-foreground/10"
               >
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent text-sm font-bold text-accent-foreground">
-                  {index + 1}
-                </span>
-                <p className="text-lg font-medium leading-8 text-foreground">{workflow}</p>
-              </div>
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-accent">
+                  {topic.keyphrases[0]}
+                </p>
+                <h3 className="mt-3 font-serif text-2xl font-semibold leading-tight text-foreground">
+                  {topic.title}
+                </h3>
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">{topic.description}</p>
+              </a>
             ))}
           </div>
         </div>
