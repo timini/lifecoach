@@ -107,11 +107,21 @@ class FakeUserMetaStore:
     tier: str = "free"
     calls: int = 0
 
-    async def increment_turn_count(self, uid: str) -> UserMetaDoc:
+    async def increment_turn_count(
+        self,
+        uid: str,
+        *,
+        today_local_date: str | None = None,
+    ) -> UserMetaDoc:
         self.calls += 1
         return UserMetaDoc(
             uid=uid,
             chatTurnCount=self.next_count,
+            # Daily counter is what the wall reads. Tests parameterise via
+            # `next_count` which now drives BOTH counters — the lifetime
+            # number is incidental in these scenarios.
+            dailyTurnCount=self.next_count,
+            dailyTurnCountDate=today_local_date or "2026-05-06",
             firstSeenAt="2026-05-06T09:00:00Z",
             tier=self.tier,  # type: ignore[arg-type]
             updatedAt="2026-05-06T09:00:00Z",
@@ -557,18 +567,28 @@ async def test_chat_uses_token_uid_over_body_uid_for_scoped_reads() -> None:
 
 @dataclass
 class _FakeUserMetaStore:
-    """Returns a fixed `chatTurnCount` on increment — lets us pin a /chat
-    request into a specific UsageState without writing to Firestore."""
+    """Returns a fixed turn count on increment — lets us pin a /chat
+    request into a specific UsageState without writing to Firestore.
+    `chat_turn_count` parameterises both the lifetime and the per-day
+    counter so the wall thresholds (which now read the daily counter)
+    fire deterministically."""
 
     chat_turn_count: int
     tier: str = "free"
 
-    async def increment_turn_count(self, uid: str) -> Any:
+    async def increment_turn_count(
+        self,
+        uid: str,
+        *,
+        today_local_date: str | None = None,
+    ) -> Any:
         from lifecoach_agent.storage.user_meta import UserMetaDoc
 
         return UserMetaDoc(
             uid=uid,
             chatTurnCount=self.chat_turn_count,
+            dailyTurnCount=self.chat_turn_count,
+            dailyTurnCountDate=today_local_date or "2026-05-12",
             firstSeenAt="2026-05-12T00:00:00Z",
             tier=self.tier,  # type: ignore[arg-type]
             updatedAt="2026-05-12T00:00:00Z",

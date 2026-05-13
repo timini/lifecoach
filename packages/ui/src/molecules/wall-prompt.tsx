@@ -20,20 +20,24 @@ export interface WallPromptProps {
   className?: string;
 }
 
+// Copy intentionally warm — the wall fires at the end of a long day's
+// worth of chats, often when the user has already said "I need to go to
+// bed." A corporate "Upgrade to Pro to continue" lands like a slammed
+// door; "let's pick this up tomorrow" lands like a coach.
 const COPY: Record<WallReason, { title: string; body: string }> = {
   free_limit: {
-    title: "You've reached the free chat limit",
-    body: 'Sign in with Google to keep chatting — your progress carries across to the signed-in tier and the better model.',
+    title: "We've had a good run today",
+    body: "I'll be here tomorrow — your daily chats refresh overnight. If you want what we talked about to stick around between sessions, sign in and we'll carry it forward.",
   },
   free_signed_in_limit: {
-    title: "You've reached the free chat limit",
-    body: 'Pro removes the chat cap and unlocks faster, deeper coaching. Pro launches soon — tap below and we will email you when it is ready.',
+    title: "Let's pick this up tomorrow",
+    body: "You've had a thorough day with me already — your daily chats refresh overnight, so I'll be ready when you are. If you'd like to keep going now (or remove the daily cap for good), Pro is the way.",
   },
 };
 
 const CTA_LABEL: Record<WallCta, string> = {
-  auth_user: 'Sign in with Google',
-  upgrade_to_pro: "I'm interested in Pro",
+  auth_user: 'Sign in to save progress',
+  upgrade_to_pro: 'Tell me about Pro',
 };
 
 export function WallPrompt({
