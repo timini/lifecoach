@@ -46,14 +46,23 @@ describe('analytics', () => {
     vi.unstubAllGlobals();
   });
 
-  it('sends page view config updates when GA is available', () => {
+  it('sends page view config updates when GA is available, with sanitised page_location', () => {
+    // GA4 would otherwise fill page_location from window.location.href.
+    // Override it explicitly with origin + path so magic-link query
+    // tokens never reach Google. The path we receive is already query-
+    // stripped at the caller (GoogleAnalytics.tsx); page_location is
+    // built from window.location.origin + that path.
     const gtag = vi.fn();
-    vi.stubGlobal('window', { gtag });
+    vi.stubGlobal('window', {
+      gtag,
+      location: { origin: 'https://lifecoach.app', href: 'unused' },
+    });
 
-    trackPageView('/chat?x=1', 'Chat');
+    trackPageView('/chat', 'Chat');
 
     expect(gtag).toHaveBeenCalledWith('config', 'G-TEST', {
-      page_path: '/chat?x=1',
+      page_path: '/chat',
+      page_location: 'https://lifecoach.app/chat',
       page_title: 'Chat',
     });
 

@@ -57,8 +57,18 @@ export function trackPageView(path: string, title?: string): void {
   const measurementId = googleAnalyticsMeasurementId();
   if (!measurementId || typeof window === 'undefined' || typeof window.gtag !== 'function') return;
 
+  // GA4 defaults `page_location` to `window.location.href` (the full URL
+  // including the query string). On a Firebase magic-link return, that
+  // URL still carries `oobCode`/`apiKey`/`mode`/`continueUrl` until
+  // completeEmailSignInLink consumes them — overriding page_location
+  // with a sanitised `origin + path` keeps the auth tokens out of GA.
+  // Stripping only page_path (which we already do at the caller) is
+  // not enough: GA fills page_location independently.
+  const pageLocation = `${window.location.origin}${path}`;
+
   window.gtag('config', measurementId, {
     page_path: path,
+    page_location: pageLocation,
     page_title: title,
   });
 }
