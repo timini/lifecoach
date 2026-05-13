@@ -168,11 +168,10 @@ resource "google_compute_backend_service" "web" {
   name                  = "${local.lb_resource_prefix}-backend"
   protocol              = "HTTPS"
   load_balancing_scheme = "EXTERNAL_MANAGED"
-  # Match Cloud Run's default request timeout. The /api/chat SSE stream
-  # can run many seconds while Gemini reasons — 60s would clip long
-  # responses. 300s matches the underlying Cloud Run revision's timeout,
-  # so the LB never times out before the upstream does.
-  timeout_sec = 300
+  # No `timeout_sec` — GCP rejects it on backend services backed by
+  # Serverless NEGs ("Timeout sec is not supported for a backend service
+  # with Serverless network endpoint groups"). The underlying Cloud Run
+  # revision's own request timeout applies (default 300s, fine for SSE).
 
   backend {
     group = google_compute_region_network_endpoint_group.web_neg[0].id
