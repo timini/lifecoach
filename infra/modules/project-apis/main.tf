@@ -69,6 +69,10 @@ locals {
     "logging.googleapis.com",
     "monitoring.googleapis.com",
     "cloudtrace.googleapis.com",
+
+    # Cloud Logging -> Pub/Sub -> Cloud Functions Sentry forwarder.
+    "pubsub.googleapis.com",
+    "cloudfunctions.googleapis.com",
   ]
 }
 
