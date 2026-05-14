@@ -82,6 +82,32 @@ class NotionConfigStore:
         await self._fs.doc(_doc_path(uid)).set(stored.__dict__)
         return stored
 
+    async def set_granted_parent_page_ids(
+        self, uid: str, granted_parent_page_ids: list[str]
+    ) -> StoredNotionConfig:
+        """Replace the granted parent pages without touching the
+        database id — called by the bootstrap after a lazy `/v1/search`
+        discovers pages the integration was granted access to (the
+        OAuth exchange response does not enumerate pages, so the first
+        bootstrap call has to find them)."""
+        existing = await self.get(uid)
+        if existing is None:
+            return await self.set(
+                uid,
+                workspace_id="",
+                granted_parent_page_ids=granted_parent_page_ids,
+                database_id=None,
+            )
+        updated = StoredNotionConfig(
+            uid=existing.uid,
+            databaseId=existing.databaseId,
+            workspaceId=existing.workspaceId,
+            grantedParentPageIds=list(granted_parent_page_ids),
+            updatedAt=self._now_iso(),
+        )
+        await self._fs.doc(_doc_path(uid)).set(updated.__dict__)
+        return updated
+
     async def set_database_id(self, uid: str, database_id: str | None) -> StoredNotionConfig:
         """Update the bootstrapped database id without touching the
         grantedParentPageIds — called by `database_bootstrap.py` once

@@ -595,13 +595,15 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
         try:
             tokens = await deps.notion_oauth_client.exchange_code(code, redirect_uri)
             stored = await deps.notion_tokens_store.set(claims.uid, tokens)
-            # Seed the config doc with granted parent pages from the OAuth
-            # response so the bootstrap can create the Lifecoach Tasks DB
-            # under one of them. Notion's exchange response embeds the
-            # selected workspace + bot id but does NOT directly enumerate
-            # granted pages — we derive them via a /v1/search on first
-            # tool call. For now seed with an empty list; the bootstrap's
-            # search-fallback handles the case.
+            # Seed the config doc with the workspace id; the granted
+            # parent pages are discovered lazily by
+            # `notion_agent.database_bootstrap._discover_granted_parent_pages`
+            # on the first tool call, because Notion's exchange response
+            # embeds workspace + bot id but does NOT enumerate the pages
+            # the user shared during consent (the only programmatic way
+            # is `/v1/search` post-grant). The bootstrap persists the
+            # discovered ids back here, so the search is one-shot per
+            # uid.
             await deps.notion_config_store.set(
                 claims.uid,
                 workspace_id=tokens.workspaceId,
