@@ -10,7 +10,7 @@
  */
 
 /*
- * Lifecoach design tokens. Tailwind v4 is CSS-first — no tailwind.config.js.
+ * tranquil.coach design tokens. Tailwind v4 is CSS-first — no tailwind.config.js.
  * `@theme` declarations generate utility classes (bg-background, text-foreground, …)
  * and stay in lockstep with runtime values via the CSS vars below.
  *
