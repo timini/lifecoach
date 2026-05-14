@@ -1,176 +1,179 @@
 import type { ReactNode } from 'react';
 import { featurePages } from '../lib/marketing/feature-pages';
 
-const capabilities = [
+const signalCards = [
   {
-    title: 'Turns your life context into momentum',
-    body: 'Lifecoach blends the time of day, weather, nearby context, goals, and recent progress into every conversation so advice starts from where you actually are.',
+    title: 'Weather, calendar, goals, and mood in one gentle frame',
+    body: 'tranquil.coach reads the shape of the day before it suggests the next move — so advice feels situated, not generic.',
   },
   {
-    title: 'Remembers the person, not just the prompt',
-    body: 'Important details such as priorities, routines, dislikes, and recurring blockers are carried forward, creating a relationship that compounds over time.',
+    title: 'Memory that becomes care, not creepiness',
+    body: 'Your patterns, preferences, blockers, and promises compound into a calmer relationship with your own life.',
   },
   {
-    title: 'Works where your day already lives',
-    body: 'Connect Google Workspace when you want help reading email, planning calendar moves, triaging tasks, or turning loose intent into a next action.',
+    title: 'Workspace help when admin gets emotional',
+    body: 'Connect Google Workspace for inbox triage, calendar repair, task pruning, and drafts that turn dread into action.',
   },
 ];
 
-const workflows = [
-  'Morning plan built around energy, meetings, weather, and one real priority.',
-  'Inbox triage that separates noise from decisions and drafts the next step.',
-  'Evening reflection that captures wins, gratitude, and what to adjust tomorrow.',
+const rituals = [
+  {
+    time: '08:10',
+    name: 'Morning clearing',
+    detail: 'one priority, weather-aware errands, energy budget',
+  },
+  {
+    time: '12:35',
+    name: 'Friction sweep',
+    detail: 'stuck email, tiny calendar move, food that counts',
+  },
+  {
+    time: '21:20',
+    name: 'Soft landing',
+    detail: 'wins captured, loose loops parked, tomorrow made lighter',
+  },
 ];
 
 const proofPoints = [
   { value: '0', label: 'setup steps before your first chat' },
-  { value: '24/7', label: 'coach that keeps the thread warm' },
-  { value: '1', label: 'place for goals, tasks, reflection, and context' },
+  { value: '3', label: 'daily rituals that keep momentum humane' },
+  { value: '1', label: 'place for goals, inbox, tasks, reflection, and context' },
 ];
 
 const principles = [
-  'Short, warm, human replies — no corporate life-hack essays.',
+  'Short, warm replies — no productivity cosplay or corporate life-hack essays.',
   'Browser-only location sharing; no IP geolocation fallbacks.',
   'Workspace OAuth tokens stay in the app layer and never go to the model.',
-  'Billing and auth state are handled by deterministic policy, not by vibes.',
+  'You stay in control of what gets sent, scheduled, saved, or ignored.',
+];
+
+const constellations = [
+  'ADHD',
+  'burnout',
+  'anxiety',
+  'new-parent fog',
+  'peri/menopause',
+  'low motivation',
 ];
 
 export default function LandingPage() {
   return (
-    <main className="min-h-screen overflow-hidden">
+    <main className="min-h-screen overflow-hidden bg-[#f7f1e8] text-[#20342d]">
       <section className="relative px-5 py-6 sm:px-8 lg:px-12">
-        <div className="absolute inset-x-0 top-0 -z-10 h-[620px] bg-[radial-gradient(circle_at_20%_15%,rgba(123,154,134,0.22),transparent_34%),radial-gradient(circle_at_80%_10%,rgba(198,123,99,0.16),transparent_34%)]" />
-        <nav className="mx-auto flex max-w-7xl items-center justify-between rounded-full border border-border/70 bg-background/75 px-4 py-3 shadow-sm backdrop-blur">
-          <a
-            href="/"
-            className="font-serif text-2xl font-semibold tracking-tight text-foreground"
-            data-analytics-event="landing_nav_home"
-            data-analytics-label="logo"
-          >
-            Lifecoach
-          </a>
-          <div className="hidden items-center gap-6 text-sm font-medium text-muted-foreground md:flex">
-            <a
-              href="#how-it-works"
-              className="transition hover:text-foreground"
-              data-analytics-event="landing_nav_section"
-              data-analytics-label="how_it_works"
-            >
-              How it works
-            </a>
-            <a
-              href="#privacy"
-              className="transition hover:text-foreground"
-              data-analytics-event="landing_nav_section"
-              data-analytics-label="privacy"
-            >
-              Privacy
-            </a>
-            <a
-              href="#use-cases"
-              className="transition hover:text-foreground"
-              data-analytics-event="landing_nav_section"
-              data-analytics-label="use_cases"
-            >
-              Use cases
-            </a>
-            <a href="/blog" className="transition hover:text-foreground">
-              Blog
-            </a>
-          </div>
-          <a
-            href="/chat"
-            className="rounded-full bg-foreground px-5 py-2.5 text-sm font-semibold text-background shadow-sm transition hover:-translate-y-0.5 hover:bg-accent"
-            data-analytics-event="landing_cta_click"
-            data-analytics-label="nav_start_coaching"
-          >
-            Start coaching
-          </a>
-        </nav>
+        <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_12%_18%,rgba(116,159,138,0.34),transparent_30%),radial-gradient(circle_at_82%_10%,rgba(236,167,127,0.28),transparent_32%),linear-gradient(135deg,#f7f1e8_0%,#eef4e9_48%,#f9e3d8_100%)]" />
+        <div className="absolute left-1/2 top-24 -z-10 h-[520px] w-[520px] -translate-x-1/2 rounded-full border border-white/50 bg-white/20 blur-3xl" />
 
-        <div className="mx-auto grid max-w-7xl gap-12 pb-16 pt-16 lg:grid-cols-[1.04fr_0.96fr] lg:items-center lg:pb-24 lg:pt-24">
+        <MarketingNav />
+
+        <div className="mx-auto grid max-w-7xl gap-12 pb-16 pt-16 lg:grid-cols-[1.02fr_0.98fr] lg:items-center lg:pb-24 lg:pt-24">
           <div>
-            <p className="mb-5 inline-flex rounded-full border border-accent/30 bg-accent/10 px-4 py-2 text-sm font-semibold text-foreground">
-              The AI assistant that prevents overwhelm
+            <p className="mb-5 inline-flex rounded-full border border-[#749f8a]/30 bg-white/45 px-4 py-2 text-sm font-semibold text-[#385f50] shadow-sm backdrop-blur">
+              AI coaching for a nervous system with a calendar
             </p>
-            <h1 className="max-w-4xl text-balance font-serif text-5xl font-semibold leading-[1.02] tracking-tight text-foreground sm:text-6xl lg:text-7xl">
-              A calmer way through the admin pile.
+            <h1 className="max-w-4xl text-balance font-serif text-5xl font-semibold leading-[0.98] tracking-tight text-[#182d26] sm:text-6xl lg:text-8xl">
+              Make the day feel possible again.
             </h1>
-            <p className="mt-6 max-w-2xl text-pretty text-lg leading-8 text-muted-foreground sm:text-xl">
-              Lifecoach is a warm, conversational companion for people whose executive function and
-              daily admin are the bottleneck — ADHD, depression, burnout, anxiety, peri/menopause,
-              new-parent fog, and the ordinary overwhelm of modern life. It remembers what matters,
-              understands your context, and turns the pile into one humane next step.
+            <p className="mt-7 max-w-2xl text-pretty text-lg leading-8 text-[#58665f] sm:text-xl">
+              tranquil.coach is a beautiful, context-aware companion for the fuzzy middle between
+              productivity apps and therapy: overwhelm, ADHD task initiation, low motivation,
+              anxious loops, career decisions, wellness routines, peri/menopause fog, and the admin
+              pile that keeps following you around.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <a
                 href="/chat"
-                className="inline-flex items-center justify-center rounded-full bg-foreground px-7 py-4 text-base font-semibold text-background shadow-lg shadow-foreground/10 transition hover:-translate-y-0.5 hover:bg-accent"
-                data-analytics-event="landing_cta_click"
-                data-analytics-label="hero_try_free"
+                className="inline-flex items-center justify-center rounded-full bg-[#20342d] px-7 py-4 text-base font-semibold text-[#fffaf1] shadow-xl shadow-[#20342d]/15 transition hover:-translate-y-0.5 hover:bg-[#5e8b76]"
               >
-                Try the coach free
+                Open a calm thread
               </a>
               <a
-                href="#how-it-works"
-                className="inline-flex items-center justify-center rounded-full border border-border bg-background/70 px-7 py-4 text-base font-semibold text-foreground transition hover:-translate-y-0.5 hover:border-accent"
-                data-analytics-event="landing_cta_click"
-                data-analytics-label="hero_see_product"
+                href="#rituals"
+                className="inline-flex items-center justify-center rounded-full border border-white/70 bg-white/55 px-7 py-4 text-base font-semibold text-[#20342d] shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:border-[#749f8a]"
               >
-                See the product
+                Tour the redesign
               </a>
+            </div>
+            <div className="mt-8 flex flex-wrap gap-2">
+              {constellations.map((item) => (
+                <span
+                  key={item}
+                  className="rounded-full border border-white/70 bg-white/45 px-3 py-1.5 text-sm font-semibold text-[#53625b] backdrop-blur"
+                >
+                  {item}
+                </span>
+              ))}
             </div>
             <dl className="mt-10 grid max-w-2xl grid-cols-3 gap-3">
               {proofPoints.map((point) => (
                 <div
                   key={point.label}
-                  className="rounded-3xl border border-border/70 bg-background/70 p-4 shadow-sm backdrop-blur"
+                  className="rounded-[1.75rem] border border-white/70 bg-white/50 p-4 shadow-sm backdrop-blur"
                 >
-                  <dt className="font-serif text-3xl font-semibold text-foreground">
+                  <dt className="font-serif text-3xl font-semibold text-[#20342d]">
                     {point.value}
                   </dt>
-                  <dd className="mt-1 text-xs leading-5 text-muted-foreground">{point.label}</dd>
+                  <dd className="mt-1 text-xs leading-5 text-[#68756e]">{point.label}</dd>
                 </div>
               ))}
             </dl>
           </div>
 
           <div className="relative">
-            <div className="absolute -left-10 top-16 -z-10 h-44 w-44 rounded-full bg-accent/20 blur-3xl" />
-            <div className="rounded-[2rem] border border-border bg-[#fbf7ef]/90 p-4 shadow-2xl shadow-foreground/10 backdrop-blur">
-              <div className="rounded-[1.5rem] border border-border/80 bg-background p-5">
-                <div className="flex items-center justify-between border-b border-border/70 pb-4">
+            <div className="absolute -right-6 top-10 h-28 w-28 rounded-full bg-[#efb58c]/40 blur-2xl" />
+            <div className="rounded-[2.4rem] border border-white/70 bg-white/50 p-3 shadow-2xl shadow-[#20342d]/15 backdrop-blur-xl">
+              <div className="overflow-hidden rounded-[2rem] border border-white/80 bg-[#fffaf1]">
+                <div className="flex items-center justify-between bg-[#20342d] px-5 py-4 text-[#fffaf1]">
                   <div>
-                    <p className="font-serif text-2xl font-semibold">Today with Lifecoach</p>
-                    <p className="text-sm text-muted-foreground">Context-aware plan · 8:14 AM</p>
+                    <p className="font-serif text-2xl font-semibold">tranquil.coach</p>
+                    <p className="text-sm text-[#dbe7df]">soft command center · 8:14 AM</p>
                   </div>
-                  <span className="rounded-full bg-success/15 px-3 py-1 text-xs font-semibold text-foreground">
+                  <span className="rounded-full bg-[#eebf9d]/20 px-3 py-1 text-xs font-semibold text-[#ffe8d9]">
                     calm mode
                   </span>
                 </div>
-                <div className="space-y-4 py-5">
-                  <ChatBubble align="left">
-                    Good morning. You have three meetings, rain after lunch, and that launch review
-                    you wanted to protect. Want a plan that keeps the hard thinking before noon?
-                  </ChatBubble>
-                  <ChatBubble align="right">
-                    Yes. I also need to answer Mara and get a workout in.
-                  </ChatBubble>
-                  <ChatBubble align="left">
-                    Great. First: 45 minutes on the launch review before messages. Then I can pull
-                    Mara&apos;s thread, draft a reply, and save the workout for the dry window at 5.
-                  </ChatBubble>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  {['Plan day', 'Triage inbox', 'Log goal'].map((action) => (
-                    <button
-                      key={action}
-                      type="button"
-                      className="rounded-2xl border border-border bg-muted/60 px-3 py-3 text-sm font-semibold text-foreground"
-                    >
-                      {action}
-                    </button>
-                  ))}
+                <div className="grid gap-4 p-5 lg:grid-cols-[0.92fr_1.08fr]">
+                  <div className="space-y-4">
+                    <ChatBubble align="left">
+                      Good morning. Rain after lunch, three meetings, and one task you keep
+                      avoiding. Want me to protect the best thinking hour first?
+                    </ChatBubble>
+                    <ChatBubble align="right">
+                      Yes. Also my inbox is making me want to disappear.
+                    </ChatBubble>
+                    <ChatBubble align="left">
+                      Then we will make it small: draft Mara first, archive the receipts, and park
+                      the rest in a 14-minute sweep after lunch.
+                    </ChatBubble>
+                  </div>
+                  <div className="rounded-[1.5rem] bg-[#eef4e9] p-4">
+                    <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#5e8b76]">
+                      Today’s map
+                    </p>
+                    <div className="mt-4 space-y-3">
+                      {rituals.map((ritual) => (
+                        <div key={ritual.name} className="rounded-2xl bg-white/75 p-4 shadow-sm">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="font-serif text-xl font-semibold">{ritual.name}</p>
+                            <span className="rounded-full bg-[#20342d] px-3 py-1 text-xs font-bold text-[#fffaf1]">
+                              {ritual.time}
+                            </span>
+                          </div>
+                          <p className="mt-2 text-sm leading-6 text-[#68756e]">{ritual.detail}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-4 grid grid-cols-3 gap-2">
+                      {['Plan', 'Triage', 'Reflect'].map((action) => (
+                        <button
+                          key={action}
+                          type="button"
+                          className="rounded-2xl bg-[#f4ddcf] px-3 py-3 text-sm font-bold text-[#57392d]"
+                        >
+                          {action}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -178,26 +181,28 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section id="how-it-works" className="px-5 py-16 sm:px-8 lg:px-12">
+      <section id="rituals" className="px-5 py-16 sm:px-8 lg:px-12">
         <div className="mx-auto max-w-7xl">
-          <div className="max-w-3xl">
-            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-accent">
-              Product thesis
-            </p>
-            <h2 className="mt-3 font-serif text-4xl font-semibold leading-tight sm:text-5xl">
-              Coaching gets better when it can see the calendar, the context, and the pattern.
+          <SectionKicker>Product thesis</SectionKicker>
+          <div className="grid gap-8 lg:grid-cols-[0.82fr_1.18fr] lg:items-end">
+            <h2 className="font-serif text-4xl font-semibold leading-tight sm:text-6xl">
+              Not another dashboard. A living room for your next right step.
             </h2>
+            <p className="text-lg leading-8 text-[#637168]">
+              The redesign moves tranquil.coach away from app-like productivity pressure and into a
+              sensory, spacious coaching environment: warm surfaces, botanical greens, soft coral
+              highlights, and cards that feel like a hand on the shoulder rather than a KPI board.
+            </p>
           </div>
           <div className="mt-10 grid gap-4 md:grid-cols-3">
-            {capabilities.map((capability) => (
+            {signalCards.map((card) => (
               <article
-                key={capability.title}
-                className="rounded-[2rem] border border-border bg-background/75 p-7 shadow-sm"
+                key={card.title}
+                className="rounded-[2rem] border border-white/70 bg-white/60 p-7 shadow-sm backdrop-blur transition hover:-translate-y-1 hover:shadow-xl hover:shadow-[#20342d]/10"
               >
-                <h3 className="font-serif text-2xl font-semibold leading-tight">
-                  {capability.title}
-                </h3>
-                <p className="mt-4 text-sm leading-7 text-muted-foreground">{capability.body}</p>
+                <div className="mb-8 h-2 w-20 rounded-full bg-gradient-to-r from-[#749f8a] to-[#efb58c]" />
+                <h3 className="font-serif text-2xl font-semibold leading-tight">{card.title}</h3>
+                <p className="mt-4 text-sm leading-7 text-[#68756e]">{card.body}</p>
               </article>
             ))}
           </div>
@@ -205,88 +210,61 @@ export default function LandingPage() {
       </section>
 
       <section id="use-cases" className="px-5 py-16 sm:px-8 lg:px-12">
-        <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-start">
-          <div className="rounded-[2rem] border border-border bg-foreground p-8 text-background shadow-xl shadow-foreground/10">
-            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-background/70">
-              Where it helps
-            </p>
-            <h2 className="mt-4 font-serif text-4xl font-semibold leading-tight">
-              The daily operating system for people with more intent than bandwidth.
-            </h2>
-            <p className="mt-5 text-background/75">
-              Lifecoach is built for the fuzzy middle between productivity apps and therapy: the
-              place where you need a thoughtful nudge, a practical plan, and a record of what you
-              said mattered.
-            </p>
-          </div>
-          <div className="grid gap-4">
-            {workflows.map((workflow, index) => (
-              <div
-                key={workflow}
-                className="flex gap-5 rounded-[1.75rem] border border-border bg-background/80 p-6 shadow-sm"
-              >
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent text-sm font-bold text-accent-foreground">
-                  {index + 1}
-                </span>
-                <p className="text-lg font-medium leading-8 text-foreground">{workflow}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="px-5 py-16 sm:px-8 lg:px-12">
-        <div className="mx-auto max-w-7xl">
-          <div className="max-w-3xl">
-            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-accent">
-              How it helps
-            </p>
-            <h2 className="mt-3 font-serif text-4xl font-semibold leading-tight sm:text-5xl">
-              One product, specific pages for the moments people actually search for.
-            </h2>
-            <p className="mt-5 text-lg leading-8 text-muted-foreground">
-              The architecture stays broad; the entry points get precise. Start with overwhelm,
-              ADHD, depression, anxiety, wellness, career, menopause, or personal-assistant admin.
-            </p>
-          </div>
-          <div className="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            {featurePages.map((page) => (
-              <a
-                key={page.topic}
-                href={`/how-it-helps/${page.topic}`}
-                className="rounded-[1.5rem] border border-border bg-background/80 p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-accent"
-              >
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">
-                  {page.audience}
-                </p>
-                <h3 className="mt-3 font-serif text-2xl font-semibold leading-tight text-foreground">
-                  {page.title}
-                </h3>
-                <p className="mt-3 text-sm leading-6 text-muted-foreground">{page.description}</p>
-              </a>
-            ))}
+        <div className="mx-auto max-w-7xl rounded-[2.5rem] bg-[#20342d] p-6 text-[#fffaf1] shadow-2xl shadow-[#20342d]/15 sm:p-10">
+          <div className="grid gap-10 lg:grid-cols-[0.8fr_1.2fr]">
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-[0.24em] text-[#eebf9d]">
+                Gentle operating system
+              </p>
+              <h2 className="mt-4 font-serif text-4xl font-semibold leading-tight sm:text-5xl">
+                A place to bring the pile before the pile becomes your personality.
+              </h2>
+              <p className="mt-5 text-[#d8e5dd]">
+                tranquil.coach is built for the ordinary and the tender: half-written replies,
+                avoidance, decisions that got too big, body symptoms, messy ambition, and nights
+                when your brain opens every tab at once.
+              </p>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              {featurePages.map((page) => (
+                <a
+                  key={page.topic}
+                  href={`/how-it-helps/${page.topic}`}
+                  className="group rounded-[1.75rem] border border-white/10 bg-white/[0.07] p-5 transition hover:-translate-y-0.5 hover:bg-white/[0.12]"
+                >
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#eebf9d]">
+                    {page.audience}
+                  </p>
+                  <h3 className="mt-3 font-serif text-2xl font-semibold leading-tight text-white">
+                    {page.title}
+                  </h3>
+                  <p className="mt-3 text-sm leading-6 text-[#d8e5dd]">{page.description}</p>
+                  <span className="mt-5 inline-flex text-sm font-bold text-[#eebf9d]">
+                    Visit page →
+                  </span>
+                </a>
+              ))}
+            </div>
           </div>
         </div>
       </section>
 
       <section id="privacy" className="px-5 py-16 sm:px-8 lg:px-12">
-        <div className="mx-auto max-w-7xl rounded-[2.5rem] border border-border bg-[#fbf7ef]/80 p-8 shadow-sm sm:p-10 lg:p-12">
+        <div className="mx-auto max-w-7xl rounded-[2.5rem] border border-white/70 bg-white/55 p-8 shadow-sm backdrop-blur sm:p-10 lg:p-12">
           <div className="grid gap-10 lg:grid-cols-[0.8fr_1.2fr]">
             <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.24em] text-accent">
-                Trust by design
-              </p>
+              <SectionKicker>Trust by design</SectionKicker>
               <h2 className="mt-3 font-serif text-4xl font-semibold leading-tight">
-                Personal enough to be useful. Guardrailed enough to feel safe.
+                Personal enough to be useful. Boundaried enough to feel safe.
               </h2>
             </div>
             <ul className="grid gap-3 sm:grid-cols-2">
               {principles.map((principle) => (
                 <li
                   key={principle}
-                  className="rounded-3xl border border-border bg-background/80 p-5 text-sm font-medium leading-7 text-muted-foreground"
+                  className="rounded-3xl border border-white/80 bg-[#fffaf1]/80 p-5 text-sm font-medium leading-7 text-[#637168]"
                 >
-                  <span className="mr-2 text-accent">✦</span>
+                  <span className="mr-2 text-[#5e8b76]">✦</span>
                   {principle}
                 </li>
               ))}
@@ -297,24 +275,61 @@ export default function LandingPage() {
 
       <section className="px-5 pb-20 pt-10 sm:px-8 lg:px-12">
         <div className="mx-auto max-w-4xl text-center">
+          <p className="mx-auto mb-5 w-fit rounded-full border border-[#749f8a]/25 bg-white/50 px-4 py-2 text-sm font-semibold text-[#385f50]">
+            start exactly where you are
+          </p>
           <h2 className="font-serif text-4xl font-semibold leading-tight sm:text-6xl">
-            Start with one honest sentence.
+            Bring one honest sentence. We’ll make it smaller together.
           </h2>
-          <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-muted-foreground">
-            Tell Lifecoach what is on your mind today. It will help you find the next grounded,
+          <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-[#637168]">
+            Tell tranquil.coach what is on your mind today. It will help you find the next grounded,
             doable move without asking you to become a different person first.
           </p>
           <a
             href="/chat"
-            className="mt-8 inline-flex items-center justify-center rounded-full bg-foreground px-8 py-4 text-base font-semibold text-background shadow-lg shadow-foreground/10 transition hover:-translate-y-0.5 hover:bg-accent"
-            data-analytics-event="landing_cta_click"
-            data-analytics-label="footer_open_lifecoach"
+            className="mt-8 inline-flex items-center justify-center rounded-full bg-[#20342d] px-8 py-4 text-base font-semibold text-[#fffaf1] shadow-lg shadow-[#20342d]/10 transition hover:-translate-y-0.5 hover:bg-[#5e8b76]"
           >
-            Open Lifecoach
+            Open tranquil.coach
           </a>
         </div>
       </section>
     </main>
+  );
+}
+
+function MarketingNav() {
+  return (
+    <nav className="mx-auto flex max-w-7xl items-center justify-between rounded-full border border-white/70 bg-white/55 px-4 py-3 shadow-sm backdrop-blur-xl">
+      <a href="/" className="font-serif text-2xl font-semibold tracking-tight text-[#20342d]">
+        tranquil.coach
+      </a>
+      <div className="hidden items-center gap-6 text-sm font-medium text-[#637168] md:flex">
+        <a href="#rituals" className="transition hover:text-[#20342d]">
+          Product
+        </a>
+        <a href="#privacy" className="transition hover:text-[#20342d]">
+          Privacy
+        </a>
+        <a href="#use-cases" className="transition hover:text-[#20342d]">
+          Use cases
+        </a>
+        <a href="/blog" className="transition hover:text-[#20342d]">
+          Blog
+        </a>
+      </div>
+      <a
+        href="/chat"
+        className="rounded-full bg-[#20342d] px-5 py-2.5 text-sm font-semibold text-[#fffaf1] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#5e8b76]"
+      >
+        Start coaching
+      </a>
+    </nav>
+  );
+}
+
+function SectionKicker({ children }: { children: ReactNode }) {
+  return (
+    <p className="text-sm font-semibold uppercase tracking-[0.24em] text-[#5e8b76]">{children}</p>
   );
 }
 
@@ -324,8 +339,8 @@ function ChatBubble({ children, align }: { children: ReactNode; align: 'left' | 
       <p
         className={
           align === 'right'
-            ? 'max-w-[82%] rounded-[1.35rem] bg-accent px-4 py-3 text-sm leading-6 text-accent-foreground'
-            : 'max-w-[88%] rounded-[1.35rem] bg-muted px-4 py-3 text-sm leading-6 text-foreground'
+            ? 'max-w-[86%] rounded-[1.35rem] bg-[#749f8a] px-4 py-3 text-sm leading-6 text-white shadow-sm'
+            : 'max-w-[88%] rounded-[1.35rem] bg-[#f0e8dc] px-4 py-3 text-sm leading-6 text-[#20342d] shadow-sm'
         }
       >
         {children}
