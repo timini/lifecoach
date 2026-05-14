@@ -47,6 +47,12 @@ variable "google_oauth_client_id" {
   description = "NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID — same OAuth client used by Firebase Google sign-in."
 }
 
+variable "notion_oauth_client_id" {
+  type        = string
+  default     = ""
+  description = "NEXT_PUBLIC_NOTION_OAUTH_CLIENT_ID — Notion public integration client ID. The matching secret (NOTION_OAUTH_CLIENT_SECRET) is shared from dev's Secret Manager; previews don't manage it. Empty disables the Notion integration on this preview."
+}
+
 # --- Optional knobs ------------------------------------------------------
 
 variable "mem0_enabled" {

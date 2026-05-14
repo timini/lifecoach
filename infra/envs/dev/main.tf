@@ -144,6 +144,28 @@ module "gws_oauth_secret" {
   depends_on = [module.apis]
 }
 
+# --- Notion OAuth client secret (Notion code exchange) -------------------
+# Holds the client secret half of the Notion public integration (the
+# client_id half is a public value carried as a plain env var). The agent
+# reads this to exchange the popup's auth code for tokens via Notion's
+# /v1/oauth/token. Gated on var.notion_client_secret being non-empty so
+# this env can keep running before Notion credentials are provisioned.
+
+module "notion_oauth_secret" {
+  count         = var.notion_client_secret != "" ? 1 : 0
+  source        = "../../modules/notion-oauth-secret"
+  project_id    = var.project_id
+  client_secret = var.notion_client_secret
+
+  # Same hardcode-the-SA pattern as gws_oauth_secret to break the
+  # planning cycle between the secret IAM grant and the agent revision.
+  accessor_members = [
+    "serviceAccount:lifecoach-agent@${var.project_id}.iam.gserviceaccount.com",
+  ]
+
+  depends_on = [module.apis]
+}
+
 # --- GCS bucket for per-user data (user.yaml, goal_updates.json) ---------
 
 module "user_bucket" {
@@ -293,6 +315,10 @@ module "agent" {
       SENTRY_ENVIRONMENT  = var.environment
     },
     var.sentry_dsn != "" ? { SENTRY_DSN = var.sentry_dsn } : {},
+    # Notion OAuth — client ID is public. When unset the agent skips the
+    # Notion module + /notion routes entirely (verified by the
+    # constructor gate in main.py).
+    var.notion_client_id != "" ? { NOTION_OAUTH_CLIENT_ID = var.notion_client_id } : {},
   )
 
   project_roles = [
@@ -320,6 +346,14 @@ module "agent" {
         version   = "latest"
       }
     },
+    # Notion OAuth secret — mounted only when the integration is
+    # configured. notion_oauth_secret module is gated on the same var.
+    var.notion_client_secret != "" ? {
+      NOTION_OAUTH_CLIENT_SECRET = {
+        secret_id = "NOTION_OAUTH_CLIENT_SECRET"
+        version   = "latest"
+      }
+    } : {},
   )
 
   allow_unauthenticated = true
@@ -589,6 +623,13 @@ output "firebase_app_id" {
 
 output "google_client_id" {
   value = module.firebase_auth.google_client_id
+}
+
+# Notion OAuth client ID — public value, used by the web build to inline
+# NEXT_PUBLIC_NOTION_OAUTH_CLIENT_ID into the browser bundle. Empty when
+# the integration isn't configured in this env.
+output "notion_client_id" {
+  value = var.notion_client_id
 }
 
 output "github_wif_provider" {

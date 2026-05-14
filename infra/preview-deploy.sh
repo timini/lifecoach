@@ -85,6 +85,10 @@ FIREBASE_API_KEY="$(dev_output firebase_api_key)"
 FIREBASE_AUTH_DOMAIN="$(dev_output firebase_auth_domain)"
 FIREBASE_APP_ID="$(dev_output firebase_app_id)"
 GOOGLE_OAUTH_CLIENT_ID="$(dev_output google_client_id)"
+# Notion OAuth client ID — public value piped through to preview's NEXT_PUBLIC_*.
+# Empty string when the dev env doesn't have it configured (set
+# notion_client_id in dev's terraform.tfvars to enable previews).
+NOTION_OAUTH_CLIENT_ID="$(cd "${DEV_DIR}" && terraform output -raw notion_client_id 2>/dev/null || true)"
 # Sentry — read from dev's tfvars rather than `terraform output`. Outputs
 # only exist after `terraform apply` records them, which won't have
 # happened the first time a new variable is introduced; tfvars is the
@@ -147,6 +151,7 @@ build_and_push() {
       --build-arg "NEXT_PUBLIC_FIREBASE_PROJECT_ID=${PROJECT_ID}"
       --build-arg "NEXT_PUBLIC_FIREBASE_APP_ID=${FIREBASE_APP_ID}"
       --build-arg "NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}"
+      --build-arg "NEXT_PUBLIC_NOTION_OAUTH_CLIENT_ID=${NOTION_OAUTH_CLIENT_ID}"
       --build-arg "NEXT_PUBLIC_GA_MEASUREMENT_ID=${GA_MEASUREMENT_ID}"
       --build-arg "NEXT_PUBLIC_SENTRY_DSN=${SENTRY_DSN_VALUE}"
       --build-arg "NEXT_PUBLIC_SENTRY_ENVIRONMENT=preview-pr-${PR_NUMBER}"
@@ -198,6 +203,7 @@ apply_preview() {
       -var="firebase_auth_domain=${FIREBASE_AUTH_DOMAIN}" \
       -var="firebase_app_id=${FIREBASE_APP_ID}" \
       -var="google_oauth_client_id=${GOOGLE_OAUTH_CLIENT_ID}" \
+      -var="notion_oauth_client_id=${NOTION_OAUTH_CLIENT_ID}" \
       -var="sentry_dsn=${SENTRY_DSN_VALUE}" \
       -var="google_analytics_measurement_id=${GA_MEASUREMENT_ID}" \
       -var="custom_domain_name=${CUSTOM_DOMAIN_NAME}" \
