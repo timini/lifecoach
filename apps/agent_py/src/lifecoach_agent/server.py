@@ -93,6 +93,39 @@ from lifecoach_agent.storage.workspace_tokens import WorkspaceTokensStore
 
 logger = logging.getLogger("lifecoach_agent.server")
 
+# ADK tracing wraps `run_async` in an OpenTelemetry span. When the SSE
+# generator is closed in a different asyncio context from the one that
+# opened the span (which happens on client disconnect or normal SSE
+# finalisation under FastAPI/Starlette's StreamingResponse), OTel raises
+# `ValueError: <Token ...> was created in a different Context`. The
+# user-visible stream has already completed by the time this fires, so we
+# suppress only this exact error — anything else still surfaces.
+_OTEL_CONTEXT_TOKEN_ERROR_RE = re.compile(r"Token .* was created in a different Context")
+
+
+def _is_otel_context_token_error(err: BaseException) -> bool:
+    """Return True for the ADK/OpenTelemetry contextvars detach race.
+
+    OpenTelemetry binds ContextVar tokens to the asyncio context that
+    created them; ADK tracing can close a span in a sibling context
+    during SSE teardown. That raises a noisy `ValueError` after the
+    user-visible response has already been streamed. Keep this matcher
+    intentionally narrow so unrelated `ValueError`s still propagate.
+    """
+    return isinstance(err, ValueError) and bool(_OTEL_CONTEXT_TOKEN_ERROR_RE.search(str(err)))
+
+
+async def _await_drive_task(task: asyncio.Task[bool]) -> bool:
+    """Await the background drive task and swallow only OTel detach noise."""
+    try:
+        return await task
+    except ValueError as err:
+        if _is_otel_context_token_error(err):
+            logger.warning("suppressed ADK/OpenTelemetry context detach error: %s", err)
+            return False
+        raise
+
+
 # --- Tool factories (closure-bound per turn) -----------------------------
 #
 # Imported lazily by the runner factory built in `main.py`; the server
@@ -912,6 +945,8 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
         # SSE stream ----------------------------------------------------
         async def stream() -> AsyncIterator[bytes]:
             tool_invocations: list[dict[str, Any]] = []
+            drive_task: asyncio.Task[bool] | None = None
+            drive_task_observed = False
             pending_by_id: dict[str, dict[str, Any]] = {}
             first_text_ms: int | None = None
             choice_shown = False
@@ -1035,7 +1070,10 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                     if chunk is None:
                         break
                     yield chunk
-                _first_pass_choice = await drive_task  # noqa: F841 — kept for symmetry/log
+                try:
+                    _first_pass_choice = await _await_drive_task(drive_task)  # noqa: F841 — kept for symmetry/log
+                finally:
+                    drive_task_observed = True
                 timings["streamMs"] = _now_ms() - t_stream0
                 timings["ttfbMs"] = first_event_ms if first_event_ms is not None else -1
                 timings["ttftMs"] = first_text_ms if first_text_ms is not None else -1
@@ -1064,6 +1102,23 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                     "error",
                 )
             finally:
+                # Make sure the background drive task can't outlive the SSE
+                # generator. On normal completion `drive_task_observed` is
+                # True; on early exit (cancellation, client disconnect, or
+                # an exception above) we cancel and observe it here so the
+                # task's exception — including the OTel detach noise — is
+                # consumed rather than logged as "Task exception was never
+                # retrieved".
+                if drive_task is not None and not drive_task.done():
+                    drive_task.cancel()
+                if (
+                    drive_task is not None
+                    and not drive_task_observed
+                    and not drive_task.cancelled()
+                ):
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await _await_drive_task(drive_task)
+
                 # Per-turn structured log line.
                 aq_aqi = (
                     air_quality.aqi
