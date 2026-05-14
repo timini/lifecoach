@@ -321,6 +321,9 @@ All routes live in `src/lifecoach_agent/server.py`. Body is JSON ≤ 256 KiB.
 | `POST /workspace/oauth-exchange` | bearer | `{code}` | `{connected, scopes, grantedAt}` | Exchange GIS code → tokens. |
 | `GET /workspace/status` | bearer | — | `{connected, scopes, grantedAt}` | Never echoes tokens. |
 | `DELETE /workspace` | bearer | — | `{connected:false, scopes:[], grantedAt:null}` | Revoke at Google + drop the Firestore doc. |
+| `POST /notion/oauth-exchange` | bearer | `{code, redirect_uri}` | `{connected, workspaceName, grantedAt}` | Exchange Notion popup code → tokens. HTTP Basic auth on Notion's `/v1/oauth/token`. Seeds `notionConfig/{uid}`. Never echoes tokens or upstream errors. Returns 503 when the env didn't ship Notion creds. |
+| `GET /notion/status` | bearer | — | `{connected, workspaceName, grantedAt}` | Surface for settings + capability picker. Never echoes tokens. |
+| `DELETE /notion` | bearer | — | `{connected:false, workspaceName:null, grantedAt:null, note}` | Drops `notionTokens/{uid}` + `notionConfig/{uid}`. Notion has no programmatic revoke; `note` reminds the user to remove the integration at notion.so/my-integrations. |
 
 ### 7.2 ADK runner wiring (`main.py:runner_for`)
 
@@ -360,6 +363,8 @@ USAGE                   (cond) state ∈ {free_signup_hard, free_throttled,
                         pro_pitch_hard} — truthful "turn N of M" credit
                         count, never fabricated
 WORKSPACE_CHEATSHEET    (cond) state === "workspace_connected"
+NOTION_CHEATSHEET       (cond) ctx.notion_connected — operative rules + tool reference for the Notion sub-agent. Orthogonal to UserState (a user can be workspace+notion connected simultaneously).
+CAPABILITIES_PICKER_HINT (cond) first signed-in turn AND no integrations connected — one-shot directive telling the LLM to call show_capabilities() as its first action
 CURRENT_TIME            now formatted in user TZ — single source of truth for time
 SESSION_SUMMARIES       yesterday + 7-day rolling (lazily generated, cached on session.state)
 DAY_PHASE               from DailyFlowMachine
@@ -398,6 +403,13 @@ Every tool lives in `src/lifecoach_agent/tools/` (one file, one tool factory). B
 | `add_calendar_event` | `{summary, start, end?, location?, description?, calendarId?}` | `calendar.events.insert`. `end` defaults to start + 30 min for timed events, start + 1 day for all-day. | no |
 | `add_task` | `{title, due?, notes?, taskListId?}` | `tasks.tasks.insert`. Default `taskListId="@default"`. | no |
 | `complete_task` | `{id, taskListId?}` | `tasks.tasks.patch({status: "completed"})` — NEVER delete. | no |
+| `connect_notion` | none | Renders a single-tile Notion connect card (capability picker, one tile) | **yes (turn-ending)** |
+| `show_capabilities` | none | Renders the full capability picker (Workspace, Notion, Career coaching). Tile `status` is computed per request from `ctx.workspace_connected` + `ctx.notion_connected`. Called proactively on the first signed-in turn when no integrations are connected, or on demand when the user asks "what can you do". | **yes (turn-ending)** |
+| `notion_review_tasks` | `{filter?}` | AgentTool wrapping the Notion sub-agent. Returns a project-bucketed tree of OPEN tasks (everything not Done) with sub-tasks nested. `filter` is natural language. Read-only. | no |
+| `add_notion_task` | `{title, project?, priority?, due?, parent_id?, notes?}` | Creates a row in the `Lifecoach Tasks` Notion DB. Status defaults to "To Do". | no |
+| `update_notion_task` | `{id, status?, notes?, notes_mode?, priority?, due?, title?, project?}` | Patches a task. `notes_mode` defaults to `"append"` (read-then-patch). `status` accepts To Do / In Progress / Waiting — **never** Done (use `complete_notion_task`). | no |
+| `set_notion_task_parent` | `{id, parent_id}` | PATCH the `Parent item` self-relation. `parent_id=null` clears it. | no |
+| `complete_notion_task` | `{id, completion_note?}` | The ONLY writer of Status="Done". User must have confirmed THIS turn. | no |
 
 A turn-ending tool that successfully fires (`status: "shown"` / `"auth_prompted"` / `"oauth_prompted"` / `"upgrade_prompted"`) is the agent's response — the UI card stands in for any text reply.
 
@@ -429,6 +441,8 @@ Every module under `storage/` is a thin async client over an injected `Firestore
 | `goal_updates.py` | GCS | `users/{uid}/goal_updates.json` | Append-only JSON array of `GoalUpdate`. |
 | `user_meta.py` | Firestore | `userMeta/{uid}` | `{uid, chatTurnCount, firstSeenAt, tier, updatedAt}`. Counter increments at the start of every `/chat`. Drives `UsageStateMachine`. |
 | `workspace_tokens.py` | Firestore | `workspaceTokens/{uid}` | `{uid, accessToken, refreshToken, scopes, grantedAt, expiresAt}`. Per-uid mutex on refresh. **Tokens never leave the agent.** |
+| `notion_tokens.py` | Firestore | `notionTokens/{uid}` | `{uid, accessToken, accessTokenExpiresAt, refreshToken, botId, workspaceId, workspaceName, grantedAt, updatedAt}`. Per-uid asyncio mutex on refresh; deletes the doc on refresh-failure (scope_required) so the next turn demotes back to `notion_connected=false`. **Tokens never leave the agent.** |
+| `notion_config.py` | Firestore | `notionConfig/{uid}` | `{uid, workspaceId, databaseId\|null, grantedParentPageIds: string[], updatedAt}`. Owned by the Notion sub-agent — `databaseId` populated by `get_or_create_database()` on first tool call; deleted alongside the token doc when the user revokes. |
 
 > **Storage Protocol shape ≠ SDK shape.** The `FirestoreLike` Protocol is JS-style (`doc()`, `collection()`, snapshot has `.data()`). The Python `google.cloud.firestore.AsyncClient` uses `document()`, `to_dict()`, returns a list from `collection.get()`. The bridge lives in `main.py:_build_real_firestore` and is regression-tested at `tests/unit/test_firestore_adapter.py`.
 
@@ -456,6 +470,36 @@ workspace_agent/
 `gws_client.call_workspace` is the bottom-layer dispatcher. It walks the Discovery API tree (`gmail.users.messages.list(...)` etc.) via `google-api-python-client`, classifying errors into `scope_required`, `forbidden`, `network`, `rate_limited`, `not_found`, `bad_request`, `timeout`, `upstream`, `invalid_args`. Every workspace tool routes through `run_gws.py`, which (a) resolves the access token via `WorkspaceTokensStore`, (b) calls the dispatcher, (c) deletes the user's token doc on `scope_required` so the next turn demotes back to `google_linked` and the LLM invites reconnect.
 
 Logging splits cleanly: per-tool-call events fire with `tool.<name>` for main-agent calls and `workspace_agent.<name>` for sub-agent internal calls — one Cloud Logging filter pulls all workspace traffic, two filters split it by side. The `gws` CLI subprocess that the TS service used was deleted at PR #56; everything is direct API calls now.
+
+### 7.7a Notion sub-agent (`notion_agent/`)
+
+Mirrors the workspace_agent layout one-for-one. Self-contained Notion surface, exposed via a single `create_notion_tools(deps)` factory. Gated on `ctx.notion_connected` — a capability flag on `InstructionContext`, orthogonal to `UserState` (a `workspace_connected` user can ALSO be Notion-connected; the prompt grows BOTH cheatsheets).
+
+```
+notion_agent/
+  __init__.py              create_notion_tools(deps) → 5 tools  +  NOTION_TOOL_NAMES
+  agent.py                 create_notion_agent(...) — inner LlmAgent for the review tool
+  notion_client.py         call_notion(access_token, method, path, body?) → CallNotionResult; classifies 401→scope_required, 403→forbidden, 404→not_found, 429→rate_limited, 400→bad_request, 5xx→upstream, transport→network/timeout
+  run_notion.py            token resolve + dispatch + log + scope_required doc-delete
+  database_bootstrap.py    get_or_create_database(uid) — per-uid asyncio.Lock + idempotent search-by-title fallback. First call creates "Lifecoach Tasks" DB under the granted parent page with the property schema (Task title / Status select / Priority select / Project select / Due Date / Notes / Parent item self-relation). Persisted in notionConfig/{uid}.databaseId.
+  projections/             project_notion_task (page → flat dict), build_task_tree (group by Project, nest by Parent item; orphans go to "(no project)")
+  tools/_deps.py           NotionToolDeps(store, config_store, uid, log?)
+  tools/internal/          3 read tools available only to the sub-agent (list_tasks, get_task, search_tasks)
+  tools/                   4 narrow write FunctionTools (add_notion_task, update_notion_task, set_notion_task_parent, complete_notion_task)
+  agent_tools/             notion_review_tasks — AgentTool wrapping the sub-agent (emits <NOTION_REVIEW>{json}</NOTION_REVIEW>; parse helper validates against NotionTaskTree)
+```
+
+The main-facing surface is **five tools** registered when `ctx.notion_connected` AND the env shipped Notion creds:
+
+- **`notion_review_tasks(filter?)`** — AgentTool. Multi-step read; the sub-agent uses the three internal reads to assemble a project-bucketed tree.
+- **`add_notion_task` / `update_notion_task` / `set_notion_task_parent` / `complete_notion_task`** — narrow FunctionTools (single API call each). `update_notion_task` refuses `status="Done"` — only `complete_notion_task` writes Done, and the cheatsheet rule is "user MUST have confirmed THIS turn".
+
+Plus two **UI-directive tools** that are always registered for any signed-in (email-verified+) user, regardless of integration state:
+
+- **`connect_notion`** — pure UI directive. Returns `{status:"oauth_prompted", provider:"notion"}` which the SSE pipeline surfaces as a single-tile capability picker (Notion tile, status=available, cta=connect_notion).
+- **`show_capabilities`** — pure UI directive. Closure captures `workspace_connected` + `notion_connected` and emits three `CapabilityTilePayload` tiles (Workspace, Notion, Career coaching — last one always `coming_soon`). The proactive trigger is at `server.py`: on the first signed-in `/chat` turn where the user has no integrations connected, a one-shot `CAPABILITIES_PICKER_HINT` is injected into the prompt nudging the LLM to call `show_capabilities()` as its first action.
+
+OAuth: Notion is a public integration. Tokens issued via `POST https://api.notion.com/v1/oauth/token` (HTTP Basic auth on `client_id:client_secret`, not body params). The agent owns the exchange entirely — the browser pops up Notion's authorize URL, the callback page postMessages the code back to the opener, which POSTs it to `/api/notion/oauth-exchange` → agent's `POST /notion/oauth-exchange`. The LLM never sees codes, tokens, or refreshes. **No programmatic revoke** — DELETE only drops our Firestore docs; the user must remove the integration at notion.so/my-integrations to fully sever access. Surface that in the post-revoke note.
 
 ### 7.8 Practices (`practices/`)
 
@@ -504,7 +548,7 @@ Notable client files:
 
 | File | Purpose |
 |---|---|
-| `components/ChatWindow.tsx` | The whole chat UI. Manages auth via `UserStateMachine.fromFirebaseUser`, drives location prompts, owns drawer/profile, renders all assistant element kinds (`text`, `choice`, `auth`, `workspace`, `upgrade`, `tool-call`). Exposes `[data-testid="chat-window-state"]` with `data-uid` / `data-session-id` / `data-busy` for e2e seams. |
+| `components/ChatWindow.tsx` | The whole chat UI. Manages auth via `UserStateMachine.fromFirebaseUser`, drives location prompts, owns drawer/profile, renders all assistant element kinds (`text`, `choice`, `auth`, `workspace`, `upgrade`, `capabilities`, `tool-call`). Threads `onConnectCapability(cta)` into `<ChatStream>` to dispatch the picker's tile-CTAs to `handleConnectWorkspace` / `handleConnectNotion`. Exposes `[data-testid="chat-window-state"]` with `data-uid` / `data-session-id` / `data-busy` for e2e seams. |
 | `lib/firebase.ts` | Anonymous sign-in on first load, `linkWithGoogle`, `sendSignInLinkToEmail`, `completeEmailSignInLink`. Exposes `window.__lifecoachE2E` test hook in dev/preview. |
 | `lib/geolocation.ts` | `navigator.geolocation.getCurrentPosition` only; caches permission state via `navigator.permissions.query`. **No IP fall-back, ever.** |
 | `lib/sse.ts` | Two parsers: `parseSseAssistant` (whole-blob) and `parseSseBlock` (delta-reducer). Both produce `AssistantElement[]`. Filters text events to `author === "lifecoach"` AND `partial === true` to avoid double-rendering Gemini's trailing aggregate event. |
@@ -553,6 +597,8 @@ event: done\ndata: {}\n\n                          # successful end
   - `reason ∈ {"free_limit", "free_signed_in_limit"}`
   - `cta ∈ {"auth_user", "upgrade_to_pro"}`
 
+**Capability picker element.** `show_capabilities`'s `functionResponse` (`{status:"shown", capabilities: CapabilityTilePayload[]}`) is parsed into an `AssistantElement` of kind `capabilities` carrying the 3 tiles (Workspace / Notion / Career coaching). `chat-stream` renders `<CapabilityPicker>` with the tiles in order; clicking a tile's Connect CTA invokes `onConnectCapability(cta)`. The bare `connect_notion` directive (single-tile picker) parses to the SAME element kind with just one tile — keeps the FE union narrow.
+
 Failure modes the FE must handle:
 
 - `event: error\ndata: {"message": "..."}\n\n` — server-side exception during the stream (rare; auth errors return 401 before streaming starts).
@@ -567,6 +613,8 @@ The FE filters text events to `event.author === "lifecoach"` AND `event.partial 
 apps/{app_name}/users/{uid}/sessions/{sessionId}     // ADK session — see §7.6
 userMeta/{uid}                                       // chat counter + tier
 workspaceTokens/{uid}                                // OAuth tokens (server-side only)
+notionTokens/{uid}                                   // Notion OAuth tokens (server-side only)
+notionConfig/{uid}                                   // Notion DB id + granted parent pages
 ```
 
 Session ID convention: `{uid}-{YYYY-MM-DD}` (per-uid per-day). New day = new session.
@@ -602,6 +650,7 @@ infra/
     ├── firestore             Firestore database
     ├── gcs-user-bucket       per-user data bucket
     ├── gws-oauth-secret      Workspace client secret in Secret Manager
+    ├── notion-oauth-secret   Notion client secret in Secret Manager (gated on var.notion_client_secret)
     └── github-wif            Workload Identity Federation for GitHub Actions
 ```
 
@@ -740,6 +789,7 @@ These are not opinions. CI fails on each one.
 6. **The LLM never sees auth or billing state.** OAuth tokens, refresh tokens, customer IDs — none of it is in the prompt or tool args. The agent emits UI-directive tools (`auth_user`, `connect_workspace`, `upgrade_to_pro`); the application owns the auth/billing plane.
 7. **The SSE wire format is camelCase.** ADK Event serialisation uses `model_dump(mode="json", by_alias=True, exclude_none=True)`. The agent's name is `"lifecoach"` so `event.author` matches the FE's text-event filter.
 8. **Free-tier cost is bounded.** Anonymous users hit a hard wall at 25 turns; signed-in free users at 100. When `usage_policy.walled` is true the `/chat` handler emits `event: wall` and short-circuits before any model call. No prompt tuning can re-open this path. See [§4](#4-state-machines) walled states.
+9. **Third-party integration connectedness is an orthogonal capability flag, not a `UserState` literal.** `workspace_connected` and `notion_connected` live on `InstructionContext` as `bool` capability flags computed server-side from the token doc per request. A user can be in any `UserState` AND have any combination of integrations connected — the prompt grows BOTH cheatsheets when both are set. Do not encode integration-presence as a new state in `UserStateMachine`. See [§7.7a](#77a-notion-sub-agent-notion_agent).
 
 ---
 
