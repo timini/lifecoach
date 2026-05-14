@@ -61,6 +61,9 @@ module "agent" {
       SENTRY_ENVIRONMENT  = "preview-pr-${var.pr_number}"
     },
     var.sentry_dsn != "" ? { SENTRY_DSN = var.sentry_dsn } : {},
+    var.notion_oauth_client_id != "" ? {
+      NOTION_OAUTH_CLIENT_ID = var.notion_oauth_client_id
+    } : {},
   )
 
   secret_env = merge(
@@ -79,6 +82,17 @@ module "agent" {
         version   = "latest"
       }
     },
+    # Notion OAuth secret — shared from dev's Secret Manager. The
+    # preview agent SA needs Secret Accessor on it; the grant is done
+    # globally in infra/envs/dev/main.tf's notion_oauth_secret module
+    # (extend accessor_members there to include the preview SA when the
+    # preview env is configured for Notion).
+    var.notion_oauth_client_id != "" ? {
+      NOTION_OAUTH_CLIENT_SECRET = {
+        secret_id = "NOTION_OAUTH_CLIENT_SECRET"
+        version   = "latest"
+      }
+    } : {},
   )
 
   allow_unauthenticated = true

@@ -9,3 +9,10 @@ environment     = "dev"
 
 # Optional Sentry DSN. Empty disables telemetry (SDKs no-op).
 # sentry_dsn = "https://<key>@<org>.ingest.sentry.io/<project>"
+
+# Optional Notion OAuth (public integration at notion.so/my-integrations).
+# Leave both empty to disable the Notion sub-agent in this env. Client ID
+# is public (baked into the web bundle as NEXT_PUBLIC_NOTION_OAUTH_CLIENT_ID);
+# secret is stored in Secret Manager.
+# notion_client_id     = "<your-public-client-id>"
+# notion_client_secret = "<your-client-secret>"
