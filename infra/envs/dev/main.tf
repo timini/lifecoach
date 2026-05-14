@@ -312,6 +312,30 @@ module "web" {
   depends_on = [module.agent]
 }
 
+# --- Cloud Logging ERROR forwarding to Sentry -----------------------------
+# SDKs remain the primary Sentry capture path, but Cloud Logging sees failure
+# modes that SDKs can miss: stderr tracebacks that never raise, OOM/SIGKILL
+# exits before flush, and Google-managed infra-side errors. This optional
+# bridge forwards Cloud Run ERROR+ log entries for the canonical web/agent
+# services into Sentry with a Cloud Logging error-group fingerprint.
+
+module "cloud_logs_to_sentry" {
+  count = var.sentry_dsn != "" ? 1 : 0
+
+  source      = "../../modules/cloud-logs-to-sentry"
+  project_id  = var.project_id
+  region      = var.region
+  environment = var.environment
+  sentry_dsn  = var.sentry_dsn
+
+  service_names = [
+    module.web.service_name,
+    module.agent.service_name,
+  ]
+
+  depends_on = [module.apis, module.web, module.agent]
+}
+
 # --- Apex (tranquil.coach) HTTPS LB → main web Cloud Run service ---------
 #
 # Production routing for https://tranquil.coach. Same architecture as the

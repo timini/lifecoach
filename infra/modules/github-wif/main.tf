@@ -106,8 +106,16 @@ locals {
     "roles/serviceusage.serviceUsageAdmin",
     # Terraform manages google_service_account resources for runtime SAs.
     "roles/iam.serviceAccountAdmin",
-    # Terraform manages the user data bucket + its IAM.
+    # Terraform attaches managed service accounts to Cloud Run revisions and
+    # the Cloud Logs -> Sentry Cloud Function.
+    "roles/iam.serviceAccountUser",
+    # Terraform manages the user data bucket, Cloud Function source bucket, and IAM.
     "roles/storage.admin",
+    # Terraform manages the Cloud Logging sink -> Pub/Sub -> Cloud Function
+    # bridge that forwards Cloud Run ERROR logs to Sentry.
+    "roles/logging.configWriter",
+    "roles/pubsub.admin",
+    "roles/cloudfunctions.admin",
     # Terraform refreshes (and could update) the WIF pool + provider it
     # runs through. Without read perms on the pool, plan fails on a 403.
     "roles/iam.workloadIdentityPoolAdmin",
