@@ -1025,17 +1025,41 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                 async def _drive_then_signal(msg: Any) -> bool:
                     try:
                         return await _drive(msg)
+                    except ValueError as err:
+                        if not _is_otel_context_token_mismatch(err):
+                            raise
+                        logger.warning(
+                            "chat.stream_suppressed_otel_context_mismatch uid=%s sessionId=%s",
+                            effective_user_id,
+                            session_id,
+                        )
+                        return False
                     finally:
                         # Sentinel so the consumer wakes up and moves on.
                         await _outer_queue.put(None)
 
                 drive_task = asyncio.create_task(_drive_then_signal(new_message))
-                while True:
-                    chunk = await _outer_queue.get()
-                    if chunk is None:
-                        break
-                    yield chunk
-                _first_pass_choice = await drive_task  # noqa: F841 — kept for symmetry/log
+                try:
+                    while True:
+                        chunk = await _outer_queue.get()
+                        if chunk is None:
+                            break
+                        yield chunk
+                    _first_pass_choice = await drive_task  # noqa: F841 — kept for symmetry/log
+                finally:
+                    if not drive_task.done():
+                        drive_task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        try:
+                            await drive_task
+                        except ValueError as err:
+                            if not _is_otel_context_token_mismatch(err):
+                                raise
+                            logger.warning(
+                                "chat.stream_suppressed_otel_context_mismatch uid=%s sessionId=%s",
+                                effective_user_id,
+                                session_id,
+                            )
                 timings["streamMs"] = _now_ms() - t_stream0
                 timings["ttfbMs"] = first_event_ms if first_event_ms is not None else -1
                 timings["ttftMs"] = first_text_ms if first_text_ms is not None else -1
@@ -1124,6 +1148,20 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
 
 
 # --- Event shape helpers --------------------------------------------------
+
+
+def _is_otel_context_token_mismatch(err: BaseException) -> bool:
+    """Return True for ADK/OpenTelemetry contextvars detach noise.
+
+    OpenTelemetry binds ContextVar tokens to the task/context that created
+    them. During SSE cancellation the ADK tracing stack can close a span in a
+    different asyncio context, raising this ValueError after the user-visible
+    response has already completed.
+    """
+    msg = str(err)
+    return (
+        isinstance(err, ValueError) and "Token" in msg and "created in a different Context" in msg
+    )
 
 
 def _event_to_dict(event: Any) -> Any:

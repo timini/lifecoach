@@ -8,6 +8,7 @@ via `httpx.ASGITransport` so we don't need a running uvicorn.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -459,6 +460,22 @@ async def test_chat_streams_model_text_and_terminates_with_done() -> None:
     assert "event: done" in text
 
 
+class OTelContextMismatchRunner(FakeRunner):
+    """Raises the ADK/OpenTelemetry context-detach ValueError seen in prod."""
+
+    def run_async(self, **_kwargs: Any) -> AsyncIterator[dict[str, Any]]:
+        self.calls_made += 1
+
+        async def gen() -> AsyncIterator[dict[str, Any]]:
+            raise ValueError(
+                "<Token var=<ContextVar name='current_context' default={} at 0x1> "
+                "at 0x2> was created in a different Context"
+            )
+            yield {}
+
+        return gen()
+
+
 @pytest.mark.asyncio
 async def test_chat_400_when_required_fields_missing() -> None:
     app = _make_app()
@@ -485,6 +502,34 @@ async def test_chat_streams_text_when_model_responds() -> None:
         text = await _drain(res)
     assert "hi back" in text
     assert "event: done" in text
+
+
+@pytest.mark.asyncio
+async def test_chat_suppresses_otel_context_token_mismatch(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """ADK tracing can raise a post-yield OpenTelemetry ContextVar detach
+    ValueError when SSE cancellation/finalisation crosses asyncio tasks. The
+    server should suppress that noisy stderr failure and end the SSE stream
+    normally rather than emitting an error event."""
+    runner = OTelContextMismatchRunner(events_per_call=[[]])
+    app = _make_app(runner=runner)
+
+    with caplog.at_level(logging.WARNING, logger="lifecoach_agent.server"):
+        async with (
+            _client(app) as c,
+            c.stream(
+                "POST",
+                "/chat",
+                json={"userId": "u1", "sessionId": "s1", "message": "hi"},
+            ) as res,
+        ):
+            text = await _drain(res)
+
+    assert "event: error" not in text
+    assert "event: done" in text
+    assert runner.calls_made == 1
+    assert "chat.stream_suppressed_otel_context_mismatch" in caplog.text
 
 
 @pytest.mark.asyncio
