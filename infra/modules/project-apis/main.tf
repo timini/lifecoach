@@ -69,6 +69,13 @@ locals {
     "logging.googleapis.com",
     "monitoring.googleapis.com",
     "cloudtrace.googleapis.com",
+
+    # Cloud Logging -> Pub/Sub -> Cloud Functions Sentry forwarder
+    # (infra/modules/cloud-logs-to-sentry). pubsub.googleapis.com powers
+    # the topic + push subscription; cloudfunctions.googleapis.com is
+    # required for the 2nd-gen HTTP function the subscription invokes.
+    "pubsub.googleapis.com",
+    "cloudfunctions.googleapis.com",
   ]
 }
 

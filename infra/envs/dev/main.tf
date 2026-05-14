@@ -481,6 +481,37 @@ module "github_wif" {
   depends_on = [module.apis, module.agent, module.web]
 }
 
+# --- Cloud Logging ERROR forwarding to Sentry -----------------------------
+# Complements the in-app Sentry SDKs by catching stderr-only library
+# tracebacks, container OOM/SIGKILL exits before SDK flush, and
+# Google-managed infra-side Cloud Run errors that only appear in Cloud
+# Logging. Disabled automatically (count = 0) when Sentry is not
+# configured for this environment.
+#
+# Explicit depends_on module.github_wif: the same apply that introduces
+# this module also adds roles/logging.configWriter, roles/pubsub.admin,
+# and roles/cloudfunctions.admin to the deployer SA. Without the
+# explicit edge, Terraform may attempt to plan/create the sink, topic,
+# subscription, and function in parallel with the IAM self-grants, and
+# the first apply 403s before the permissions exist. The github-wif
+# module owns those grants; this dependency makes the ordering explicit.
+
+module "cloud_logs_to_sentry" {
+  count  = var.sentry_dsn != "" ? 1 : 0
+  source = "../../modules/cloud-logs-to-sentry"
+
+  project_id  = var.project_id
+  region      = var.region
+  environment = var.environment
+  sentry_dsn  = var.sentry_dsn
+  service_names = [
+    module.web.service_name,
+    module.agent.service_name,
+  ]
+
+  depends_on = [module.apis, module.web, module.agent, module.github_wif]
+}
+
 # --- Outputs ---------------------------------------------------------------
 
 output "project_id" {

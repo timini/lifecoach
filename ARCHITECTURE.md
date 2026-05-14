@@ -602,8 +602,11 @@ infra/
     ├── firestore             Firestore database
     ├── gcs-user-bucket       per-user data bucket
     ├── gws-oauth-secret      Workspace client secret in Secret Manager
-    └── github-wif            Workload Identity Federation for GitHub Actions
+    ├── github-wif            Workload Identity Federation for GitHub Actions
+    └── cloud-logs-to-sentry  Cloud Run ERROR logs → Pub/Sub → Cloud Function → Sentry Store API
 ```
+
+The **cloud-logs-to-sentry** module forwards Cloud Run ERROR-or-higher log entries from `lifecoach-web` / `lifecoach-agent` to Sentry. It exists alongside the in-process Sentry SDKs to catch failures the SDKs cannot see: stderr-only library tracebacks that never raise, OOM/SIGKILL container exits before SDK flush, and Google-managed infra-side errors. Wiring: Logging project sink → Pub/Sub topic → authenticated push subscription → HTTP Cloud Function (2nd gen) → Sentry Store API. Disabled at the caller (`count = 0`) when `var.sentry_dsn` is empty. Wired in `infra/envs/dev/main.tf` with `depends_on = [module.github_wif]` so the deployer SA's Pub/Sub / Logging / Cloud Functions roles exist before the sink + function are created on the first apply.
 
 **Hard rule (invariant 5):** every infra change is Terraform. No `gcloud services enable`, no console clicks, no `terraform import` to retrofit manual changes. The single exception is `infra/bootstrap/bootstrap.sh` which Terraform itself can't run.
 
