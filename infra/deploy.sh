@@ -75,6 +75,21 @@ tfvar() {
   printf '%s' "${line}" | sed -E 's/.*=[[:space:]]*"([^"]*)".*/\1/'
 }
 
+server_actions_encryption_key() {
+  # Next.js hashes Server Action identifiers using this build-time key.
+  # Use the existing stable web<->agent bearer secret as seed material, then
+  # derive a valid AES-256 raw key encoded as base64 (what Next expects).
+  local bearer
+  bearer="$(gcloud secrets versions access latest \
+    --project="${PROJECT_ID}" \
+    --secret="AGENT_INTERNAL_BEARER" 2>/dev/null || true)"
+  if [[ -z "${bearer}" ]]; then
+    echo "AGENT_INTERNAL_BEARER secret is required before building web (run terraform apply/bootstrap first)." >&2
+    exit 1
+  fi
+  printf '%s' "${bearer}" | openssl dgst -sha256 -binary | openssl base64 -A
+}
+
 firebase_build_args() {
   cd "${ENV_DIR}"
   local api_key auth_domain fb_project_id app_id gws_client_id
@@ -89,10 +104,11 @@ firebase_build_args() {
   # Sentry — resolved from tfvars rather than terraform output so the
   # value is correct on the first deploy after introducing the variable.
   # Empty DSN = SDK no-ops; that's intentional, not a silent failure.
-  local ga_measurement_id sentry_dsn environment
+  local ga_measurement_id sentry_dsn environment actions_key
   ga_measurement_id="$(tfvar google_analytics_measurement_id)"
   sentry_dsn="$(tfvar sentry_dsn)"
   environment="$(tfvar environment)"
+  actions_key="$(server_actions_encryption_key)"
   printf -- "--build-arg NEXT_PUBLIC_FIREBASE_API_KEY=%s " "${api_key}"
   printf -- "--build-arg NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=%s " "${auth_domain}"
   printf -- "--build-arg NEXT_PUBLIC_FIREBASE_PROJECT_ID=%s " "${fb_project_id}"
@@ -101,6 +117,7 @@ firebase_build_args() {
   printf -- "--build-arg NEXT_PUBLIC_GA_MEASUREMENT_ID=%s " "${ga_measurement_id}"
   printf -- "--build-arg NEXT_PUBLIC_SENTRY_DSN=%s " "${sentry_dsn}"
   printf -- "--build-arg NEXT_PUBLIC_SENTRY_ENVIRONMENT=%s " "${environment}"
+  printf -- "--build-arg NEXT_SERVER_ACTIONS_ENCRYPTION_KEY=%s " "${actions_key}"
 }
 
 docker_auth() {

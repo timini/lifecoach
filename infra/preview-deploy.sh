@@ -73,8 +73,25 @@ dev_tfvar() {
   [[ -z "${line}" ]] && return 0
   printf '%s' "${line}" | sed -E 's/.*=[[:space:]]*"([^"]*)".*/\1/'
 }
+
+server_actions_encryption_key() {
+  # Match dev deploys: derive the stable Next.js Server Actions AES key from
+  # the existing shared Secret Manager bearer so cached clients survive
+  # preview redeploys too.
+  local bearer
+  bearer="$(gcloud secrets versions access latest \
+    --project="${PROJECT_ID}" \
+    --secret="AGENT_INTERNAL_BEARER" 2>/dev/null || true)"
+  if [[ -z "${bearer}" ]]; then
+    echo "AGENT_INTERNAL_BEARER secret is required before building preview web." >&2
+    exit 1
+  fi
+  printf '%s' "${bearer}" | openssl dgst -sha256 -binary | openssl base64 -A
+}
+
 GA_MEASUREMENT_ID="$(dev_tfvar google_analytics_measurement_id)"
 SENTRY_DSN_VALUE="$(dev_tfvar sentry_dsn)"
+SERVER_ACTIONS_ENCRYPTION_KEY="$(server_actions_encryption_key)"
 
 # Custom-domain wiring — output may not exist yet on first deploy after
 # this feature lands (dev apply hasn't run with the domain module). The
@@ -111,6 +128,7 @@ build_and_push() {
       --build-arg "NEXT_PUBLIC_GA_MEASUREMENT_ID=${GA_MEASUREMENT_ID}"
       --build-arg "NEXT_PUBLIC_SENTRY_DSN=${SENTRY_DSN_VALUE}"
       --build-arg "NEXT_PUBLIC_SENTRY_ENVIRONMENT=preview-pr-${PR_NUMBER}"
+      --build-arg "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY=${SERVER_ACTIONS_ENCRYPTION_KEY}"
     )
   fi
   docker build \
