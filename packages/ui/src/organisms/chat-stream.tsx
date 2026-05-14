@@ -31,6 +31,8 @@ export type ChatStreamElement =
        * events won't have them. */
       args?: unknown;
       response?: unknown;
+      /** Parent tool-call id for visually nested sub-agent tool calls. */
+      parentId?: string;
     };
 
 export interface ChatStreamUserMessage {
@@ -239,6 +241,7 @@ function AssistantGroup({
               ok={el.ok}
               args={el.args}
               response={el.response}
+              className={el.parentId ? 'ml-6 border-border/70 bg-muted/30' : undefined}
             />
           );
         }

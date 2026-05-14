@@ -90,6 +90,10 @@ from lifecoach_agent.storage.profile_history import ProfileHistoryStore
 from lifecoach_agent.storage.user_meta import UserMetaStore
 from lifecoach_agent.storage.user_profile import UserProfileStore
 from lifecoach_agent.storage.workspace_tokens import WorkspaceTokensStore
+from lifecoach_agent.workspace_agent.bridged_agent_tool import (
+    reset_bridge_event_sink,
+    set_bridge_event_sink,
+)
 
 logger = logging.getLogger("lifecoach_agent.server")
 
@@ -955,6 +959,22 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                 t_stream0 = _now_ms()
                 first_event_ms: int | None = None
 
+                async def _emit_event(event: Any) -> None:
+                    event_dict = _event_to_dict(event)
+                    # Bridged workspace sub-agent functionCall events are persisted as
+                    # complete events for history, but the streaming parser deliberately
+                    # renders badges only for partial=true call deltas. Flip only the
+                    # live copy so history keeps normal non-partial events.
+                    custom_metadata = event_dict.get("customMetadata")
+                    if (
+                        isinstance(custom_metadata, dict)
+                        and custom_metadata.get("parentToolCallId")
+                        and _function_calls(event_dict)
+                    ):
+                        event_dict = {**event_dict, "partial": True}
+                    yield_payload = f"data: {json.dumps(event_dict, default=str)}\n\n"
+                    await _outer_queue.put(yield_payload.encode("utf-8"))
+
                 async def _drive(msg: Any) -> bool:
                     """Run the model once with `msg`; yield events into the
                     SSE stream. Returns True if a turn-ending choice
@@ -1005,14 +1025,11 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                                 "upgrade_prompted",
                             ):
                                 choice_shown = True
-                        yield_payload = (
-                            f"data: {json.dumps(_event_to_dict(event), default=str)}\n\n"
-                        )
                         # We can't yield from a nested async function in
                         # Python the way TS yields — buffer through a
                         # queue. Instead, we collect events into a queue
                         # in the outer scope.
-                        await _outer_queue.put(yield_payload.encode("utf-8"))
+                        await _emit_event(event)
                         if choice_shown:
                             return True
                     return False
@@ -1029,13 +1046,17 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                         # Sentinel so the consumer wakes up and moves on.
                         await _outer_queue.put(None)
 
-                drive_task = asyncio.create_task(_drive_then_signal(new_message))
-                while True:
-                    chunk = await _outer_queue.get()
-                    if chunk is None:
-                        break
-                    yield chunk
-                _first_pass_choice = await drive_task  # noqa: F841 — kept for symmetry/log
+                bridge_token = set_bridge_event_sink(_emit_event)
+                try:
+                    drive_task = asyncio.create_task(_drive_then_signal(new_message))
+                    while True:
+                        chunk = await _outer_queue.get()
+                        if chunk is None:
+                            break
+                        yield chunk
+                    _first_pass_choice = await drive_task  # noqa: F841 — kept for symmetry/log
+                finally:
+                    reset_bridge_event_sink(bridge_token)
                 timings["streamMs"] = _now_ms() - t_stream0
                 timings["ttfbMs"] = first_event_ms if first_event_ms is not None else -1
                 timings["ttftMs"] = first_text_ms if first_text_ms is not None else -1

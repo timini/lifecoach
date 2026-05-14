@@ -43,6 +43,8 @@ export type HistoryAssistantElement =
       args?: unknown;
       /** Original response from functionResponse — same surface as args. */
       response?: unknown;
+      /** Parent tool-call id for nested sub-agent tool calls. */
+      parentId?: string;
     };
 
 export interface HistoryAssistantMessage {
@@ -84,6 +86,7 @@ interface EventLike {
    */
   timestamp?: number;
   content?: { role?: string; parts?: PartLike[] };
+  customMetadata?: { parentToolCallId?: string };
 }
 
 /**
@@ -117,6 +120,11 @@ const REPLAYABLE_TOOLS = new Set<string>([
   'memory_save',
   'memory_search',
   'google_search',
+  'list_inbox',
+  'get_message',
+  'search_messages',
+  'list_events',
+  'list_tasks',
 ]);
 
 function isErrored(fr: FunctionResponseLike | undefined): boolean {
@@ -176,6 +184,7 @@ export function eventsToMessages(events: readonly EventLike[]): HistoryMessage[]
           ok: !isErrored(matched),
           args: fc.args,
           response: matched?.response,
+          parentId: parentToolCallId(event),
         });
       }
     }
@@ -200,6 +209,11 @@ export function eventsToMessages(events: readonly EventLike[]): HistoryMessage[]
   }
 
   return out;
+}
+
+function parentToolCallId(event: EventLike): string | undefined {
+  const id = event.customMetadata?.parentToolCallId;
+  return typeof id === 'string' && id.length > 0 ? id : undefined;
 }
 
 function randomId(): string {

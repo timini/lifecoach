@@ -522,6 +522,40 @@ describe('parseSseBlock — extra branches', () => {
     });
   });
 
+  it('preserves parentToolCallId for bridged workspace sub-agent tool calls', () => {
+    const ops = parseSseBlock(
+      blockFor({
+        author: 'lifecoach',
+        partial: true,
+        customMetadata: { parentToolCallId: 'outer-1' },
+        content: {
+          parts: [
+            {
+              functionCall: {
+                id: 'inner-1',
+                name: 'list_inbox',
+                args: { since: '1d' },
+              },
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(ops).toContainEqual(
+      expect.objectContaining({
+        op: 'push',
+        element: expect.objectContaining({
+          kind: 'tool-call',
+          id: 'inner-1',
+          name: 'list_inbox',
+          label: 'listing inbox messages',
+          parentId: 'outer-1',
+        }),
+      }),
+    );
+  });
+
   it('treats scope_required responses as ok (so the pill is not error-styled)', () => {
     const ops = parseSseBlock(
       blockFor({

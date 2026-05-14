@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from lifecoach_agent.contracts.models import TriageReport
 from lifecoach_agent.workspace_agent.agent import create_workspace_agent
+from lifecoach_agent.workspace_agent.bridged_agent_tool import BridgedAgentTool
 from lifecoach_agent.workspace_agent.tools._deps import WorkspaceToolDeps
 
 TRIAGE_INBOX_TOOL_NAME = "triage_inbox"
@@ -84,7 +85,7 @@ def create_triage_inbox_tool(deps: WorkspaceToolDeps) -> AgentTool:
         instruction=TRIAGE_INBOX_INSTRUCTION,
         input_schema=TriageInboxInput,
     )
-    return AgentTool(agent=agent, skip_summarization=False)
+    return BridgedAgentTool(agent=agent, skip_summarization=False)
 
 
 _MARKER_RE = re.compile(r"<TRIAGE_REPORT>([\s\S]*?)</TRIAGE_REPORT>")

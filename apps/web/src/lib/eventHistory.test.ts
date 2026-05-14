@@ -241,6 +241,61 @@ describe('eventsToMessages', () => {
     expect(msgs[0].elements[0]).toMatchObject({ kind: 'tool-call', ok: true });
   });
 
+  it('rehydrates bridged workspace sub-agent calls as nested replayable badges', () => {
+    const msgs = eventsToMessages([
+      {
+        id: 'outer-call',
+        author: 'lifecoach',
+        timestamp: 10,
+        content: {
+          role: 'model',
+          parts: [{ functionCall: { id: 'outer-1', name: 'triage_inbox', args: { since: '1d' } } }],
+        },
+      },
+      {
+        id: 'inner-call',
+        author: 'lifecoach',
+        timestamp: 11,
+        customMetadata: { parentToolCallId: 'outer-1' },
+        content: {
+          role: 'model',
+          parts: [{ functionCall: { id: 'inner-1', name: 'list_inbox', args: { since: '1d' } } }],
+        },
+      },
+      {
+        id: 'inner-response',
+        author: 'lifecoach',
+        timestamp: 12,
+        customMetadata: { parentToolCallId: 'outer-1' },
+        content: {
+          role: 'model',
+          parts: [
+            {
+              functionResponse: {
+                id: 'inner-1',
+                name: 'list_inbox',
+                response: { status: 'ok', messages: [] },
+              },
+            },
+          ],
+        },
+      },
+    ]);
+
+    expect(msgs).toHaveLength(2);
+    const nested = msgs[1];
+    if (!nested || nested.role !== 'assistant') throw new Error();
+    expect(nested.elements[0]).toMatchObject({
+      kind: 'tool-call',
+      id: 'inner-1',
+      name: 'list_inbox',
+      label: 'listing inbox messages',
+      parentId: 'outer-1',
+      ok: true,
+      response: { status: 'ok', messages: [] },
+    });
+  });
+
   it('drops UI-directive tool calls (their widgets were already user-visible live)', () => {
     const msgs = eventsToMessages([
       {

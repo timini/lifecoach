@@ -52,6 +52,8 @@ export type AssistantElement =
        * `update_user_profile` this carries `previous_value`, `new_value`
        * and `modified_at`, which is the user-visible diff. */
       response?: unknown;
+      /** Parent tool-call id for nested sub-agent tool calls. */
+      parentId?: string;
     };
 
 export function parseSseAssistant(raw: string): AssistantElement[] {
@@ -260,6 +262,7 @@ export function parseSseBlock(block: string): AssistantOp[] {
           label: labelForToolCall(fc.name, fc.args),
           done: false,
           args: fc.args,
+          parentId: parentToolCallId(parsed),
         },
       });
     }
@@ -398,6 +401,20 @@ export function labelForToolCall(name: string, args: unknown): string {
       return 'recalling';
     case 'google_search':
       return 'searching the web';
+    case 'list_inbox':
+      return 'listing inbox messages';
+    case 'get_message': {
+      const id = typeof a.id === 'string' ? a.id : '';
+      return id ? `reading message: ${id.slice(0, 24)}` : 'reading a message';
+    }
+    case 'search_messages': {
+      const query = typeof a.query === 'string' ? a.query : '';
+      return query ? `searching mail: ${query.slice(0, 60)}` : 'searching mail';
+    }
+    case 'list_events':
+      return 'listing calendar events';
+    case 'list_tasks':
+      return 'listing tasks';
     default:
       return `using ${name}`;
   }
@@ -405,6 +422,7 @@ export function labelForToolCall(name: string, args: unknown): string {
 
 interface AgentEvent {
   author?: string;
+  customMetadata?: { parentToolCallId?: string };
   content?: { parts?: Array<AgentPart> };
   /**
    * ADK streaming flag. `true` on partial delta events; `false` on the
@@ -443,4 +461,9 @@ function isWallPayload(v: unknown): v is WallPayload {
     (o.reason === 'free_limit' || o.reason === 'free_signed_in_limit') &&
     (o.cta === 'auth_user' || o.cta === 'upgrade_to_pro')
   );
+}
+
+function parentToolCallId(event: AgentEvent): string | undefined {
+  const id = event.customMetadata?.parentToolCallId;
+  return typeof id === 'string' && id.length > 0 ? id : undefined;
 }
