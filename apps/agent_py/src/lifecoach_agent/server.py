@@ -643,17 +643,34 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                 return []
 
         t_meta0 = _now_ms()
+        # Walls + nudges are scoped to the user's local DAY (issue #64
+        # follow-up). We pass the local-date key into the store so the
+        # increment rolls the daily counter at the user's midnight, not
+        # ours. `chatTurnCount` keeps climbing for observability —
+        # `dailyTurnCount` is what the funnel actually counts.
+        today_local = (
+            _local_day_key(timezone, deps.now()) if isinstance(timezone, str) and timezone else None
+        )
         if deps.user_meta_store is None:
             # No store wired (tests / local dev only). Treat as a fresh user;
             # safe because the production path always has a store and free-tier
             # limits are enforced from the machine's reading of the real count.
-            meta: dict[str, Any] = {"chatTurnCount": 0, "tier": "free"}
+            meta: dict[str, Any] = {
+                "chatTurnCount": 0,
+                "dailyTurnCount": 0,
+                "tier": "free",
+            }
         else:
             try:
                 meta_doc = await deps.user_meta_store.increment_turn_count(
                     effective_user_id,
+                    today_local_date=today_local,
                 )
-                meta = {"chatTurnCount": meta_doc.chatTurnCount, "tier": meta_doc.tier}
+                meta = {
+                    "chatTurnCount": meta_doc.chatTurnCount,
+                    "dailyTurnCount": meta_doc.dailyTurnCount,
+                    "tier": meta_doc.tier,
+                }
             except Exception as err:  # noqa: BLE001
                 # FAIL CLOSED: if the userMeta read/increment fails (Firestore
                 # outage, permission regression, transient storage failure),
@@ -680,6 +697,12 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
         timings["metaMs"] = _now_ms() - t_meta0
 
         chat_turn_count = int(meta.get("chatTurnCount", 0))
+        # `chat_count` for the UsageStateMachine is the per-day count, not
+        # the lifetime count. The state machine's thresholds (5 / 10 / 15 /
+        # 25 / 20 / 50 / 100) read as "today's chats" — a casual user who
+        # accumulated 100 lifetime turns over weeks doesn't get walled on
+        # their next quick check-in.
+        daily_turn_count = int(meta.get("dailyTurnCount", 0))
         tier: Tier = _coerce_tier(meta.get("tier"))
         # The UsageStateMachine + walled short-circuit moved BELOW the
         # parallel context fetch (see ~line 800) so the per-turn metering
@@ -789,7 +812,7 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
         usage_machine = UsageStateMachine.from_inputs(
             UsageInputs(
                 user_state=machine.current(),
-                chat_count=chat_turn_count,
+                chat_count=daily_turn_count,
                 tier=tier,
             )
         )
@@ -809,6 +832,7 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                         "state": machine.current(),
                         "authenticated": claims is not None,
                         "chatTurnCount": chat_turn_count,
+                        "dailyTurnCount": daily_turn_count,
                         "tier": tier,
                         "usageState": usage_policy.state,
                         "model": None,
@@ -853,7 +877,11 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
             ),
             nudge_mode=usage_policy.nudge_mode,
             usage_state=usage_policy.state,
-            chat_turn_count=chat_turn_count,
+            # Daily, not lifetime. The "today's free turn N of M" credit-
+            # count line that ships in the prompt has to match the count
+            # the wall uses, otherwise the model would say "turn 7 of 25"
+            # while the wall fires at lifetime-25 — confusing and wrong.
+            chat_turn_count=daily_turn_count,
             has_interacted_today=has_interacted_today,
             yesterday_summary=yesterday_summary,
             week_summary=week_summary,
@@ -1069,6 +1097,7 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                             "toolCount": len(tool_invocations),
                             "tools": tool_invocations,
                             "chatTurnCount": chat_turn_count,
+                            "dailyTurnCount": daily_turn_count,
                             "tier": tier,
                             "usageState": usage_policy.state,
                             "model": usage_policy.model,

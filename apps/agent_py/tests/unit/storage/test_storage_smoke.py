@@ -92,6 +92,43 @@ async def test_user_meta_creates_then_increments() -> None:
 
 
 @pytest.mark.asyncio
+async def test_user_meta_daily_count_resets_on_new_day() -> None:
+    fs = FakeFirestore()
+    store = create_user_meta_store(firestore=fs, now_ms=lambda: 1746522000000)
+    a = await store.increment_turn_count("u1", today_local_date="2026-05-13")
+    b = await store.increment_turn_count("u1", today_local_date="2026-05-13")
+    assert (a.dailyTurnCount, b.dailyTurnCount) == (1, 2)
+    # New local day → daily resets to 1, lifetime keeps climbing.
+    c = await store.increment_turn_count("u1", today_local_date="2026-05-14")
+    assert c.dailyTurnCount == 1
+    assert c.chatTurnCount == 3
+    assert c.dailyTurnCountDate == "2026-05-14"
+
+
+@pytest.mark.asyncio
+async def test_user_meta_daily_count_resists_timezone_toggle_bypass() -> None:
+    """A caller alternating timezones (e.g. LA vs Kiritimati) must not be
+    able to reset the daily counter by flipping the local date backward.
+    The increment is monotonic-forward only — a backward-going date keeps
+    the stored later date and still increments the count."""
+    fs = FakeFirestore()
+    store = create_user_meta_store(firestore=fs, now_ms=lambda: 1746522000000)
+    # Establish baseline on the later date.
+    a = await store.increment_turn_count("u1", today_local_date="2026-05-14")
+    assert (a.dailyTurnCount, a.dailyTurnCountDate) == (1, "2026-05-14")
+    # Attacker now flips to an earlier timezone whose local date is still
+    # 2026-05-13. Counter must go up (not reset), and stored date must
+    # stay on the later day so the wall keeps holding.
+    b = await store.increment_turn_count("u1", today_local_date="2026-05-13")
+    assert b.dailyTurnCount == 2
+    assert b.dailyTurnCountDate == "2026-05-14"
+    # Flipping back to the later date still just increments.
+    c = await store.increment_turn_count("u1", today_local_date="2026-05-14")
+    assert c.dailyTurnCount == 3
+    assert c.dailyTurnCountDate == "2026-05-14"
+
+
+@pytest.mark.asyncio
 async def test_user_meta_set_tier_creates_or_updates() -> None:
     fs = FakeFirestore()
     store = create_user_meta_store(firestore=fs, now_ms=lambda: 1746522000000)
