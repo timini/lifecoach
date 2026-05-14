@@ -12,12 +12,28 @@
  * a thin wrapper so older callers / tests don't break.
  */
 
+export interface CapabilityTilePayload {
+  id: 'workspace' | 'notion' | 'career_coaching';
+  title: string;
+  body: string;
+  iconKey: 'workspace' | 'notion' | 'career';
+  status: 'available' | 'connected' | 'coming_soon';
+  cta: 'connect_workspace' | 'connect_notion' | null;
+}
+
 export type AssistantElement =
   | { kind: 'text'; text: string }
   | { kind: 'choice'; single: boolean; question: string; options: string[] }
   | { kind: 'auth'; mode: 'google' | 'email'; email?: string }
   | { kind: 'workspace' }
   | { kind: 'upgrade' }
+  | {
+      /** Chat-rendered capability picker emitted by the
+       * `show_capabilities` UI directive. Three tiles in v1:
+       * Workspace, Notion, Career coaching (coming_soon). */
+      kind: 'capabilities';
+      tiles: CapabilityTilePayload[];
+    }
   | {
       /** Paywall card emitted by the server when the user has hit a hard
        * cost-ceiling state (`free_wall` / `signed_in_wall`). Surfaces as
@@ -165,6 +181,59 @@ export function parseSseAssistant(raw: string): AssistantElement[] {
           pendingText = '';
         }
         out.push({ kind: 'upgrade' });
+      }
+
+      // Notion connect prompt — UI directive. Same shape as
+      // connect_workspace; the popup flow is initiated by the
+      // <CapabilityTile> / ChatWindow handler.
+      if (resp?.status === 'oauth_prompted' && fr.name === 'connect_notion') {
+        if (pendingText.trim()) {
+          out.push({ kind: 'text', text: pendingText });
+          pendingText = '';
+        }
+        // The 'workspace' element kind doesn't apply — we don't ship a
+        // dedicated NotionPrompt molecule yet (out of scope for v1).
+        // The capability picker is the primary entry. If the LLM
+        // bypasses the picker and just emits connect_notion, render an
+        // ephemeral capability tile by surfacing the equivalent
+        // picker element with only the Notion tile set to 'available'.
+        out.push({
+          kind: 'capabilities',
+          tiles: [
+            {
+              id: 'notion',
+              title: 'Task tracking',
+              body: 'Connect Notion so I can keep your tasks tidy.',
+              iconKey: 'notion',
+              status: 'available',
+              cta: 'connect_notion',
+            },
+          ],
+        });
+      }
+
+      // show_capabilities — picker. The response carries a `capabilities`
+      // array matching CapabilityTilePayload[]. We pass it through
+      // verbatim; chat-stream renders the organism.
+      if (
+        resp?.status === 'shown' &&
+        fr.name === 'show_capabilities' &&
+        Array.isArray((resp as { capabilities?: unknown }).capabilities)
+      ) {
+        if (pendingText.trim()) {
+          out.push({ kind: 'text', text: pendingText });
+          pendingText = '';
+        }
+        const tiles = ((resp as { capabilities: unknown[] }).capabilities ?? []).filter(
+          (t): t is CapabilityTilePayload =>
+            typeof t === 'object' &&
+            t !== null &&
+            typeof (t as Record<string, unknown>).id === 'string' &&
+            typeof (t as Record<string, unknown>).title === 'string',
+        );
+        if (tiles.length > 0) {
+          out.push({ kind: 'capabilities', tiles });
+        }
       }
     }
   }
@@ -365,6 +434,45 @@ export function parseSseBlock(block: string): AssistantOp[] {
     // Pro upgrade prompt.
     if (resp?.status === 'upgrade_prompted' && fr.name === 'upgrade_to_pro') {
       out.push({ op: 'push', element: { kind: 'upgrade' } });
+    }
+
+    // Notion connect prompt — dedicated single-tile picker (no
+    // separate molecule yet).
+    if (resp?.status === 'oauth_prompted' && fr.name === 'connect_notion') {
+      out.push({
+        op: 'push',
+        element: {
+          kind: 'capabilities',
+          tiles: [
+            {
+              id: 'notion',
+              title: 'Task tracking',
+              body: 'Connect Notion so I can keep your tasks tidy.',
+              iconKey: 'notion',
+              status: 'available',
+              cta: 'connect_notion',
+            },
+          ],
+        },
+      });
+    }
+
+    // show_capabilities — picker. Pass tiles through verbatim.
+    if (
+      resp?.status === 'shown' &&
+      fr.name === 'show_capabilities' &&
+      Array.isArray((resp as { capabilities?: unknown }).capabilities)
+    ) {
+      const tiles = ((resp as { capabilities: unknown[] }).capabilities ?? []).filter(
+        (t): t is CapabilityTilePayload =>
+          typeof t === 'object' &&
+          t !== null &&
+          typeof (t as Record<string, unknown>).id === 'string' &&
+          typeof (t as Record<string, unknown>).title === 'string',
+      );
+      if (tiles.length > 0) {
+        out.push({ op: 'push', element: { kind: 'capabilities', tiles } });
+      }
     }
   }
 

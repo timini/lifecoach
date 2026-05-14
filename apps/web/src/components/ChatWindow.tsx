@@ -34,6 +34,7 @@ import {
   getLocationPermissionState,
   requestBrowserLocation,
 } from '../lib/geolocation';
+import { connectNotion } from '../lib/notion';
 import { captureChatEvent } from '../lib/sentry';
 import { sessionIdForToday } from '../lib/sessionId';
 import { type Message, useChatStream } from '../lib/useChatStream';
@@ -302,6 +303,30 @@ export function ChatWindow({ initialPrompt }: ChatWindowProps = {}) {
     }
   }
 
+  async function handleConnectNotion() {
+    if (!user) return;
+    trackChatAction('notion_connect_clicked');
+    try {
+      const status = await connectNotion(user);
+      trackChatAction('notion_connect_completed', { connected: status.connected });
+      void sendText("Connected to Notion — let's see what's on your plate.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      trackChatAction('notion_connect_failed');
+      appendAssistantText(`notion connect failed: ${msg}`);
+    }
+  }
+
+  function handleConnectCapability(cta: 'connect_workspace' | 'connect_notion') {
+    if (cta === 'connect_workspace') {
+      void handleConnectWorkspace();
+      return;
+    }
+    if (cta === 'connect_notion') {
+      void handleConnectNotion();
+    }
+  }
+
   function handleProInterest() {
     trackChatAction('pro_interest_clicked');
     appendAssistantText("Thanks — we'll be in touch when Pro is ready.");
@@ -526,6 +551,7 @@ export function ChatWindow({ initialPrompt }: ChatWindowProps = {}) {
         onEmailSignIn={handleEmailSignIn}
         onConnectWorkspace={() => void handleConnectWorkspace()}
         onProInterest={handleProInterest}
+        onConnectCapability={handleConnectCapability}
       />
       <div ref={endRef} />
       <DebugPanel
