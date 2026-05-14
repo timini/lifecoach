@@ -14,6 +14,7 @@ Returned tools, in order:
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -66,13 +67,20 @@ from lifecoach_agent.workspace_agent.tools._deps import WorkspaceToolDeps
 class WorkspaceModuleDeps:
     """Inputs to `create_workspace_tools`. `sub_agent_log` is kept
     distinct from `log` so Cloud Logging filters can split main-agent
-    workspace calls from sub-agent internal calls."""
+    workspace calls from sub-agent internal calls.
+
+    `event_queue` is the per-request SSE queue threaded by
+    `server.py`. When set, `BridgedAgentTool` will mirror inner
+    workspace sub-agent tool calls to it so the live UI shows nested
+    badges under `triage_inbox` / `find_workspace`.
+    """
 
     store: WorkspaceTokensStore
     uid: str
     build_client: Any | None = None
     log: LogEmitter | None = None
     sub_agent_log: LogEmitter | None = None
+    event_queue: asyncio.Queue[bytes | None] | None = None
 
 
 def create_workspace_tools(deps: WorkspaceModuleDeps) -> list[Any]:
@@ -84,8 +92,8 @@ def create_workspace_tools(deps: WorkspaceModuleDeps) -> list[Any]:
     )
     sub_agent_deps = replace(main_tool_deps, log=deps.sub_agent_log)
     return [
-        create_triage_inbox_tool(sub_agent_deps),
-        create_find_workspace_tool(sub_agent_deps),
+        create_triage_inbox_tool(sub_agent_deps, event_queue=deps.event_queue),
+        create_find_workspace_tool(sub_agent_deps, event_queue=deps.event_queue),
         create_archive_messages_tool(main_tool_deps),
         create_add_calendar_event_tool(main_tool_deps),
         create_add_task_tool(main_tool_deps),
