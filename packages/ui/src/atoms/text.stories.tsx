@@ -32,10 +32,10 @@ export const Body: Story = {
 };
 
 export const SerifH1: Story = {
-  args: { variant: 'serif-h1', children: 'Lifecoach' },
+  args: { variant: 'serif-h1', children: 'tranquil.coach' },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const node = canvas.getByText('Lifecoach');
+    const node = canvas.getByText('tranquil.coach');
     // serif-h1 should default to the <h1> element.
     await expect(node.tagName).toBe('H1');
   },
@@ -54,7 +54,7 @@ export const Caption: Story = {
 export const Scale: Story = {
   render: () => (
     <div className="flex flex-col gap-3">
-      <Text variant="serif-h1">serif-h1 — Lifecoach</Text>
+      <Text variant="serif-h1">serif-h1 — tranquil.coach</Text>
       <Text variant="serif-h2">serif-h2 — Section heading</Text>
       <Text variant="serif-h3">serif-h3 — Subheading</Text>
       <Text variant="lead">lead — A short, slightly muted sentence.</Text>

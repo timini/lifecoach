@@ -1,7 +1,7 @@
 [project]
 name = "lifecoach-agent"
 version = "0.0.0"
-description = "Lifecoach agent — Python ADK rebuild of apps/agent/."
+description = "tranquil.coach agent — Python ADK rebuild of apps/agent/."
 requires-python = ">=3.12"
 readme = "README.md"
 license = { text = "Apache-2.0" }

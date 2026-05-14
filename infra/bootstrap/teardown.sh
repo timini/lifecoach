@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# teardown.sh — DESTRUCTIVE. Fully tears down a Lifecoach environment.
+# teardown.sh — DESTRUCTIVE. Fully tears down a tranquil.coach environment.
 #
 # Deletes the GCP project (and therefore all its resources), then removes the
 # generated infra/envs/<env>/backend.hcl and terraform.tfvars files locally.

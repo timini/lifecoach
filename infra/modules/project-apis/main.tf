@@ -1,4 +1,4 @@
-# Enables the full set of GCP APIs Lifecoach needs.
+# Enables the full set of GCP APIs tranquil.coach needs.
 #
 # Add a new API here when a new Terraform resource or app-runtime integration
 # requires it. Keep this list explicit and reviewable — do NOT enable APIs

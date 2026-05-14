@@ -1,4 +1,4 @@
-# Lifecoach — AI Assistant Guide
+# tranquil.coach — AI Assistant Guide
 
 This document is for AI coding assistants (Claude Code, etc.) working in this repository. Humans should also read it, but its primary audience is the model.
 

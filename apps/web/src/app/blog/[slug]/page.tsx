@@ -7,7 +7,7 @@ import {
   renderMarkdownBlocks,
 } from '../../../lib/marketing/blog';
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://lifecoach.ai';
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://tranquil.coach';
 
 type BlogPostPageProps = {
   params: Promise<{ slug: string }>;
@@ -25,7 +25,7 @@ export async function generateMetadata({ params }: BlogPostPageProps): Promise<M
   }
 
   return {
-    title: `${post.title} | Lifecoach`,
+    title: `${post.title} | tranquil.coach`,
     description: post.description,
     alternates: { canonical: `/blog/${post.slug}` },
     keywords: post.tags,
@@ -53,8 +53,8 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
     headline: post.title,
     description: post.description,
     datePublished: post.date,
-    author: { '@type': 'Organization', name: 'Lifecoach' },
-    publisher: { '@type': 'Organization', name: 'Lifecoach' },
+    author: { '@type': 'Organization', name: 'tranquil.coach' },
+    publisher: { '@type': 'Organization', name: 'tranquil.coach' },
     mainEntityOfPage: `${siteUrl}/blog/${post.slug}`,
     keywords: post.tags.join(', '),
   };
@@ -64,9 +64,9 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
     <main className="min-h-screen overflow-hidden px-5 py-6 sm:px-8 lg:px-12">
       <script type="application/ld+json">{JSON.stringify(articleJsonLd)}</script>
       <div className="absolute inset-x-0 top-0 -z-10 h-[520px] bg-[radial-gradient(circle_at_22%_15%,rgba(123,154,134,0.22),transparent_34%),radial-gradient(circle_at_85%_4%,rgba(198,123,99,0.16),transparent_34%)]" />
-      <nav className="mx-auto flex max-w-7xl items-center justify-between rounded-full border border-border/70 bg-background/80 px-4 py-3 shadow-sm backdrop-blur">
+      <nav className="mx-auto flex max-w-7xl items-center justify-between rounded-full border border-white/65 bg-background/70 px-4 py-3 shadow-sm backdrop-blur">
         <a href="/" className="font-serif text-2xl font-semibold tracking-tight text-foreground">
-          Lifecoach
+          tranquil.coach
         </a>
         <a
           href="/blog"

@@ -23,7 +23,7 @@ variable "project_id" {
 
 variable "display_name" {
   type    = string
-  default = "Lifecoach"
+  default = "tranquil.coach"
 }
 
 variable "extra_authorized_domains" {

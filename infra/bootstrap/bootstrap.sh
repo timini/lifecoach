@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# bootstrap.sh — one-time per-environment GCP setup for Lifecoach.
+# bootstrap.sh — one-time per-environment GCP setup for tranquil.coach.
 #
 # Creates:
 #   - A GCP project (under an org)
@@ -34,7 +34,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ENV_DIR="${REPO_ROOT}/infra/envs/${LIFECOACH_ENV}"
 
-# Baseline APIs every Lifecoach environment needs. Additions to this list
+# Baseline APIs every tranquil.coach environment needs. Additions to this list
 # should go into infra/modules/project-apis, not here — this script only
 # enables what Terraform itself needs to run on day one.
 BOOTSTRAP_APIS=(
@@ -124,7 +124,7 @@ create_project() {
   log "Creating project ${LIFECOACH_PROJECT_ID} in org ${LIFECOACH_ORG_ID}"
   gcloud projects create "${LIFECOACH_PROJECT_ID}" \
     --organization="${LIFECOACH_ORG_ID}" \
-    --name="Lifecoach ${LIFECOACH_ENV}"
+    --name="tranquil.coach ${LIFECOACH_ENV}"
 }
 
 link_billing() {

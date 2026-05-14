@@ -19,7 +19,7 @@ export function UpgradePrompt({ onInterest, disabled, className }: UpgradePrompt
         className,
       )}
     >
-      <div className="text-sm font-semibold">Lifecoach Pro</div>
+      <div className="text-sm font-semibold">tranquil.coach Pro</div>
       <div className="text-xs text-muted-foreground">
         Faster replies, deeper analysis, no daily nudges. Pro launches soon — tap below and we'll
         email you when it's ready.

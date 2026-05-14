@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { featurePages, getFeaturePage } from '../../../lib/marketing/feature-pages';
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://lifecoach.ai';
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://tranquil.coach';
 
 type FeaturePageProps = {
   params: Promise<{ topic: string }>;
@@ -68,9 +68,9 @@ export default async function FeatureTopicPage({ params }: FeaturePageProps) {
       <script type="application/ld+json">{JSON.stringify(breadcrumbJsonLd)}</script>
       <section className="relative px-5 py-6 sm:px-8 lg:px-12">
         <div className="absolute inset-x-0 top-0 -z-10 h-[560px] bg-[radial-gradient(circle_at_25%_20%,rgba(123,154,134,0.26),transparent_34%),radial-gradient(circle_at_82%_8%,rgba(198,123,99,0.18),transparent_34%)]" />
-        <nav className="mx-auto flex max-w-7xl items-center justify-between rounded-full border border-border/70 bg-background/80 px-4 py-3 shadow-sm backdrop-blur">
+        <nav className="mx-auto flex max-w-7xl items-center justify-between rounded-full border border-white/65 bg-background/70 px-4 py-3 shadow-sm backdrop-blur">
           <a href="/" className="font-serif text-2xl font-semibold tracking-tight text-foreground">
-            Lifecoach
+            tranquil.coach
           </a>
           <div className="hidden items-center gap-6 text-sm font-medium text-muted-foreground md:flex">
             <a href="/blog" className="transition hover:text-foreground">
@@ -84,7 +84,7 @@ export default async function FeatureTopicPage({ params }: FeaturePageProps) {
             href={`/chat?prompt=${encodeURIComponent(page.ctaPrompt)}`}
             className="rounded-full bg-foreground px-5 py-2.5 text-sm font-semibold text-background shadow-sm transition hover:-translate-y-0.5 hover:bg-accent"
           >
-            Start here
+            Begin softly
           </a>
         </nav>
 
@@ -104,7 +104,7 @@ export default async function FeatureTopicPage({ params }: FeaturePageProps) {
                 href={`/chat?prompt=${encodeURIComponent(page.ctaPrompt)}`}
                 className="inline-flex items-center justify-center rounded-full bg-foreground px-7 py-4 text-base font-semibold text-background shadow-lg shadow-foreground/10 transition hover:-translate-y-0.5 hover:bg-accent"
               >
-                Start this conversation
+                Start this thread
               </a>
               <a
                 href="/blog"
@@ -115,15 +115,15 @@ export default async function FeatureTopicPage({ params }: FeaturePageProps) {
             </div>
           </div>
 
-          <aside className="rounded-[2rem] border border-border bg-[#fbf7ef]/90 p-6 shadow-2xl shadow-foreground/10">
+          <aside className="rounded-[2rem] border border-border bg-white/45 backdrop-blur-xl p-6 shadow-2xl shadow-foreground/10">
             <p className="text-sm font-semibold uppercase tracking-[0.22em] text-accent">
-              Target searches
+              Search doorway
             </p>
             <ul className="mt-5 grid gap-3">
               {page.keyphrases.map((phrase) => (
                 <li
                   key={phrase}
-                  className="rounded-2xl border border-border bg-background/80 px-4 py-3 text-sm font-semibold text-foreground"
+                  className="rounded-2xl border border-white/65 bg-background/70 px-4 py-3 text-sm font-semibold text-foreground"
                 >
                   {phrase}
                 </li>
@@ -140,10 +140,10 @@ export default async function FeatureTopicPage({ params }: FeaturePageProps) {
         <div className="mx-auto max-w-7xl">
           <div className="max-w-3xl">
             <p className="text-sm font-semibold uppercase tracking-[0.24em] text-accent">
-              Concrete ways to use it
+              Concrete rituals
             </p>
             <h2 className="mt-3 font-serif text-4xl font-semibold leading-tight sm:text-5xl">
-              Use cases that start where the stuckness actually is.
+              Rituals that start where the stuckness actually is.
             </h2>
           </div>
           <div className="mt-10 grid gap-4 md:grid-cols-2">
@@ -160,7 +160,7 @@ export default async function FeatureTopicPage({ params }: FeaturePageProps) {
       </section>
 
       <section className="px-5 py-14 sm:px-8 lg:px-12">
-        <div className="mx-auto max-w-5xl rounded-[2.5rem] border border-border bg-[#fbf7ef]/80 p-8 shadow-sm sm:p-10">
+        <div className="mx-auto max-w-5xl rounded-[2.5rem] border border-border bg-white/45 backdrop-blur-xl p-8 shadow-sm sm:p-10">
           <p className="text-sm font-semibold uppercase tracking-[0.24em] text-accent">FAQ</p>
           <div className="mt-6 grid gap-4">
             {page.faq.map((item) => (

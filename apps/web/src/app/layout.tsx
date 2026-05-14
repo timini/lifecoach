@@ -6,10 +6,10 @@ import { GoogleAnalytics } from '../components/GoogleAnalytics';
 import { SentryBootstrap } from '../components/SentryBootstrap';
 
 export const metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'https://lifecoach.ai'),
-  title: 'Lifecoach — the AI assistant that prevents overwhelm',
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'https://tranquil.coach'),
+  title: 'tranquil.coach — beautiful AI coaching for overwhelm',
   description:
-    'A warm AI assistant for ADHD, depression, burnout, anxiety, career, wellness, and daily admin when executive function is the bottleneck.',
+    'A calm AI coaching companion for ADHD, depression, burnout, anxiety, career, wellness, and daily admin when executive function is the bottleneck.',
   verification: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION
     ? { google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION }
     : undefined,

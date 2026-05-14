@@ -48,7 +48,7 @@ def build_root_agent_for(
     return Agent(
         name="lifecoach",
         model=model,
-        description="Lifecoach — daily-practice coaching agent.",
+        description="tranquil.coach — daily-practice coaching agent.",
         instruction=instruction,
         tools=tools,
     )
@@ -61,9 +61,9 @@ def build_root_agent() -> Agent:
     return Agent(
         name="lifecoach",
         model=DEFAULT_MODEL,
-        description="Lifecoach — daily-practice coaching agent.",
+        description="tranquil.coach — daily-practice coaching agent.",
         instruction=(
-            "You are Lifecoach, an empathetic daily-practice coach. "
+            "You are tranquil.coach, an empathetic daily-practice coach. "
             "This is the standalone agent entry point used by `adk web` and "
             "smoke tests; the full per-turn prompt + tool surface comes "
             "from the FastAPI server in `lifecoach_agent.server`."

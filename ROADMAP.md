@@ -1,4 +1,4 @@
-# Lifecoach — Roadmap
+# tranquil.coach — Roadmap
 
 Twelve-phase build plan. Each phase ends with a demoable checkpoint, passing tests, and green CI.
 

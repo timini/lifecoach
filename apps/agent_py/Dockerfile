@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-# Lifecoach agent (Python ADK). Multi-stage build using `uv` for fast,
+# tranquil.coach agent (Python ADK). Multi-stage build using `uv` for fast,
 # reproducible installs from uv.lock. Image base intentionally matches the
 # Python version in pyproject.toml + .python-version.
 #

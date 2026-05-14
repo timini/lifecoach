@@ -1,4 +1,4 @@
-# Multi-stage build for the Lifecoach Next.js frontend.
+# Multi-stage build for the tranquil.coach Next.js frontend.
 # Build context must be the monorepo root.
 
 # ----- deps -----

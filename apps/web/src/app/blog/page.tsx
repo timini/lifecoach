@@ -2,13 +2,13 @@ import type { Metadata } from 'next';
 import { formatPostDate, getBlogPosts } from '../../lib/marketing/blog';
 
 export const metadata: Metadata = {
-  title: 'Lifecoach blog — AI support for overwhelm, ADHD, and daily admin',
+  title: 'tranquil.coach journal — AI support for overwhelm, ADHD, and daily admin',
   description:
-    'Evidence-backed and lived-experience writing about AI coaching, ADHD executive function, depression, burnout, and daily admin.',
+    'Field notes for softer momentum about AI coaching, ADHD executive function, depression, burnout, and daily admin.',
   alternates: { canonical: '/blog' },
   openGraph: {
-    title: 'Lifecoach blog',
-    description: 'Evidence-backed and lived-experience writing about preventing overwhelm.',
+    title: 'tranquil.coach journal',
+    description: 'Field notes for softer momentum about preventing overwhelm.',
     url: '/blog',
     type: 'website',
   },
@@ -20,24 +20,24 @@ export default function BlogIndexPage() {
   return (
     <main className="min-h-screen overflow-hidden px-5 py-6 sm:px-8 lg:px-12">
       <div className="absolute inset-x-0 top-0 -z-10 h-[520px] bg-[radial-gradient(circle_at_22%_15%,rgba(123,154,134,0.22),transparent_34%),radial-gradient(circle_at_85%_4%,rgba(198,123,99,0.16),transparent_34%)]" />
-      <nav className="mx-auto flex max-w-7xl items-center justify-between rounded-full border border-border/70 bg-background/80 px-4 py-3 shadow-sm backdrop-blur">
+      <nav className="mx-auto flex max-w-7xl items-center justify-between rounded-full border border-white/65 bg-background/70 px-4 py-3 shadow-sm backdrop-blur">
         <a href="/" className="font-serif text-2xl font-semibold tracking-tight text-foreground">
-          Lifecoach
+          tranquil.coach
         </a>
         <a
           href="/chat"
           className="rounded-full bg-foreground px-5 py-2.5 text-sm font-semibold text-background shadow-sm transition hover:-translate-y-0.5 hover:bg-accent"
         >
-          Start coaching
+          Begin softly
         </a>
       </nav>
 
       <section className="mx-auto max-w-7xl pb-12 pt-16 lg:pb-18 lg:pt-24">
         <p className="mb-5 inline-flex rounded-full border border-accent/30 bg-accent/10 px-4 py-2 text-sm font-semibold text-foreground">
-          Evidence-backed and lived-experience writing
+          Field notes for softer momentum
         </p>
         <h1 className="max-w-5xl text-balance font-serif text-5xl font-semibold leading-[1.02] tracking-tight text-foreground sm:text-6xl lg:text-7xl">
-          How to prevent overwhelm when daily admin is the bottleneck.
+          Notes from the fuzzy middle between intention and capacity.
         </h1>
         <p className="mt-6 max-w-3xl text-pretty text-lg leading-8 text-muted-foreground sm:text-xl">
           Practical essays for ADHD, depression, burnout, anxiety, and the fuzzy middle between
@@ -50,7 +50,7 @@ export default function BlogIndexPage() {
         {posts.map((post) => (
           <article
             key={post.slug}
-            className="rounded-[2rem] border border-border bg-background/80 p-6 shadow-sm"
+            className="rounded-[2rem] border border-white/65 bg-white/45 backdrop-blur p-6 shadow-sm"
           >
             <div className="flex flex-wrap gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-accent">
               <span>{post.type.replace('-', ' ')}</span>

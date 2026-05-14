@@ -1,4 +1,4 @@
-# `apps/agent_py` — Lifecoach agent (Python ADK)
+# `apps/agent_py` — tranquil.coach agent (Python ADK)
 
 Python port of `apps/agent/`. Replaces the TS Express + `@google/adk@0.6.1`
 service with a FastAPI + `google-adk` 1.32 service. Same `/chat` SSE wire

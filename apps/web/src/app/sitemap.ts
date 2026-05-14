@@ -2,7 +2,7 @@ import type { MetadataRoute } from 'next';
 import { getBlogPosts } from '../lib/marketing/blog';
 import { featurePages } from '../lib/marketing/feature-pages';
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://lifecoach.ai';
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://tranquil.coach';
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();

@@ -1,4 +1,4 @@
-# Lifecoach evals
+# tranquil.coach evals
 
 End-to-end behavioural tests for the agent, using
 `google.adk.evaluation.AgentEvaluator`. Two tiers:

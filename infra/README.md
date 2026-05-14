@@ -1,6 +1,6 @@
 # infra/
 
-All Lifecoach infrastructure is declared here. The rule is simple:
+All tranquil.coach infrastructure is declared here. The rule is simple:
 
 > **Every infra change is a Terraform change.** No gcloud-poking, no console-clicking. The only exception is `bootstrap.sh`, which exists solely because Terraform state itself needs a bucket, and that bucket needs a project. After bootstrap, there is no manual step — ever.
 

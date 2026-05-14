@@ -47,7 +47,7 @@ def _base_ctx(**overrides) -> InstructionContext:  # type: ignore[no-untyped-def
 
 def test_persona_header_always_present() -> None:
     out = build_instruction(_base_ctx())
-    assert out.startswith("You are Lifecoach")
+    assert out.startswith("You are tranquil.coach")
 
 
 def test_style_rules_present() -> None:

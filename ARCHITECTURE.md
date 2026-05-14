@@ -1,6 +1,6 @@
-# Lifecoach — Architecture
+# tranquil.coach — Architecture
 
-This document is the source of truth for how Lifecoach is built. Keep it in sync as the system changes — see [§14 Documentation maintenance](#14-documentation-maintenance) for the rules.
+This document is the source of truth for how tranquil.coach is built. Keep it in sync as the system changes — see [§14 Documentation maintenance](#14-documentation-maintenance) for the rules.
 
 `README.md` is a quick start; `ROADMAP.md` is build-history. **This file** is the spec.
 
@@ -27,7 +27,7 @@ This document is the source of truth for how Lifecoach is built. Keep it in sync
 
 ## 1. Overview
 
-Lifecoach is a warm, conversational AI life coach. The user opens the web app, talks to a coaching agent that knows their context (time, weather, profile, goals, calendar), and receives short, human-feeling replies. Optionally signs in, optionally connects Google Workspace for inbox/calendar/task help, optionally upgrades to Pro.
+tranquil.coach is a warm, conversational AI life coach. The user opens the web app, talks to a coaching agent that knows their context (time, weather, profile, goals, calendar), and receives short, human-feeling replies. Optionally signs in, optionally connects Google Workspace for inbox/calendar/task help, optionally upgrades to Pro.
 
 The repo is a polyglot pnpm monorepo with two production deployables and one developer-only host:
 

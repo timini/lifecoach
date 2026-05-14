@@ -1,4 +1,4 @@
-# Docker repository for Lifecoach container images.
+# Docker repository for tranquil.coach container images.
 
 variable "project_id" {
   type = string
@@ -19,7 +19,7 @@ resource "google_artifact_registry_repository" "docker" {
   location      = var.region
   repository_id = var.repository_id
   format        = "DOCKER"
-  description   = "Lifecoach container images"
+  description   = "tranquil.coach container images"
 
   # Keep the 5 most recent versions per package to control storage costs in dev.
   cleanup_policies {

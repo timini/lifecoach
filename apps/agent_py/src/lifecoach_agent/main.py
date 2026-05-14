@@ -1,4 +1,4 @@
-"""Production wiring for the Lifecoach agent.
+"""Production wiring for the tranquil.coach agent.
 
 Mirrors the bottom half of `apps/agent/src/server.ts` (the `main()` block):
 construct real GCP clients, wire them into a `CreateAppDeps`, build the

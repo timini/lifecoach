@@ -402,7 +402,7 @@ export function ChatWindow({ initialPrompt }: ChatWindowProps = {}) {
             void refreshSessions();
           }}
         />
-        <Text variant="serif-h1">Lifecoach</Text>
+        <Text variant="serif-h1">tranquil.coach</Text>
       </div>
       <div className="flex items-center gap-2">
         <LocationBadge

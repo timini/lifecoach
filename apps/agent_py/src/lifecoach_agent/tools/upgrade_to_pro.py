@@ -12,7 +12,7 @@ UPGRADE_TO_PRO_TOOL_NAME = "upgrade_to_pro"
 
 
 async def upgrade_to_pro() -> dict[str, Any]:
-    """Surface a Lifecoach Pro upgrade card to the user. Use sparingly —
+    """Surface a tranquil.coach Pro upgrade card to the user. Use sparingly —
     at most once per session, and only when the conversation has just hit
     a moment where Pro would genuinely help (deeper analysis, faster
     replies, no daily nudges). After calling, write NO additional text

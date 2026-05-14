@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /**
- * Lifecoach user profile. **Schema-free by design** — the coach invents
+ * tranquil.coach user profile. **Schema-free by design** — the coach invents
  * whatever keys the conversation surfaces (`pets`, `morning_routine`,
  * `volunteering`, etc.), and the UI renders the tree generically. Do not
  * re-impose a closed object shape here; see
@@ -17,7 +17,7 @@ export const UserProfileSchema = z.record(z.string(), z.unknown());
 export type UserProfile = z.infer<typeof UserProfileSchema>;
 
 /**
- * Starting shape for a brand new user. Matches the Lifecoach spec's
+ * Starting shape for a brand new user. Matches the tranquil.coach spec's
  * initial template, with nulls preserved so the coach sees "I don't know
  * this yet" and asks naturally.
  */

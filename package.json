@@ -2,7 +2,7 @@
   "name": "lifecoach",
   "version": "0.0.0",
   "private": true,
-  "description": "AI life coaching app — Next.js web + Google ADK agent monorepo",
+  "description": "calm AI coaching app — Next.js web + Google ADK agent monorepo",
   "packageManager": "pnpm@9.12.3",
   "engines": {
     "node": ">=22.0.0",

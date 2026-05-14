@@ -1,6 +1,6 @@
-# Lifecoach
+# tranquil.coach
 
-A warm, conversational AI life coach. Chats like a friend texting, not a robot writing an email. Remembers you across sessions, knows what's on your calendar, can read your inbox and your task list, and never asks twice for things you've already told it.
+A warm, conversational calm AI coach. Chats like a friend texting, not a robot writing an email. Remembers you across sessions, knows what's on your calendar, can read your inbox and your task list, and never asks twice for things you've already told it.
 
 The repo is a polyglot monorepo with two deployables:
 

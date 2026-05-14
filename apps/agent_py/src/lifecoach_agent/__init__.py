@@ -1,4 +1,4 @@
-"""Lifecoach agent — Python ADK rebuild of apps/agent/."""
+"""tranquil.coach agent — Python ADK rebuild of apps/agent/."""
 
 from lifecoach_agent.agent import root_agent
 
