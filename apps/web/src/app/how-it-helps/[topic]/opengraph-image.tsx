@@ -26,7 +26,7 @@ export default async function Image({ params }: OgProps) {
         fontFamily: 'Inter, Arial, sans-serif',
       }}
     >
-      <div style={{ fontSize: 36, fontWeight: 700 }}>Lifecoach</div>
+      <div style={{ fontSize: 36, fontWeight: 700 }}>Tranquil</div>
       <div>
         <div style={{ color: '#9f5f47', fontSize: 30, fontWeight: 700, marginBottom: 24 }}>
           {page?.eyebrow}

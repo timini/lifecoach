@@ -2,12 +2,12 @@ import type { Metadata } from 'next';
 import { formatPostDate, getBlogPosts } from '../../lib/marketing/blog';
 
 export const metadata: Metadata = {
-  title: 'Lifecoach blog — AI support for overwhelm, ADHD, and daily admin',
+  title: 'Tranquil blog — AI support for overwhelm, ADHD, and daily admin',
   description:
     'Evidence-backed and lived-experience writing about AI coaching, ADHD executive function, depression, burnout, and daily admin.',
   alternates: { canonical: '/blog' },
   openGraph: {
-    title: 'Lifecoach blog',
+    title: 'Tranquil blog',
     description: 'Evidence-backed and lived-experience writing about preventing overwhelm.',
     url: '/blog',
     type: 'website',
@@ -22,7 +22,7 @@ export default function BlogIndexPage() {
       <div className="absolute inset-x-0 top-0 -z-10 h-[520px] bg-[radial-gradient(circle_at_22%_15%,rgba(123,154,134,0.22),transparent_34%),radial-gradient(circle_at_85%_4%,rgba(198,123,99,0.16),transparent_34%)]" />
       <nav className="mx-auto flex max-w-7xl items-center justify-between rounded-full border border-border/70 bg-background/80 px-4 py-3 shadow-sm backdrop-blur">
         <a href="/" className="font-serif text-2xl font-semibold tracking-tight text-foreground">
-          Lifecoach
+          Tranquil
         </a>
         <a
           href="/chat"

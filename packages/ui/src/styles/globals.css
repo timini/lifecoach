@@ -10,7 +10,7 @@
  */
 
 /*
- * Lifecoach design tokens. Tailwind v4 is CSS-first — no tailwind.config.js.
+ * Tranquil design tokens. Tailwind v4 is CSS-first — no tailwind.config.js.
  * `@theme` declarations generate utility classes (bg-background, text-foreground, …)
  * and stay in lockstep with runtime values via the CSS vars below.
  *
@@ -18,15 +18,15 @@
  * polished against this token set than the warmer beige/Cormorant set.
  */
 @theme {
-  --color-background: #f4efe6;
-  --color-foreground: #2f3b34;
-  --color-muted: #ece4d7;
-  --color-muted-foreground: #6c756d;
-  --color-border: #d9ccba;
-  --color-accent: #7b9a86;
+  --color-background: #f7f0e6;
+  --color-foreground: #26362f;
+  --color-muted: #eee5d8;
+  --color-muted-foreground: #667168;
+  --color-border: #ddd0be;
+  --color-accent: #5f927e;
   --color-accent-foreground: #f8f5ef;
-  --color-success: #7fa57f;
-  --color-destructive: #c67b63;
+  --color-success: #76a982;
+  --color-destructive: #c87561;
 
   --radius-bubble: 22px;
   --radius-control: 9999px;
@@ -51,9 +51,9 @@
   }
 
   body {
-    background-image: radial-gradient(circle at 18% 22%, rgba(124, 144, 117, 0.2), transparent 46%),
-      radial-gradient(circle at 82% 18%, rgba(188, 109, 90, 0.14), transparent 52%),
-      radial-gradient(circle at 56% 88%, rgba(180, 196, 172, 0.22), transparent 48%);
+    background-image: radial-gradient(circle at 18% 22%, rgba(128, 100, 210, 0.12), transparent 46%),
+      radial-gradient(circle at 82% 18%, rgba(72, 151, 130, 0.16), transparent 52%),
+      radial-gradient(circle at 56% 88%, rgba(230, 156, 102, 0.13), transparent 48%);
     background-attachment: fixed;
     animation: mesh-breathe 24s ease-in-out infinite alternate;
   }
