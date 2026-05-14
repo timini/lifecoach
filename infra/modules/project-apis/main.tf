@@ -25,6 +25,8 @@ locals {
     "run.googleapis.com",
     "artifactregistry.googleapis.com",
     "cloudbuild.googleapis.com",
+    "cloudfunctions.googleapis.com",
+    "pubsub.googleapis.com",
     "secretmanager.googleapis.com",
     "firestore.googleapis.com",
 
