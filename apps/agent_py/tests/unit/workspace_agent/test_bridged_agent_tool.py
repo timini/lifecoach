@@ -106,12 +106,67 @@ async def test_bridge_inner_function_response_uses_matching_bridged_id() -> None
     persisted_response = session_service.events[0].content.parts[0].function_response
     assert persisted_response.name == "list_inbox"
     assert persisted_response.id == "parent-call:inner-call"
-    assert persisted_response.response == {"status": "ok", "messages": []}
+    # `messages` is stripped — the badge only needs status, not the payload.
+    assert persisted_response.response == {"status": "ok"}
     assert session_service.events[0].partial is None
 
     assert len(streamed) == 1
     assert streamed[0].partial is None
     assert streamed[0].content.parts[0].function_response.id == "parent-call:inner-call"
+
+
+@pytest.mark.asyncio
+async def test_bridge_redacts_bulky_inner_response_payload() -> None:
+    """Inner workspace tools may return decoded email bodies (up to 4 KB).
+    Bridging the raw payload would leak that content over SSE and persist
+    it as the parent tool-badge response. Only the success/error scalars
+    should survive the bridge."""
+
+    session_service = _SessionService()
+    invocation = SimpleNamespace(
+        invocation_id="parent-invocation",
+        agent=SimpleNamespace(name="lifecoach"),
+        branch=None,
+        session_service=session_service,
+        session=SimpleNamespace(),
+    )
+    tool_context = SimpleNamespace(
+        function_call_id="parent-call",
+        _invocation_context=invocation,
+    )
+    inner = Event(
+        invocation_id="inner-invocation",
+        author="triage_inbox",
+        content=types.Content(
+            role="user",
+            parts=[
+                types.Part.from_function_response(
+                    name="get_message",
+                    response={
+                        "status": "ok",
+                        "message": {
+                            "subject": "private",
+                            "body": "secret email body content",
+                            "headers": {"From": "alice@example.com"},
+                        },
+                    },
+                )
+            ],
+        ),
+    )
+    inner.content.parts[0].function_response.id = "inner-call"
+
+    streamed: list[Event] = []
+    token = set_workspace_event_sink(lambda event: _append(streamed, event))
+    try:
+        await _bridge_inner_event(inner, tool_context=tool_context)  # type: ignore[arg-type]
+    finally:
+        reset_workspace_event_sink(token)
+
+    persisted_response = session_service.events[0].content.parts[0].function_response
+    assert persisted_response.response == {"status": "ok"}
+    streamed_response = streamed[0].content.parts[0].function_response
+    assert streamed_response.response == {"status": "ok"}
 
 
 async def _append(events: list[Event], event: Event) -> None:

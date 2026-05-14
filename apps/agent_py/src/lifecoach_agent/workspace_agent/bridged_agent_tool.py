@@ -157,7 +157,7 @@ async def _bridge_inner_event(event: Event, *, tool_context: ToolContext) -> Non
         if function_response is not None and function_response.name:
             bridged = types.Part.from_function_response(
                 name=function_response.name,
-                response=dict(function_response.response or {}),
+                response=_redact_inner_response(function_response.response),
             )
             assert bridged.function_response is not None
             bridged.function_response.id = _bridged_id(
@@ -197,3 +197,18 @@ async def _bridge_inner_event(event: Event, *, tool_context: ToolContext) -> Non
 
 def _bridged_id(parent_call_id: str, inner_id: str | None, inner_name: str) -> str:
     return f"{parent_call_id}:{inner_id or inner_name}"
+
+
+# Inner workspace tools (e.g. `get_message`) return up to 4 KB of decoded
+# email body + allow-listed headers under the `message` key. That payload
+# is meaningful to the sub-agent's reasoning but is private user data we
+# do not want to ship over SSE or persist as a tool-badge `response` on
+# the parent chat. The badge only needs success/failure state, so keep
+# the top-level status/code/error scalars and drop everything else.
+_SAFE_RESPONSE_KEYS = frozenset({"status", "code", "error"})
+
+
+def _redact_inner_response(response: Any) -> dict[str, Any]:
+    if not isinstance(response, dict):
+        return {}
+    return {k: v for k, v in response.items() if k in _SAFE_RESPONSE_KEYS}
