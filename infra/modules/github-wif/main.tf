@@ -106,8 +106,22 @@ locals {
     "roles/serviceusage.serviceUsageAdmin",
     # Terraform manages google_service_account resources for runtime SAs.
     "roles/iam.serviceAccountAdmin",
-    # Terraform manages the user data bucket + its IAM.
+    # Terraform attaches managed service accounts to Cloud Run revisions and
+    # the cloud-logs-to-sentry Cloud Function. `roles/iam.serviceAccountUser`
+    # is granted at the project level here so a fresh apply that creates a
+    # new SA + attaches it in the same plan doesn't 403 on the actAs check
+    # before the per-SA binding lower in this file has been written.
+    "roles/iam.serviceAccountUser",
+    # Terraform manages the user data bucket, the Cloud Function source
+    # bucket for cloud-logs-to-sentry, and their IAM.
     "roles/storage.admin",
+    # Terraform manages the Cloud Logging sink -> Pub/Sub -> Cloud Functions
+    # bridge that forwards Cloud Run ERROR logs to Sentry. Without these the
+    # first apply that introduces module.cloud_logs_to_sentry 403s on
+    # logging.sinks.create / pubsub topics+subs / cloudfunctions.create.
+    "roles/logging.configWriter",
+    "roles/pubsub.admin",
+    "roles/cloudfunctions.admin",
     # Terraform refreshes (and could update) the WIF pool + provider it
     # runs through. Without read perms on the pool, plan fails on a 403.
     "roles/iam.workloadIdentityPoolAdmin",
