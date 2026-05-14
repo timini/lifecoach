@@ -40,9 +40,16 @@ class DatabaseUnavailableError(Exception):
         self.code = code
 
 
-# Schema baked into the bootstrap call. The property names here are the
-# exact keys `projections/task.py` and the write tools look up — never
-# rename without updating both ends.
+# Schema baked into the initial CREATE call. The property names here are
+# the exact keys `projections/task.py` and the write tools look up —
+# never rename without updating both ends.
+#
+# The "Parent item" self-relation is added in a second PATCH after the
+# DB exists — Notion's create-database endpoint validates
+# `relation.database_id` against real database ids, so we can't include
+# a self-relation in the initial POST (we don't have the id yet, and
+# Notion has no sentinel value like "__SELF__"). See
+# `_add_parent_item_self_relation` below.
 NOTION_DB_PROPERTIES: dict[str, Any] = {
     "Task": {"title": {}},
     "Status": {
@@ -68,7 +75,6 @@ NOTION_DB_PROPERTIES: dict[str, Any] = {
     "Project": {"select": {"options": []}},
     "Due Date": {"date": {}},
     "Notes": {"rich_text": {}},
-    "Parent item": {"relation": {"database_id": "__SELF__", "single_property": {}}},
 }
 
 
@@ -92,12 +98,16 @@ async def _create_database(
     deps: NotionToolDeps,
     parent_page_id: str,
 ) -> str:
-    """Send POST /v1/databases. Returns the new database id."""
-    # The Parent item self-relation needs the new DB's own id, but we
-    # don't have it yet — Notion accepts `__SELF__` as a sentinel for
-    # this case. (If their API changes we fall back to creating the
-    # database without Parent item, then patching it in via a second
-    # call.)
+    """POST /v1/databases (without Parent item). Returns the new DB id.
+
+    The self-relation `Parent item` is added separately by
+    `_add_parent_item_self_relation` after creation — Notion's create
+    endpoint validates `relation.database_id` against real ids, so we
+    have to do this in two steps. Splitting these into two callables
+    also lets `get_or_create_database` apply the search-fallback only
+    around the POST (a failed PATCH is distinct from a duplicate-name
+    POST and shouldn't trigger search-by-title).
+    """
     body = {
         "parent": {"type": "page_id", "page_id": parent_page_id},
         "title": [{"type": "text", "text": {"content": LIFECOACH_TASKS_DB_TITLE}}],
@@ -122,6 +132,85 @@ async def _create_database(
     if not isinstance(db_id, str) or not db_id:
         raise DatabaseUnavailableError("upstream", "create-database response missing id")
     return db_id
+
+
+async def _add_parent_item_self_relation(
+    *,
+    deps: NotionToolDeps,
+    database_id: str,
+) -> None:
+    """PATCH the just-created DB to add `Parent item` as a single-property
+    self-relation. Required for sub-tasks. Raises DatabaseUnavailableError
+    on failure — the caller has already created the DB but it is not
+    fully bootstrapped until this succeeds."""
+    body = {
+        "properties": {
+            "Parent item": {
+                "relation": {
+                    "database_id": database_id,
+                    "type": "single_property",
+                    "single_property": {},
+                }
+            }
+        }
+    }
+    result = await run_notion(
+        store=deps.store,
+        uid=deps.uid,
+        tool_name="bootstrap_parent_relation",
+        method="PATCH",
+        path=f"/v1/databases/{database_id}",
+        body=body,
+        http=deps.http,
+        log=deps.log,
+    )
+    if isinstance(result, RunNotionErr):
+        raise DatabaseUnavailableError(
+            result.code,
+            f"created database but failed to add Parent item relation: {result.message}",
+        )
+
+
+async def _discover_granted_parent_pages(
+    *,
+    deps: NotionToolDeps,
+) -> list[str]:
+    """Fallback: find pages the integration was granted access to.
+
+    Notion's OAuth exchange response embeds the workspace + bot id but
+    does NOT enumerate the pages the user shared during consent — the
+    only programmatic way to find them is `/v1/search` post-grant. We
+    persist whatever comes back so subsequent bootstraps don't repeat
+    this lookup."""
+    result = await run_notion(
+        store=deps.store,
+        uid=deps.uid,
+        tool_name="bootstrap_discover_pages",
+        method="POST",
+        path="/v1/search",
+        body={
+            "filter": {"value": "page", "property": "object"},
+            "page_size": 25,
+        },
+        http=deps.http,
+        log=deps.log,
+    )
+    if isinstance(result, RunNotionErr):
+        return []
+    assert isinstance(result, RunNotionOk)
+    body = result.body if isinstance(result.body, dict) else {}
+    ids: list[str] = []
+    for hit in body.get("results") or []:
+        if not isinstance(hit, dict):
+            continue
+        # Skip database results — we want pages we can create a
+        # database under, not databases themselves.
+        if hit.get("object") != "page":
+            continue
+        page_id = hit.get("id")
+        if isinstance(page_id, str) and page_id:
+            ids.append(page_id)
+    return ids
 
 
 async def _search_existing_database(
@@ -216,14 +305,22 @@ async def get_or_create_database(deps: NotionToolDeps) -> str:
             # `clear_database_id_on_not_found` below.
             return config.databaseId
 
-        if not config.grantedParentPageIds:
-            raise DatabaseUnavailableError(
-                "bad_request",
-                "Notion connect did not include a parent page; ask the user to "
-                "share at least one page when granting access.",
-            )
+        granted_pages = list(config.grantedParentPageIds)
+        if not granted_pages:
+            # First bootstrap after OAuth — discover pages now and
+            # persist them, so this lookup is one-shot per uid.
+            granted_pages = await _discover_granted_parent_pages(deps=deps)
+            if not granted_pages:
+                raise DatabaseUnavailableError(
+                    "bad_request",
+                    "Notion connect did not include a parent page; ask the user to "
+                    "share at least one page with the integration at "
+                    "notion.so/my-integrations and try again.",
+                )
+            await deps.config_store.set_granted_parent_page_ids(deps.uid, granted_pages)
 
-        parent_page_id = config.grantedParentPageIds[0]
+        parent_page_id = granted_pages[0]
+        from_search = False
         try:
             db_id = await _create_database(deps=deps, parent_page_id=parent_page_id)
         except DatabaseUnavailableError as err:
@@ -237,6 +334,15 @@ async def get_or_create_database(deps: NotionToolDeps) -> str:
             if existing is None:
                 raise
             db_id = existing
+            from_search = True
+
+        # Add the Parent item self-relation. We skip this for DBs found
+        # via search-fallback (they already exist and likely already
+        # have the property; a re-PATCH would be a no-op at best, an
+        # error at worst). New DBs MUST be patched — sub-tasks rely
+        # on this property.
+        if not from_search:
+            await _add_parent_item_self_relation(deps=deps, database_id=db_id)
 
         await deps.config_store.set_database_id(deps.uid, db_id)
         return db_id
