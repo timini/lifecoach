@@ -88,9 +88,7 @@ class BridgedAgentTool(AgentTool):
         )
 
         state_dict = {
-            k: v
-            for k, v in tool_context.state.to_dict().items()
-            if not k.startswith("_adk")
+            k: v for k, v in tool_context.state.to_dict().items() if not k.startswith("_adk")
         }
         session = await runner.session_service.create_session(
             app_name=child_app_name,
@@ -102,7 +100,9 @@ class BridgedAgentTool(AgentTool):
         last_grounding_metadata = None
         try:
             async with Aclosing(
-                runner.run_async(user_id=session.user_id, session_id=session.id, new_message=content)
+                runner.run_async(
+                    user_id=session.user_id, session_id=session.id, new_message=content
+                )
             ) as agen:
                 async for event in agen:
                     if event.actions.state_delta:
@@ -142,15 +142,21 @@ async def _bridge_event(event: Event, tool_context: ToolContext) -> None:
         },
     )
 
+    # Live UI sink only — do NOT append to the parent session here.
+    #
+    # The parent agent's own `triage_inbox` / `find_workspace` function_call
+    # event is still streaming as `partial=true` at this point, so the parent
+    # runner has not yet committed it to the session. Appending bridged child
+    # events from inside the child tool would write them BEFORE the parent
+    # call lands, which then shows the nested badges out-of-order in /history
+    # replays (children before parent). Streaming to the live sink is fine
+    # because the live UI received the parent's partial events first — the
+    # in-memory order already matches what the user saw. /history replays
+    # collapse to the stock AgentTool behaviour: the parent badge surfaces,
+    # the nested children do not. Same trade-off ADK ships with.
     sink = _bridge_event_sink.get()
     if sink is not None:
         await sink(bridged)
-
-    session_service = tool_context._invocation_context.session_service
-    parent_session = tool_context._invocation_context.session
-    append_event = getattr(session_service, "append_event", None)
-    if callable(append_event):
-        await append_event(parent_session, bridged)
 
 
 def _has_function_part(event: Event) -> bool:
