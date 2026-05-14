@@ -50,6 +50,22 @@ dev_output() {
   (cd "${DEV_DIR}" && terraform output -raw "${key}")
 }
 
+ensure_dev_next_server_actions_encryption_key() {
+  if gcloud secrets describe NEXT_SERVER_ACTIONS_ENCRYPTION_KEY --project="${PROJECT_ID}" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  log "Creating NEXT_SERVER_ACTIONS_ENCRYPTION_KEY secret before preview web build"
+  (
+    cd "${DEV_DIR}"
+    terraform apply -auto-approve -var-file=terraform.tfvars \
+      -target=random_id.next_server_actions_encryption_key \
+      -target=google_secret_manager_secret.next_server_actions_encryption_key \
+      -target=google_secret_manager_secret_version.next_server_actions_encryption_key \
+      -target=google_secret_manager_secret_iam_member.next_server_actions_encryption_key_accessors >&2
+  )
+}
+
 ensure_dev_init
 
 PROJECT_ID="$(dev_output project_id)"
@@ -60,6 +76,7 @@ FIREBASE_API_KEY="$(dev_output firebase_api_key)"
 FIREBASE_AUTH_DOMAIN="$(dev_output firebase_auth_domain)"
 FIREBASE_APP_ID="$(dev_output firebase_app_id)"
 GOOGLE_OAUTH_CLIENT_ID="$(dev_output google_client_id)"
+ensure_dev_next_server_actions_encryption_key
 # Sentry — read from dev's tfvars rather than `terraform output`. Outputs
 # only exist after `terraform apply` records them, which won't have
 # happened the first time a new variable is introduced; tfvars is the
@@ -75,6 +92,9 @@ dev_tfvar() {
 }
 GA_MEASUREMENT_ID="$(dev_tfvar google_analytics_measurement_id)"
 SENTRY_DSN_VALUE="$(dev_tfvar sentry_dsn)"
+NEXT_SERVER_ACTIONS_ENCRYPTION_KEY="$(gcloud secrets versions access latest \
+  --secret=NEXT_SERVER_ACTIONS_ENCRYPTION_KEY \
+  --project="${PROJECT_ID}")"
 
 # Custom-domain wiring — output may not exist yet on first deploy after
 # this feature lands (dev apply hasn't run with the domain module). The
@@ -113,12 +133,21 @@ build_and_push() {
       --build-arg "NEXT_PUBLIC_SENTRY_ENVIRONMENT=preview-pr-${PR_NUMBER}"
     )
   fi
-  docker build \
-    --platform=linux/amd64 \
-    "${build_args[@]}" \
-    -f "${dockerfile_dir}/Dockerfile" \
-    -t "${image}" \
-    "${REPO_ROOT}" >&2
+  if [[ "${name}" == "web" ]]; then
+    NEXT_SERVER_ACTIONS_ENCRYPTION_KEY="${NEXT_SERVER_ACTIONS_ENCRYPTION_KEY}" DOCKER_BUILDKIT=1 docker build \
+      --platform=linux/amd64 \
+      --secret id=next_server_actions_encryption_key,env=NEXT_SERVER_ACTIONS_ENCRYPTION_KEY \
+      "${build_args[@]}" \
+      -f "${dockerfile_dir}/Dockerfile" \
+      -t "${image}" \
+      "${REPO_ROOT}" >&2
+  else
+    docker build \
+      --platform=linux/amd64 \
+      -f "${dockerfile_dir}/Dockerfile" \
+      -t "${image}" \
+      "${REPO_ROOT}" >&2
+  fi
   log "Pushing ${image}"
   docker push "${image}" >&2
 }

@@ -204,6 +204,43 @@ resource "google_secret_manager_secret_iam_member" "agent_internal_bearer_access
   member    = each.value
 }
 
+# --- Next.js Server Actions encryption key --------------------------------
+# Next derives Server Action IDs from this key during `next build`. Keeping it
+# stable across web image builds prevents clients with a cached pre-redeploy
+# bundle from posting now-unknown action IDs to a newly deployed Cloud Run
+# revision. The value is a base64-encoded 32-byte AES key, matching Next's
+# documented `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` contract.
+
+resource "random_id" "next_server_actions_encryption_key" {
+  byte_length = 32
+}
+
+resource "google_secret_manager_secret" "next_server_actions_encryption_key" {
+  project   = var.project_id
+  secret_id = "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [module.apis]
+}
+
+resource "google_secret_manager_secret_version" "next_server_actions_encryption_key" {
+  secret      = google_secret_manager_secret.next_server_actions_encryption_key.id
+  secret_data = random_id.next_server_actions_encryption_key.b64_std
+}
+
+resource "google_secret_manager_secret_iam_member" "next_server_actions_encryption_key_accessors" {
+  for_each = toset([
+    "serviceAccount:lifecoach-web@${var.project_id}.iam.gserviceaccount.com",
+  ])
+  project   = var.project_id
+  secret_id = google_secret_manager_secret.next_server_actions_encryption_key.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = each.value
+}
+
 # --- Cloud Run: agent ------------------------------------------------------
 # Public for Phase 1. IAM-scoped web->agent invocation is a Phase 11 hardening.
 
@@ -301,6 +338,10 @@ module "web" {
       secret_id = "AGENT_INTERNAL_BEARER"
       version   = "latest"
     }
+    NEXT_SERVER_ACTIONS_ENCRYPTION_KEY = {
+      secret_id = "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY"
+      version   = "latest"
+    }
   }
 
   project_roles = [
@@ -309,7 +350,11 @@ module "web" {
 
   allow_unauthenticated = true
 
-  depends_on = [module.agent]
+  depends_on = [
+    module.agent,
+    google_secret_manager_secret_iam_member.agent_internal_bearer_accessors,
+    google_secret_manager_secret_iam_member.next_server_actions_encryption_key_accessors,
+  ]
 }
 
 # --- Apex (tranquil.coach) HTTPS LB → main web Cloud Run service ---------

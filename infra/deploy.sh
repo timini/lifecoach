@@ -4,7 +4,7 @@
 #
 # Flow:
 #   1. Reads project_id + region from infra/envs/<env>/terraform.tfvars
-#   2. Ensures Artifact Registry exists (terraform apply -target=module.artifact_registry)
+#   2. Ensures the stable Next Server Actions encryption secret exists for web builds
 #   3. Authenticates Docker to the registry (gcloud)
 #   4. Builds the selected image(s) from the monorepo root
 #   5. Pushes with tag = short git SHA (or 'local-<timestamp>' if no git)
@@ -75,6 +75,32 @@ tfvar() {
   printf '%s' "${line}" | sed -E 's/.*=[[:space:]]*"([^"]*)".*/\1/'
 }
 
+ensure_next_server_actions_encryption_key() {
+  # The key has to exist before the web Docker build because Next embeds it
+  # into the compiled Server Action manifest. On the first deploy after this
+  # resource is introduced, create just the secret/key prerequisites before
+  # building images; the normal full apply at the end remains authoritative.
+  if gcloud secrets describe NEXT_SERVER_ACTIONS_ENCRYPTION_KEY --project="${PROJECT_ID}" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  log "Creating NEXT_SERVER_ACTIONS_ENCRYPTION_KEY secret before web build"
+  (
+    cd "${ENV_DIR}"
+    terraform apply -auto-approve -var-file=terraform.tfvars \
+      -target=random_id.next_server_actions_encryption_key \
+      -target=google_secret_manager_secret.next_server_actions_encryption_key \
+      -target=google_secret_manager_secret_version.next_server_actions_encryption_key \
+      -target=google_secret_manager_secret_iam_member.next_server_actions_encryption_key_accessors
+  )
+}
+
+next_server_actions_encryption_key() {
+  gcloud secrets versions access latest \
+    --secret=NEXT_SERVER_ACTIONS_ENCRYPTION_KEY \
+    --project="${PROJECT_ID}"
+}
+
 firebase_build_args() {
   cd "${ENV_DIR}"
   local api_key auth_domain fb_project_id app_id gws_client_id
@@ -125,14 +151,23 @@ build_and_push() {
   local extra_args=""
   if [[ "${name}" == "web" ]]; then
     extra_args="$(firebase_build_args)"
+    local action_key
+    action_key="$(next_server_actions_encryption_key)"
+    # shellcheck disable=SC2086
+    NEXT_SERVER_ACTIONS_ENCRYPTION_KEY="${action_key}" DOCKER_BUILDKIT=1 docker build \
+      --platform=linux/amd64 \
+      --secret id=next_server_actions_encryption_key,env=NEXT_SERVER_ACTIONS_ENCRYPTION_KEY \
+      ${extra_args} \
+      -f "${context_dockerfile}" \
+      -t "${image}" \
+      "${REPO_ROOT}"
+  else
+    docker build \
+      --platform=linux/amd64 \
+      -f "${context_dockerfile}" \
+      -t "${image}" \
+      "${REPO_ROOT}"
   fi
-  # shellcheck disable=SC2086
-  docker build \
-    --platform=linux/amd64 \
-    ${extra_args} \
-    -f "${context_dockerfile}" \
-    -t "${image}" \
-    "${REPO_ROOT}"
   log "Pushing ${image}"
   docker push "${image}"
 }
@@ -149,17 +184,15 @@ apply_terraform() {
 }
 
 main() {
-  # No targeted prereq apply — for ongoing deploys, dev's terraform state
-  # already holds the Firebase outputs the web build reads, and a targeted
-  # apply that included the cloud-run-service module's `moved` block kept
-  # pulling Cloud Run into the plan with image_tag=bootstrap (var default),
-  # failing because that image doesn't exist in Artifact Registry.
-  #
-  # The full `apply_terraform` at the end of this script is non-targeted, so
-  # it consumes any pending `moved` blocks cleanly and updates Cloud Run with
-  # the just-pushed image_tag. First-time bootstrap of a new env is handled
-  # by infra/bootstrap/bootstrap.sh, not this script.
+  # Keep the normal Cloud Run/image rollout in the full apply at the end so
+  # pending `moved` blocks are consumed cleanly with the just-pushed image_tag.
+  # The only targeted prereq here is the stable Server Actions encryption key,
+  # because Next needs that secret before `next build` can produce a web image
+  # whose action IDs survive a redeploy.
   ensure_terraform_init
+  if [[ "${WHICH}" == "web" || "${WHICH}" == "both" ]]; then
+    ensure_next_server_actions_encryption_key
+  fi
   docker_auth
   if [[ "${WHICH}" == "agent" || "${WHICH}" == "both" ]]; then
     build_and_push agent

@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Multi-stage build for the Lifecoach Next.js frontend.
 # Build context must be the monorepo root.
 
@@ -45,7 +46,15 @@ ENV NEXT_PUBLIC_FIREBASE_API_KEY=${NEXT_PUBLIC_FIREBASE_API_KEY} \
     NEXT_PUBLIC_SENTRY_DSN=${NEXT_PUBLIC_SENTRY_DSN} \
     NEXT_PUBLIC_SENTRY_ENVIRONMENT=${NEXT_PUBLIC_SENTRY_ENVIRONMENT}
 
-RUN pnpm --filter @lifecoach/web... build
+# NEXT_SERVER_ACTIONS_ENCRYPTION_KEY must be present during `next build` so
+# Server Action IDs stay stable across redeploys. It is supplied as a BuildKit
+# secret by deploy.sh / preview-deploy.sh and intentionally is not persisted as
+# an ENV in the final runtime image.
+RUN --mount=type=secret,id=next_server_actions_encryption_key \
+    if [ -f /run/secrets/next_server_actions_encryption_key ]; then \
+      export NEXT_SERVER_ACTIONS_ENCRYPTION_KEY="$(cat /run/secrets/next_server_actions_encryption_key)"; \
+    fi; \
+    pnpm --filter @lifecoach/web... build
 
 # ----- runtime -----
 # Uses the standalone Next.js output to keep the image small.
