@@ -63,6 +63,8 @@ export default function LandingPage() {
               <a
                 href="/chat"
                 className="group inline-flex items-center justify-center rounded-full bg-[#24362d] px-7 py-4 text-base font-semibold text-[#fff8ec] shadow-2xl shadow-[#24362d]/20 transition hover:-translate-y-0.5 hover:bg-[#7c6552]"
+                data-analytics-event="landing_cta_click"
+                data-analytics-label="hero_try_free"
               >
                 Start a calmer thread
                 <span className="ml-2 transition group-hover:translate-x-1">→</span>
@@ -70,6 +72,8 @@ export default function LandingPage() {
               <a
                 href="#how-it-works"
                 className="inline-flex items-center justify-center rounded-full border border-white/70 bg-white/45 px-7 py-4 text-base font-semibold text-foreground shadow-sm backdrop-blur-xl transition hover:-translate-y-0.5 hover:border-[#d98f79]"
+                data-analytics-event="landing_cta_click"
+                data-analytics-label="hero_see_product"
               >
                 See the redesign
               </a>
@@ -265,6 +269,8 @@ export default function LandingPage() {
           <a
             href="/chat"
             className="mt-9 inline-flex items-center justify-center rounded-full bg-[#24362d] px-8 py-4 text-base font-semibold text-[#fff8ec] shadow-2xl shadow-[#24362d]/20 transition hover:-translate-y-0.5 hover:bg-[#7c6552]"
+            data-analytics-event="landing_cta_click"
+            data-analytics-label="footer_open_lifecoach"
           >
             Open tranquil.coach
           </a>
@@ -277,26 +283,53 @@ export default function LandingPage() {
 function MarketingNav() {
   return (
     <nav className="mx-auto flex max-w-7xl items-center justify-between rounded-full border border-white/70 bg-white/45 px-4 py-3 shadow-sm backdrop-blur-xl">
-      <a href="/" className="font-serif text-2xl font-semibold tracking-tight text-foreground">
+      <a
+        href="/"
+        className="font-serif text-2xl font-semibold tracking-tight text-foreground"
+        data-analytics-event="landing_nav_home"
+        data-analytics-label="logo"
+      >
         tranquil.coach
       </a>
       <div className="hidden items-center gap-6 text-sm font-semibold text-[#647168] md:flex">
-        <a href="#how-it-works" className="transition hover:text-foreground">
+        <a
+          href="#how-it-works"
+          className="transition hover:text-foreground"
+          data-analytics-event="landing_nav_section"
+          data-analytics-label="how_it_works"
+        >
           Ritual
         </a>
-        <a href="#use-cases" className="transition hover:text-foreground">
+        <a
+          href="#use-cases"
+          className="transition hover:text-foreground"
+          data-analytics-event="landing_nav_section"
+          data-analytics-label="use_cases"
+        >
           Use cases
         </a>
-        <a href="#privacy" className="transition hover:text-foreground">
+        <a
+          href="#privacy"
+          className="transition hover:text-foreground"
+          data-analytics-event="landing_nav_section"
+          data-analytics-label="privacy"
+        >
           Trust
         </a>
-        <a href="/blog" className="transition hover:text-foreground">
+        <a
+          href="/blog"
+          className="transition hover:text-foreground"
+          data-analytics-event="landing_nav_section"
+          data-analytics-label="blog"
+        >
           Blog
         </a>
       </div>
       <a
         href="/chat"
         className="rounded-full bg-[#24362d] px-5 py-2.5 text-sm font-semibold text-[#fff8ec] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#7c6552]"
+        data-analytics-event="landing_cta_click"
+        data-analytics-label="nav_start_coaching"
       >
         Start coaching
       </a>
