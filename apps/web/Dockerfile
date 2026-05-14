@@ -36,6 +36,10 @@ ARG NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID
 ARG NEXT_PUBLIC_GA_MEASUREMENT_ID=""
 ARG NEXT_PUBLIC_SENTRY_DSN=""
 ARG NEXT_PUBLIC_SENTRY_ENVIRONMENT=""
+# Stable Server Action key is a base64-encoded 32-byte AES key generated in
+# Terraform and pulled from Secret Manager by deploy scripts. It must be
+# present during `next build` so action IDs are deterministic across deploys.
+ARG NEXT_SERVER_ACTIONS_ENCRYPTION_KEY=""
 ENV NEXT_PUBLIC_FIREBASE_API_KEY=${NEXT_PUBLIC_FIREBASE_API_KEY} \
     NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN} \
     NEXT_PUBLIC_FIREBASE_PROJECT_ID=${NEXT_PUBLIC_FIREBASE_PROJECT_ID} \
@@ -45,7 +49,7 @@ ENV NEXT_PUBLIC_FIREBASE_API_KEY=${NEXT_PUBLIC_FIREBASE_API_KEY} \
     NEXT_PUBLIC_SENTRY_DSN=${NEXT_PUBLIC_SENTRY_DSN} \
     NEXT_PUBLIC_SENTRY_ENVIRONMENT=${NEXT_PUBLIC_SENTRY_ENVIRONMENT}
 
-RUN pnpm --filter @lifecoach/web... build
+RUN NEXT_SERVER_ACTIONS_ENCRYPTION_KEY="${NEXT_SERVER_ACTIONS_ENCRYPTION_KEY}" pnpm --filter @lifecoach/web... build
 
 # ----- runtime -----
 # Uses the standalone Next.js output to keep the image small.

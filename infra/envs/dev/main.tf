@@ -204,6 +204,43 @@ resource "google_secret_manager_secret_iam_member" "agent_internal_bearer_access
   member    = each.value
 }
 
+# --- Stable Next.js Server Action encryption key --------------------------
+# Next.js 15 derives Server Action IDs during `next build`. Without a stable
+# key, a redeploy invalidates IDs embedded in clients that still have the
+# previous bundle cached, causing "Failed to find Server Action" 500s. Keep a
+# single base64-encoded 32-byte AES key in Secret Manager, pass it to the web
+# Docker build, and mount it at runtime so all Cloud Run revisions agree.
+
+resource "random_id" "next_server_actions_encryption_key" {
+  byte_length = 32
+}
+
+resource "google_secret_manager_secret" "next_server_actions_encryption_key" {
+  project   = var.project_id
+  secret_id = "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [module.apis]
+}
+
+resource "google_secret_manager_secret_version" "next_server_actions_encryption_key" {
+  secret      = google_secret_manager_secret.next_server_actions_encryption_key.id
+  secret_data = random_id.next_server_actions_encryption_key.b64_std
+}
+
+resource "google_secret_manager_secret_iam_member" "next_server_actions_encryption_key_accessors" {
+  for_each = toset([
+    "serviceAccount:lifecoach-web@${var.project_id}.iam.gserviceaccount.com",
+  ])
+  project   = var.project_id
+  secret_id = google_secret_manager_secret.next_server_actions_encryption_key.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = each.value
+}
+
 # --- Cloud Run: agent ------------------------------------------------------
 # Public for Phase 1. IAM-scoped web->agent invocation is a Phase 11 hardening.
 
@@ -299,6 +336,10 @@ module "web" {
   secret_env = {
     AGENT_INTERNAL_BEARER = {
       secret_id = "AGENT_INTERNAL_BEARER"
+      version   = "latest"
+    }
+    NEXT_SERVER_ACTIONS_ENCRYPTION_KEY = {
+      secret_id = "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY"
       version   = "latest"
     }
   }

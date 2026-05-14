@@ -110,6 +110,10 @@ module "web" {
       secret_id = "AGENT_INTERNAL_BEARER"
       version   = "latest"
     }
+    NEXT_SERVER_ACTIONS_ENCRYPTION_KEY = {
+      secret_id = "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY"
+      version   = "latest"
+    }
   }
 
   allow_unauthenticated = true

@@ -56,6 +56,26 @@ PROJECT_ID="$(dev_output project_id)"
 REGION="$(grep -E '^region[[:space:]]*=' "${DEV_DIR}/terraform.tfvars" | sed -E 's/.*=[[:space:]]*"([^"]+)".*/\1/')"
 REPO_URL="${REGION}-docker.pkg.dev/${PROJECT_ID}/lifecoach"
 
+ensure_next_server_actions_key() {
+  # Preview images reuse dev's stable Server Actions key. Create it on-demand
+  # so a PR preview for this change can build before dev has had a full apply.
+  log "Ensuring dev Next.js Server Actions encryption key exists"
+  (
+    cd "${DEV_DIR}"
+    terraform apply -auto-approve -input=false \
+      -target=module.apis \
+      -target=random_id.next_server_actions_encryption_key \
+      -target=google_secret_manager_secret.next_server_actions_encryption_key \
+      -target=google_secret_manager_secret_version.next_server_actions_encryption_key \
+      -target=google_secret_manager_secret_iam_member.next_server_actions_encryption_key_accessors >&2
+  )
+}
+
+ensure_next_server_actions_key
+NEXT_SERVER_ACTIONS_ENCRYPTION_KEY="$(gcloud secrets versions access latest \
+  --secret=NEXT_SERVER_ACTIONS_ENCRYPTION_KEY \
+  --project="${PROJECT_ID}")"
+
 FIREBASE_API_KEY="$(dev_output firebase_api_key)"
 FIREBASE_AUTH_DOMAIN="$(dev_output firebase_auth_domain)"
 FIREBASE_APP_ID="$(dev_output firebase_app_id)"
@@ -111,6 +131,7 @@ build_and_push() {
       --build-arg "NEXT_PUBLIC_GA_MEASUREMENT_ID=${GA_MEASUREMENT_ID}"
       --build-arg "NEXT_PUBLIC_SENTRY_DSN=${SENTRY_DSN_VALUE}"
       --build-arg "NEXT_PUBLIC_SENTRY_ENVIRONMENT=preview-pr-${PR_NUMBER}"
+      --build-arg "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY=${NEXT_SERVER_ACTIONS_ENCRYPTION_KEY}"
     )
   fi
   docker build \

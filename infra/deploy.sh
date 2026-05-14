@@ -75,6 +75,33 @@ tfvar() {
   printf '%s' "${line}" | sed -E 's/.*=[[:space:]]*"([^"]*)".*/\1/'
 }
 
+ensure_next_server_actions_key() {
+  # Server Action IDs are generated during `next build`; make sure the stable
+  # AES key exists before building the web image, including the first deploy
+  # of this infra change where the full apply has not run yet.
+  if [[ "${WHICH}" != "web" && "${WHICH}" != "both" ]]; then
+    return 0
+  fi
+  log "Ensuring Next.js Server Actions encryption key exists"
+  (
+    cd "${ENV_DIR}"
+    terraform apply -auto-approve -input=false \
+      -target=module.apis \
+      -target=random_id.next_server_actions_encryption_key \
+      -target=google_secret_manager_secret.next_server_actions_encryption_key \
+      -target=google_secret_manager_secret_version.next_server_actions_encryption_key \
+      -target=google_secret_manager_secret_iam_member.next_server_actions_encryption_key_accessors
+  )
+}
+
+next_server_actions_build_args() {
+  local key
+  key="$(gcloud secrets versions access latest \
+    --secret=NEXT_SERVER_ACTIONS_ENCRYPTION_KEY \
+    --project="${PROJECT_ID}")"
+  printf -- "--build-arg NEXT_SERVER_ACTIONS_ENCRYPTION_KEY=%s " "${key}"
+}
+
 firebase_build_args() {
   cd "${ENV_DIR}"
   local api_key auth_domain fb_project_id app_id gws_client_id
@@ -124,7 +151,7 @@ build_and_push() {
   # at build time). The agent reads Firebase config at runtime via ADC.
   local extra_args=""
   if [[ "${name}" == "web" ]]; then
-    extra_args="$(firebase_build_args)"
+    extra_args="$(firebase_build_args)$(next_server_actions_build_args)"
   fi
   # shellcheck disable=SC2086
   docker build \
@@ -160,6 +187,7 @@ main() {
   # the just-pushed image_tag. First-time bootstrap of a new env is handled
   # by infra/bootstrap/bootstrap.sh, not this script.
   ensure_terraform_init
+  ensure_next_server_actions_key
   docker_auth
   if [[ "${WHICH}" == "agent" || "${WHICH}" == "both" ]]; then
     build_and_push agent
