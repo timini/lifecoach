@@ -82,9 +82,7 @@ class BridgedAgentTool(AgentTool):
         )
 
         state_dict = {
-            k: v
-            for k, v in tool_context.state.to_dict().items()
-            if not k.startswith("_adk")
+            k: v for k, v in tool_context.state.to_dict().items() if not k.startswith("_adk")
         }
         session = await runner.session_service.create_session(
             app_name=child_app_name,
@@ -96,7 +94,9 @@ class BridgedAgentTool(AgentTool):
         last_grounding_metadata = None
         try:
             async with Aclosing(
-                runner.run_async(user_id=session.user_id, session_id=session.id, new_message=content)
+                runner.run_async(
+                    user_id=session.user_id, session_id=session.id, new_message=content
+                )
             ) as agen:
                 async for event in agen:
                     if event.actions.state_delta:
@@ -126,7 +126,9 @@ class BridgedAgentTool(AgentTool):
 
         bridged_parts: list[types.Part] = []
         for part in event.content.parts:
-            function_call = getattr(part, "function_call", None) or getattr(part, "functionCall", None)
+            function_call = getattr(part, "function_call", None) or getattr(
+                part, "functionCall", None
+            )
             function_response = getattr(part, "function_response", None) or getattr(
                 part, "functionResponse", None
             )
@@ -161,9 +163,23 @@ class BridgedAgentTool(AgentTool):
         if not bridged_parts:
             return
 
+        # ADK / Gemini represent tool output (functionResponse parts) as
+        # role="user" and tool invocations (functionCall parts) as
+        # role="model". Forcing role="model" on bridged response events
+        # makes a later reload of /history surface functionResponse parts
+        # inside a model-authored content block, which Gemini treats as
+        # invalid. Pick the role from the bridged_parts shape instead of
+        # hardcoding it.
+        has_response = any(
+            getattr(p, "function_response", None) is not None
+            or getattr(p, "functionResponse", None) is not None
+            for p in bridged_parts
+        )
+        bridged_role = "user" if has_response else "model"
+
         base = {
             "author": "lifecoach",
-            "content": types.Content(role="model", parts=bridged_parts),
+            "content": types.Content(role=bridged_role, parts=bridged_parts),
             "custom_metadata": {
                 WORKSPACE_PARENT_TOOL_CALL_ID_KEY: parent_id,
                 WORKSPACE_INNER_TOOL_KEY: True,

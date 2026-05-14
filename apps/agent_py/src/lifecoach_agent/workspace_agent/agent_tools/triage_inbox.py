@@ -77,9 +77,7 @@ class TriageInboxToolResult:
     report: TriageReport | None = None
 
 
-def create_triage_inbox_tool(
-    deps: WorkspaceToolDeps, event_queue: Any | None = None
-) -> AgentTool:
+def create_triage_inbox_tool(deps: WorkspaceToolDeps, event_queue: Any | None = None) -> AgentTool:
     agent = create_workspace_agent(
         deps=deps,
         name=TRIAGE_INBOX_TOOL_NAME,
