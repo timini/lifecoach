@@ -111,6 +111,111 @@ describe('eventsToMessages', () => {
     expect(msgs[1].elements).toEqual([{ kind: 'text', text: 'got it' }]);
   });
 
+  it('nests bridged workspace sub-agent calls under the parent AgentTool in history', () => {
+    const msgs = eventsToMessages([
+      {
+        id: 'outer-call',
+        author: 'lifecoach',
+        content: {
+          role: 'model',
+          parts: [{ functionCall: { id: 'outer-1', name: 'triage_inbox', args: {} } }],
+        },
+      },
+      {
+        id: 'inner-call',
+        author: 'lifecoach',
+        content: {
+          role: 'model',
+          parts: [
+            {
+              functionCall: {
+                id: 'inner-1',
+                name: 'list_inbox',
+                args: { since: '1d', __parentToolCallId: 'outer-1', __workspaceInner: true },
+              },
+            },
+          ],
+        },
+      },
+      {
+        id: 'inner-response',
+        author: 'lifecoach',
+        content: {
+          role: 'model',
+          parts: [
+            {
+              functionResponse: {
+                id: 'inner-1',
+                name: 'list_inbox',
+                response: { status: 'ok', count: 2, __parentToolCallId: 'outer-1' },
+              },
+            },
+          ],
+        },
+      },
+      {
+        id: 'outer-response',
+        author: 'lifecoach',
+        content: {
+          role: 'model',
+          parts: [{ functionResponse: { id: 'outer-1', name: 'triage_inbox', response: {} } }],
+        },
+      },
+    ]);
+
+    if (msgs[0]?.role !== 'assistant') throw new Error();
+    expect(msgs[0].elements[0]).toMatchObject({
+      kind: 'tool-call',
+      id: 'outer-1',
+      children: [
+        {
+          kind: 'tool-call',
+          id: 'inner-1',
+          name: 'list_inbox',
+          parentId: 'outer-1',
+          args: { since: '1d' },
+          response: { status: 'ok', count: 2 },
+        },
+      ],
+    });
+  });
+
+  it('nests bridged workspace calls even if the stored child event precedes the parent', () => {
+    const msgs = eventsToMessages([
+      {
+        id: 'inner-call',
+        author: 'lifecoach',
+        content: {
+          role: 'model',
+          parts: [
+            {
+              functionCall: {
+                id: 'inner-1',
+                name: 'list_inbox',
+                args: { __parentToolCallId: 'outer-1' },
+              },
+            },
+          ],
+        },
+      },
+      {
+        id: 'outer-call',
+        author: 'lifecoach',
+        content: {
+          role: 'model',
+          parts: [{ functionCall: { id: 'outer-1', name: 'triage_inbox', args: {} } }],
+        },
+      },
+    ]);
+
+    if (msgs[0]?.role !== 'assistant') throw new Error();
+    expect(msgs[0].elements[0]).toMatchObject({
+      kind: 'tool-call',
+      id: 'outer-1',
+      children: [{ kind: 'tool-call', id: 'inner-1', parentId: 'outer-1' }],
+    });
+  });
+
   it('attaches args + response to the rehydrated tool-call element', () => {
     const msgs = eventsToMessages([
       {

@@ -164,6 +164,7 @@ class RunnerForParams:
     ctx: InstructionContext
     uid: str
     usage_policy: UsagePolicy
+    event_queue: asyncio.Queue[bytes | None] | None = None
 
 
 class SessionReader(Protocol):
@@ -748,8 +749,18 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
         except Exception as err:  # noqa: BLE001
             logger.exception("chat.prompt log build failed: %s", err)
 
+        # Shared by the server driver and bridged workspace AgentTools.
+        # The tool bridge can put inner sub-agent tool events here while ADK is
+        # still executing the outer triage_inbox/find_workspace call.
+        sse_queue: asyncio.Queue[bytes | None] = asyncio.Queue()
+
         runner = deps.runner_for(
-            RunnerForParams(ctx=instruction_ctx, uid=effective_user_id, usage_policy=usage_policy)
+            RunnerForParams(
+                ctx=instruction_ctx,
+                uid=effective_user_id,
+                usage_policy=usage_policy,
+                event_queue=sse_queue,
+            )
         )
 
         # SSE stream ----------------------------------------------------
@@ -863,7 +874,7 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                 # We can't `yield` from inside `_drive` (it's a coroutine,
                 # not a generator). Use a queue + a background task so the
                 # outer generator stays the only yielder.
-                _outer_queue: asyncio.Queue[bytes | None] = asyncio.Queue()
+                _outer_queue = sse_queue
 
                 async def _drive_then_signal(msg: Any) -> bool:
                     try:

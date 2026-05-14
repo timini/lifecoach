@@ -29,6 +29,8 @@ export type ChatStreamElement =
        * events won't have them. */
       args?: unknown;
       response?: unknown;
+      parentId?: string;
+      children?: ChatStreamElement[];
     };
 
 export interface ChatStreamUserMessage {
@@ -198,16 +200,7 @@ function AssistantGroup({
           return <UpgradePrompt key={elKey} disabled={answered} onInterest={onProInterest} />;
         }
         if (el.kind === 'tool-call') {
-          return (
-            <ToolCallBadge
-              key={elKey}
-              label={el.label}
-              done={el.done}
-              ok={el.ok}
-              args={el.args}
-              response={el.response}
-            />
-          );
+          return <ToolCallElement key={elKey} element={el} />;
         }
         return (
           <ChoicePrompt
@@ -221,6 +214,31 @@ function AssistantGroup({
         );
       })}
     </>
+  );
+}
+
+function ToolCallElement({
+  element,
+}: { element: Extract<ChatStreamElement, { kind: 'tool-call' }> }) {
+  return (
+    <div className="flex flex-col gap-1 self-start">
+      <ToolCallBadge
+        label={element.label}
+        done={element.done}
+        ok={element.ok}
+        args={element.args}
+        response={element.response}
+      />
+      {element.children && element.children.length > 0 ? (
+        <div className="ml-5 flex flex-col gap-1 border-l border-border/60 pl-3">
+          {element.children.map((child, i) =>
+            child.kind === 'tool-call' ? (
+              <ToolCallElement key={`${child.id}-${i}`} element={child} />
+            ) : null,
+          )}
+        </div>
+      ) : null}
+    </div>
   );
 }
 

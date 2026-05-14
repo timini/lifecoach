@@ -49,6 +49,34 @@ export interface UseChatStreamApi {
  *
  * Auth, location, sessionId, and viewMode are inputs — the page owns those.
  */
+
+function attachChildToolCall(
+  elements: AssistantElement[],
+  parentId: string,
+  child: AssistantElement,
+): AssistantElement[] {
+  return elements.map((el) => {
+    if (el.kind !== 'tool-call') return el;
+    if (el.id === parentId) return { ...el, children: [...(el.children ?? []), child] };
+    if (el.children) return { ...el, children: attachChildToolCall(el.children, parentId, child) };
+    return el;
+  });
+}
+
+function finishToolCall(
+  elements: AssistantElement[],
+  op: Extract<AssistantOp, { op: 'finish-tool-call' }>,
+): AssistantElement[] {
+  return elements.map((el) => {
+    if (el.kind !== 'tool-call') return el;
+    if (el.id === op.id && !el.done && (!op.parentId || el.parentId === op.parentId)) {
+      return { ...el, done: true, ok: op.ok, response: op.response };
+    }
+    if (el.children) return { ...el, children: finishToolCall(el.children, op) };
+    return el;
+  });
+}
+
 export function useChatStream({
   user,
   sessionId,
@@ -104,13 +132,13 @@ export function useChatStream({
               elements = [...elements, { kind: 'text', text: op.text }];
             }
           } else if (op.op === 'push') {
-            elements = [...elements, op.element];
+            if (op.element.kind === 'tool-call' && op.element.parentId) {
+              elements = attachChildToolCall(elements, op.element.parentId, op.element);
+            } else {
+              elements = [...elements, op.element];
+            }
           } else if (op.op === 'finish-tool-call') {
-            elements = elements.map((el) =>
-              el.kind === 'tool-call' && el.id === op.id && !el.done
-                ? { ...el, done: true, ok: op.ok, response: op.response }
-                : el,
-            );
+            elements = finishToolCall(elements, op);
           }
         }
         return { ...m, elements };

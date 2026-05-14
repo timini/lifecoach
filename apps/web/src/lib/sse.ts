@@ -36,6 +36,9 @@ export type AssistantElement =
        * `update_user_profile` this carries `previous_value`, `new_value`
        * and `modified_at`, which is the user-visible diff. */
       response?: unknown;
+      /** For bridged workspace sub-agent calls, the outer AgentTool call id. */
+      parentId?: string;
+      children?: AssistantElement[];
     };
 
 export function parseSseAssistant(raw: string): AssistantElement[] {
@@ -172,7 +175,7 @@ export function parseSseAssistantText(raw: string): string {
 export type AssistantOp =
   | { op: 'append-text'; text: string }
   | { op: 'push'; element: AssistantElement }
-  | { op: 'finish-tool-call'; id: string; ok: boolean; response?: unknown };
+  | { op: 'finish-tool-call'; id: string; ok: boolean; response?: unknown; parentId?: string };
 
 export function parseSseBlock(block: string): AssistantOp[] {
   const out: AssistantOp[] = [];
@@ -221,6 +224,7 @@ export function parseSseBlock(block: string): AssistantOp[] {
     for (const part of parts) {
       const fc = part.functionCall;
       if (!fc || typeof fc.name !== 'string') continue;
+      const parentId = workspaceParentId(fc.args);
       out.push({
         op: 'push',
         element: {
@@ -229,7 +233,8 @@ export function parseSseBlock(block: string): AssistantOp[] {
           name: fc.name,
           label: labelForToolCall(fc.name, fc.args),
           done: false,
-          args: fc.args,
+          args: stripWorkspaceBridgeMetadata(fc.args),
+          ...(parentId ? { parentId } : {}),
         },
       });
     }
@@ -259,11 +264,13 @@ export function parseSseBlock(block: string): AssistantOp[] {
     // rather than flashing red.
     const isScopeRequired = resp?.code === 'scope_required';
     const errored = !isScopeRequired && (resp?.status === 'error' || Boolean(resp?.code));
+    const parentId = workspaceParentId(fr.response);
     out.push({
       op: 'finish-tool-call',
       id: fr.id ?? fr.name ?? 'unknown',
       ok: !errored,
-      response: fr.response,
+      response: stripWorkspaceBridgeMetadata(fr.response),
+      ...(parentId ? { parentId } : {}),
     });
 
     // Choice pickers.
@@ -313,6 +320,23 @@ export function parseSseBlock(block: string): AssistantOp[] {
     }
   }
 
+  return out;
+}
+
+export const WORKSPACE_PARENT_TOOL_CALL_ID_KEY = '__parentToolCallId';
+export const WORKSPACE_INNER_TOOL_KEY = '__workspaceInner';
+
+export function workspaceParentId(value: unknown): string | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const raw = (value as Record<string, unknown>)[WORKSPACE_PARENT_TOOL_CALL_ID_KEY];
+  return typeof raw === 'string' && raw.length > 0 ? raw : undefined;
+}
+
+export function stripWorkspaceBridgeMetadata(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const out = { ...(value as Record<string, unknown>) };
+  delete out[WORKSPACE_PARENT_TOOL_CALL_ID_KEY];
+  delete out[WORKSPACE_INNER_TOOL_KEY];
   return out;
 }
 
@@ -368,6 +392,18 @@ export function labelForToolCall(name: string, args: unknown): string {
       return 'recalling';
     case 'google_search':
       return 'searching the web';
+    case 'list_inbox':
+      return 'checking inbox';
+    case 'get_message': {
+      const id = typeof a.id === 'string' ? a.id : '';
+      return id ? `reading message ${id.slice(0, 12)}` : 'reading message';
+    }
+    case 'search_messages':
+      return 'searching messages';
+    case 'list_events':
+      return 'checking calendar';
+    case 'list_tasks':
+      return 'checking tasks';
     default:
       return `using ${name}`;
   }

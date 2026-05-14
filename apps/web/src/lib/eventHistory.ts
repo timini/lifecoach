@@ -17,7 +17,7 @@
  * matching call's status and don't render their own bubble.
  */
 
-import { labelForToolCall } from './sse';
+import { labelForToolCall, stripWorkspaceBridgeMetadata, workspaceParentId } from './sse';
 
 export interface HistoryUserMessage {
   id: string;
@@ -43,6 +43,8 @@ export type HistoryAssistantElement =
       args?: unknown;
       /** Original response from functionResponse — same surface as args. */
       response?: unknown;
+      parentId?: string;
+      children?: HistoryAssistantElement[];
     };
 
 export interface HistoryAssistantMessage {
@@ -117,6 +119,12 @@ const REPLAYABLE_TOOLS = new Set<string>([
   'memory_save',
   'memory_search',
   'google_search',
+  // Workspace sub-agent internals bridged under triage_inbox/find_workspace.
+  'list_inbox',
+  'get_message',
+  'search_messages',
+  'list_events',
+  'list_tasks',
 ]);
 
 function isErrored(fr: FunctionResponseLike | undefined): boolean {
@@ -142,6 +150,7 @@ export function eventsToMessages(events: readonly EventLike[]): HistoryMessage[]
   }
 
   const out: HistoryMessage[] = [];
+  const pendingChildrenByParent = new Map<string, HistoryAssistantElement[]>();
 
   for (const event of events) {
     const parts = event.content?.parts ?? [];
@@ -167,16 +176,34 @@ export function eventsToMessages(events: readonly EventLike[]): HistoryMessage[]
       if (fc?.name && REPLAYABLE_TOOLS.has(fc.name)) {
         const id = fc.id ?? fc.name;
         const matched = responsesByKey.get(id);
-        elements.push({
+        const parentId = workspaceParentId(fc.args);
+        const element: HistoryAssistantElement = {
           kind: 'tool-call',
           id,
           name: fc.name,
           label: labelForToolCall(fc.name, fc.args),
           done: true,
           ok: !isErrored(matched),
-          args: fc.args,
-          response: matched?.response,
-        });
+          args: stripWorkspaceBridgeMetadata(fc.args),
+          response: stripWorkspaceBridgeMetadata(matched?.response),
+          ...(parentId ? { parentId } : {}),
+        };
+        if (parentId) {
+          if (!attachHistoryChild(out, elements, parentId, element)) {
+            pendingChildrenByParent.set(parentId, [
+              ...(pendingChildrenByParent.get(parentId) ?? []),
+              element,
+            ]);
+          }
+        } else {
+          const pendingChildren = pendingChildrenByParent.get(id);
+          elements.push(
+            pendingChildren
+              ? { ...element, children: [...(element.children ?? []), ...pendingChildren] }
+              : element,
+          );
+          pendingChildrenByParent.delete(id);
+        }
       }
     }
 
@@ -200,6 +227,31 @@ export function eventsToMessages(events: readonly EventLike[]): HistoryMessage[]
   }
 
   return out;
+}
+
+function attachHistoryChild(
+  messages: HistoryMessage[],
+  currentElements: HistoryAssistantElement[],
+  parentId: string,
+  child: HistoryAssistantElement,
+): boolean {
+  const attach = (elements: HistoryAssistantElement[]): boolean => {
+    for (const el of elements) {
+      if (el.kind !== 'tool-call') continue;
+      if (el.id === parentId) {
+        el.children = [...(el.children ?? []), child];
+        return true;
+      }
+      if (el.children && attach(el.children)) return true;
+    }
+    return false;
+  };
+  if (attach(currentElements)) return true;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg?.role === 'assistant' && attach(msg.elements)) return true;
+  }
+  return false;
 }
 
 function randomId(): string {

@@ -206,6 +206,59 @@ describe('parseSseBlock (streaming reducer)', () => {
     );
   });
 
+  it('marks bridged workspace inner calls with parentId and strips bridge metadata', () => {
+    const fcOps = parseSseBlock(
+      blockFor({
+        author: 'lifecoach',
+        partial: true,
+        content: {
+          parts: [
+            {
+              functionCall: {
+                id: 'inner-1',
+                name: 'list_inbox',
+                args: { since: '1d', __parentToolCallId: 'outer-1', __workspaceInner: true },
+              },
+            },
+          ],
+        },
+      }),
+    );
+    expect(fcOps[0]).toMatchObject({
+      op: 'push',
+      element: {
+        kind: 'tool-call',
+        id: 'inner-1',
+        name: 'list_inbox',
+        parentId: 'outer-1',
+        args: { since: '1d' },
+      },
+    });
+
+    const frOps = parseSseBlock(
+      blockFor({
+        author: 'lifecoach',
+        content: {
+          parts: [
+            {
+              functionResponse: {
+                id: 'inner-1',
+                name: 'list_inbox',
+                response: { status: 'ok', count: 2, __parentToolCallId: 'outer-1' },
+              },
+            },
+          ],
+        },
+      }),
+    );
+    expect(frOps[0]).toMatchObject({
+      op: 'finish-tool-call',
+      id: 'inner-1',
+      parentId: 'outer-1',
+      response: { status: 'ok', count: 2 },
+    });
+  });
+
   it('marks the tool-call failed when the response has an error code', () => {
     const frOps = parseSseBlock(
       blockFor({
