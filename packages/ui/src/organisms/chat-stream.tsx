@@ -134,6 +134,18 @@ interface AssistantGroupProps {
   onProInterest: () => void;
 }
 
+const WORKSPACE_INNER_TOOLS = new Set([
+  'list_inbox',
+  'get_message',
+  'search_messages',
+  'list_events',
+  'list_tasks',
+]);
+
+function isWorkspaceInnerTool(name: string): boolean {
+  return WORKSPACE_INNER_TOOLS.has(name);
+}
+
 function AssistantGroup({
   msgId,
   elements,
@@ -206,6 +218,9 @@ function AssistantGroup({
               ok={el.ok}
               args={el.args}
               response={el.response}
+              className={
+                isWorkspaceInnerTool(el.name) ? 'ml-5 border-border/60 bg-muted/30' : undefined
+              }
             />
           );
         }

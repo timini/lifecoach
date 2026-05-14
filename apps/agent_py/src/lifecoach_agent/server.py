@@ -90,6 +90,10 @@ from lifecoach_agent.storage.profile_history import ProfileHistoryStore
 from lifecoach_agent.storage.user_meta import UserMetaStore
 from lifecoach_agent.storage.user_profile import UserProfileStore
 from lifecoach_agent.storage.workspace_tokens import WorkspaceTokensStore
+from lifecoach_agent.workspace_agent.bridged_agent_tool import (
+    reset_workspace_event_sink,
+    set_workspace_event_sink,
+)
 
 logger = logging.getLogger("lifecoach_agent.server")
 
@@ -872,13 +876,22 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                         # Sentinel so the consumer wakes up and moves on.
                         await _outer_queue.put(None)
 
-                drive_task = asyncio.create_task(_drive_then_signal(new_message))
-                while True:
-                    chunk = await _outer_queue.get()
-                    if chunk is None:
-                        break
-                    yield chunk
-                _first_pass_choice = await drive_task  # noqa: F841 — kept for symmetry/log
+                async def _emit_bridged_workspace_event(event: Any) -> None:
+                    await _outer_queue.put(
+                        f"data: {json.dumps(_event_to_dict(event), default=str)}\n\n".encode()
+                    )
+
+                sink_token = set_workspace_event_sink(_emit_bridged_workspace_event)
+                try:
+                    drive_task = asyncio.create_task(_drive_then_signal(new_message))
+                    while True:
+                        chunk = await _outer_queue.get()
+                        if chunk is None:
+                            break
+                        yield chunk
+                    _first_pass_choice = await drive_task  # noqa: F841 — kept for symmetry/log
+                finally:
+                    reset_workspace_event_sink(sink_token)
                 timings["streamMs"] = _now_ms() - t_stream0
                 timings["ttfbMs"] = first_event_ms if first_event_ms is not None else -1
                 timings["ttftMs"] = first_text_ms if first_text_ms is not None else -1

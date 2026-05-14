@@ -293,6 +293,13 @@ describe('labelForToolCall', () => {
     expect(labelForToolCall('memory_search', {})).toBe('recalling');
     expect(labelForToolCall('google_search', {})).toBe('searching the web');
     expect(labelForToolCall('upgrade_to_pro', {})).toBe('offering pro upgrade');
+    expect(labelForToolCall('list_inbox', { since: '1d' })).toBe('checking inbox since 1d');
+    expect(labelForToolCall('get_message', { id: 'message-123456789' })).toContain('message-1234');
+    expect(labelForToolCall('search_messages', { query: 'from:sarah newer_than:7d' })).toContain(
+      'from:sarah',
+    );
+    expect(labelForToolCall('list_events', {})).toBe('checking calendar');
+    expect(labelForToolCall('list_tasks', {})).toBe('checking tasks');
   });
 
   it('covers update_user_profile + log_goal_update fallbacks when args are missing', () => {

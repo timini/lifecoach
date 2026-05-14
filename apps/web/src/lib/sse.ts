@@ -345,6 +345,22 @@ export function labelForToolCall(name: string, args: unknown): string {
     }
     case 'complete_task':
       return 'marking task done';
+    case 'list_inbox': {
+      const since = typeof a.since === 'string' ? a.since : '';
+      return since ? `checking inbox since ${since}` : 'checking inbox';
+    }
+    case 'get_message': {
+      const id = typeof a.id === 'string' ? a.id : '';
+      return id ? `reading message: ${id.slice(0, 12)}` : 'reading message';
+    }
+    case 'search_messages': {
+      const query = typeof a.query === 'string' ? a.query : '';
+      return query ? `searching mail: ${query.slice(0, 60)}` : 'searching mail';
+    }
+    case 'list_events':
+      return 'checking calendar';
+    case 'list_tasks':
+      return 'checking tasks';
     case 'update_user_profile': {
       const path = typeof a.path === 'string' ? a.path : '';
       return path ? `remembering ${path}` : 'remembering that';

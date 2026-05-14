@@ -112,6 +112,12 @@ const REPLAYABLE_TOOLS = new Set<string>([
   'add_calendar_event',
   'add_task',
   'complete_task',
+  // Workspace sub-agent internals bridged from triage_inbox/find_workspace
+  'list_inbox',
+  'get_message',
+  'search_messages',
+  'list_events',
+  'list_tasks',
   'update_user_profile',
   'log_goal_update',
   'memory_save',

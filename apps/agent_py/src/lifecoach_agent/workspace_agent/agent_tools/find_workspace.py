@@ -10,6 +10,7 @@ from google.adk.tools.agent_tool import AgentTool
 from pydantic import BaseModel, ConfigDict, Field
 
 from lifecoach_agent.workspace_agent.agent import create_workspace_agent
+from lifecoach_agent.workspace_agent.bridged_agent_tool import BridgedAgentTool
 from lifecoach_agent.workspace_agent.tools._deps import WorkspaceToolDeps
 
 FIND_WORKSPACE_TOOL_NAME = "find_workspace"
@@ -63,4 +64,4 @@ def create_find_workspace_tool(deps: WorkspaceToolDeps) -> AgentTool:
         instruction=_FIND_INSTRUCTION,
         input_schema=FindWorkspaceInput,
     )
-    return AgentTool(agent=agent, skip_summarization=False)
+    return BridgedAgentTool(agent=agent, skip_summarization=False)

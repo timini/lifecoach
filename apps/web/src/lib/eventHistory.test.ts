@@ -303,6 +303,50 @@ describe('eventsToMessages', () => {
     expect(msgs).toEqual([]);
   });
 
+  it('rehydrates bridged workspace sub-agent tool calls', () => {
+    const msgs = eventsToMessages([
+      {
+        id: 'e1',
+        author: 'lifecoach',
+        content: {
+          role: 'model',
+          parts: [
+            {
+              functionCall: { id: 'parent:inner', name: 'list_inbox', args: { since: '1d' } },
+            },
+          ],
+        },
+      },
+      {
+        id: 'e2',
+        author: 'lifecoach',
+        content: {
+          role: 'user',
+          parts: [
+            {
+              functionResponse: {
+                id: 'parent:inner',
+                name: 'list_inbox',
+                response: { status: 'ok', messages: [] },
+              },
+            },
+          ],
+        },
+      },
+    ]);
+    expect(msgs).toHaveLength(1);
+    if (msgs[0]?.role !== 'assistant') throw new Error();
+    expect(msgs[0].elements[0]).toMatchObject({
+      kind: 'tool-call',
+      id: 'parent:inner',
+      name: 'list_inbox',
+      label: 'checking inbox since 1d',
+      done: true,
+      ok: true,
+      response: { status: 'ok', messages: [] },
+    });
+  });
+
   it('strips choice-tool responses from history (picker is turn-scoped)', () => {
     const msgs = eventsToMessages([
       {
