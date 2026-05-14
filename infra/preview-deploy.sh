@@ -50,6 +50,26 @@ dev_output() {
   (cd "${DEV_DIR}" && terraform output -raw "${key}")
 }
 
+ensure_dev_next_server_actions_encryption_key() {
+  # Previews reuse dev's stable Server Actions key (preview env doesn't own
+  # any secrets — see infra/envs/preview/main.tf). If a PR preview lands
+  # before dev has had a full apply with this resource, materialise just
+  # the secret/key prerequisites via a targeted apply on dev's state.
+  if gcloud secrets describe NEXT_SERVER_ACTIONS_ENCRYPTION_KEY --project="${PROJECT_ID}" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  log "Creating NEXT_SERVER_ACTIONS_ENCRYPTION_KEY secret before preview web build"
+  (
+    cd "${DEV_DIR}"
+    terraform apply -auto-approve -input=false -var-file=terraform.tfvars \
+      -target=random_id.next_server_actions_encryption_key \
+      -target=google_secret_manager_secret.next_server_actions_encryption_key \
+      -target=google_secret_manager_secret_version.next_server_actions_encryption_key \
+      -target=google_secret_manager_secret_iam_member.next_server_actions_encryption_key_accessors >&2
+  )
+}
+
 ensure_dev_init
 
 PROJECT_ID="$(dev_output project_id)"
@@ -76,6 +96,11 @@ dev_tfvar() {
 GA_MEASUREMENT_ID="$(dev_tfvar google_analytics_measurement_id)"
 SENTRY_DSN_VALUE="$(dev_tfvar sentry_dsn)"
 
+ensure_dev_next_server_actions_encryption_key
+NEXT_SERVER_ACTIONS_ENCRYPTION_KEY="$(gcloud secrets versions access latest \
+  --secret=NEXT_SERVER_ACTIONS_ENCRYPTION_KEY \
+  --project="${PROJECT_ID}")"
+
 # Custom-domain wiring — output may not exist yet on first deploy after
 # this feature lands (dev apply hasn't run with the domain module). The
 # `|| true` keeps the script working in both states; preview TF's
@@ -100,9 +125,8 @@ build_and_push() {
   fi
   local image="${REPO_URL}/lifecoach-${name}:${TAG}"
   log "Building ${image}"
-  local -a build_args=()
   if [[ "${name}" == "web" ]]; then
-    build_args+=(
+    local -a build_args=(
       --build-arg "NEXT_PUBLIC_FIREBASE_API_KEY=${FIREBASE_API_KEY}"
       --build-arg "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${FIREBASE_AUTH_DOMAIN}"
       --build-arg "NEXT_PUBLIC_FIREBASE_PROJECT_ID=${PROJECT_ID}"
@@ -112,13 +136,23 @@ build_and_push() {
       --build-arg "NEXT_PUBLIC_SENTRY_DSN=${SENTRY_DSN_VALUE}"
       --build-arg "NEXT_PUBLIC_SENTRY_ENVIRONMENT=preview-pr-${PR_NUMBER}"
     )
+    # BuildKit secret mount (NOT --build-arg) so the stable Server Actions
+    # encryption key isn't persisted in image metadata / provenance /
+    # `docker history`. See apps/web/Dockerfile.
+    NEXT_SERVER_ACTIONS_ENCRYPTION_KEY="${NEXT_SERVER_ACTIONS_ENCRYPTION_KEY}" DOCKER_BUILDKIT=1 docker build \
+      --platform=linux/amd64 \
+      --secret id=next_server_actions_encryption_key,env=NEXT_SERVER_ACTIONS_ENCRYPTION_KEY \
+      "${build_args[@]}" \
+      -f "${dockerfile_dir}/Dockerfile" \
+      -t "${image}" \
+      "${REPO_ROOT}" >&2
+  else
+    docker build \
+      --platform=linux/amd64 \
+      -f "${dockerfile_dir}/Dockerfile" \
+      -t "${image}" \
+      "${REPO_ROOT}" >&2
   fi
-  docker build \
-    --platform=linux/amd64 \
-    "${build_args[@]}" \
-    -f "${dockerfile_dir}/Dockerfile" \
-    -t "${image}" \
-    "${REPO_ROOT}" >&2
   log "Pushing ${image}"
   docker push "${image}" >&2
 }
