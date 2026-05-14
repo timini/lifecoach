@@ -100,6 +100,23 @@ class FakeRunner:
 
 
 @dataclass
+class OTelDetachErrorRunner(FakeRunner):
+    """Raises the noisy ADK/OpenTelemetry context error after streaming."""
+
+    def run_async(self, **_kwargs: Any) -> AsyncIterator[dict[str, Any]]:
+        self.calls_made += 1
+
+        async def gen() -> AsyncIterator[dict[str, Any]]:
+            yield _model_text("hi before tracing cleanup")
+            raise ValueError(
+                "<Token var=<ContextVar name='current_context' default={} at 0xabc> "
+                "at 0xdef> was created in a different Context"
+            )
+
+        return gen()
+
+
+@dataclass
 class FakeUserMetaStore:
     """Minimal user-meta store for usage-limit tests."""
 
@@ -457,6 +474,24 @@ async def test_chat_streams_model_text_and_terminates_with_done() -> None:
         text = await _drain(res)
     assert "hello there" in text
     assert "event: done" in text
+
+
+@pytest.mark.asyncio
+async def test_chat_suppresses_otel_context_detach_error_after_streaming() -> None:
+    runner = OTelDetachErrorRunner(events_per_call=[])
+    app = _make_app(runner=runner)
+    async with (
+        _client(app) as c,
+        c.stream(
+            "POST",
+            "/chat",
+            json={"userId": "u1", "sessionId": "s1", "message": "hi"},
+        ) as res,
+    ):
+        text = await _drain(res)
+    assert "hi before tracing cleanup" in text
+    assert "event: done" in text
+    assert "event: error" not in text
 
 
 @pytest.mark.asyncio

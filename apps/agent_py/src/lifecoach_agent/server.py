@@ -93,6 +93,30 @@ from lifecoach_agent.storage.workspace_tokens import WorkspaceTokensStore
 
 logger = logging.getLogger("lifecoach_agent.server")
 
+_OTEL_CONTEXT_TOKEN_ERROR_RE = re.compile(r"Token .* was created in a different Context")
+
+
+def _is_otel_context_token_error(err: BaseException) -> bool:
+    """Return true for OpenTelemetry contextvars detach noise.
+
+    ADK tracing can close an async generator in a different asyncio context
+    from the one that entered the tracing span. OpenTelemetry surfaces that
+    teardown race as a ValueError; the user-visible stream already completed,
+    so the server should suppress only that exact stderr-flooding failure.
+    """
+    return isinstance(err, ValueError) and bool(_OTEL_CONTEXT_TOKEN_ERROR_RE.search(str(err)))
+
+
+async def _await_drive_task(task: asyncio.Task[bool]) -> bool:
+    try:
+        return await task
+    except ValueError as err:
+        if _is_otel_context_token_error(err):
+            logger.warning("suppressed ADK/OpenTelemetry context detach error: %s", err)
+            return False
+        raise
+
+
 # --- Tool factories (closure-bound per turn) -----------------------------
 #
 # Imported lazily by the runner factory built in `main.py`; the server
@@ -912,6 +936,8 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
         # SSE stream ----------------------------------------------------
         async def stream() -> AsyncIterator[bytes]:
             tool_invocations: list[dict[str, Any]] = []
+            drive_task: asyncio.Task[bool] | None = None
+            drive_task_observed = False
             pending_by_id: dict[str, dict[str, Any]] = {}
             first_text_ms: int | None = None
             choice_shown = False
@@ -1035,7 +1061,10 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                     if chunk is None:
                         break
                     yield chunk
-                _first_pass_choice = await drive_task  # noqa: F841 — kept for symmetry/log
+                try:
+                    _first_pass_choice = await _await_drive_task(drive_task)  # noqa: F841 — kept for symmetry/log
+                finally:
+                    drive_task_observed = True
                 timings["streamMs"] = _now_ms() - t_stream0
                 timings["ttfbMs"] = first_event_ms if first_event_ms is not None else -1
                 timings["ttftMs"] = first_text_ms if first_text_ms is not None else -1
@@ -1064,6 +1093,16 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                     "error",
                 )
             finally:
+                if drive_task is not None and not drive_task.done():
+                    drive_task.cancel()
+                if (
+                    drive_task is not None
+                    and not drive_task_observed
+                    and not drive_task.cancelled()
+                ):
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await _await_drive_task(drive_task)
+
                 # Per-turn structured log line.
                 aq_aqi = (
                     air_quality.aqi
