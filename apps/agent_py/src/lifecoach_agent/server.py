@@ -68,6 +68,7 @@ from lifecoach_agent.context.memory import MemoryClient
 from lifecoach_agent.context.places import PlacesClient
 from lifecoach_agent.context.session_summary import SessionSummaryClient
 from lifecoach_agent.context.weather import WeatherClient
+from lifecoach_agent.oauth.notion_client import NotionOAuthClient
 from lifecoach_agent.oauth.workspace_client import WorkspaceOAuthClient
 from lifecoach_agent.prompt.build_instruction import (
     Coord,
@@ -86,6 +87,8 @@ from lifecoach_agent.state import (
     UserStateMachine,
 )
 from lifecoach_agent.storage.goal_updates import GoalUpdatesStore
+from lifecoach_agent.storage.notion_config import NotionConfigStore
+from lifecoach_agent.storage.notion_tokens import NotionTokensStore
 from lifecoach_agent.storage.profile_history import ProfileHistoryStore
 from lifecoach_agent.storage.user_meta import UserMetaStore
 from lifecoach_agent.storage.user_profile import UserProfileStore
@@ -207,6 +210,12 @@ class CreateAppDeps:
     goal_updates_store: GoalUpdatesStore | None = None
     workspace_tokens_store: WorkspaceTokensStore | None = None
     workspace_oauth_client: WorkspaceOAuthClient | None = None
+    # Notion stores + OAuth client. All three are wired together — when
+    # any is None the Notion routes 503 and the capability flag stays
+    # False (cheatsheet doesn't inject).
+    notion_tokens_store: NotionTokensStore | None = None
+    notion_oauth_client: NotionOAuthClient | None = None
+    notion_config_store: NotionConfigStore | None = None
     user_meta_store: UserMetaStore | None = None
     now: Callable[[], datetime] = field(
         default_factory=lambda: lambda: datetime.now(ZoneInfo("UTC"))
@@ -561,6 +570,123 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
             await deps.workspace_tokens_store.delete(claims.uid)
         return JSONResponse({"connected": False, "scopes": [], "grantedAt": None})
 
+    # ---- /notion/* ------------------------------------------------------
+    #
+    # Three routes mirror the workspace shape: oauth-exchange persists the
+    # tokens + seeds notionConfig with granted parent pages; status returns
+    # the connection state; DELETE removes our docs (Notion has no
+    # programmatic revoke endpoint — see oauth/notion_client.py).
+
+    @app.post("/notion/oauth-exchange")
+    async def notion_oauth_exchange(request: Request) -> JSONResponse:
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001
+            body = {}
+        code = body.get("code") if isinstance(body, dict) else None
+        redirect_uri = body.get("redirect_uri") if isinstance(body, dict) else None
+        if not isinstance(code, str) or not code:
+            return JSONResponse({"error": "body.code (string) is required"}, status_code=400)
+        if not isinstance(redirect_uri, str) or not redirect_uri:
+            return JSONResponse(
+                {"error": "body.redirect_uri (string) is required"}, status_code=400
+            )
+        claims = await _verify(request, deps)
+        if claims is None:
+            return JSONResponse({"error": "unauthenticated"}, status_code=401)
+        if (
+            deps.notion_oauth_client is None
+            or deps.notion_tokens_store is None
+            or deps.notion_config_store is None
+        ):
+            return JSONResponse({"error": "notion not configured"}, status_code=503)
+        try:
+            tokens = await deps.notion_oauth_client.exchange_code(code, redirect_uri)
+            stored = await deps.notion_tokens_store.set(claims.uid, tokens)
+            # Seed the config doc with granted parent pages from the OAuth
+            # response so the bootstrap can create the Lifecoach Tasks DB
+            # under one of them. Notion's exchange response embeds the
+            # selected workspace + bot id but does NOT directly enumerate
+            # granted pages — we derive them via a /v1/search on first
+            # tool call. For now seed with an empty list; the bootstrap's
+            # search-fallback handles the case.
+            await deps.notion_config_store.set(
+                claims.uid,
+                workspace_id=tokens.workspaceId,
+                granted_parent_page_ids=[],
+                database_id=None,
+            )
+            return JSONResponse(
+                {
+                    "connected": True,
+                    "workspaceName": stored.workspaceName,
+                    "grantedAt": stored.grantedAt,
+                }
+            )
+        except Exception as err:  # noqa: BLE001
+            message = str(err)
+            print(
+                json.dumps(
+                    {
+                        "msg": "notion.oauth_exchange_failed",
+                        "uid": claims.uid,
+                        # Notion access tokens start with `secret_` for
+                        # internal integrations or `ntn_` for public.
+                        # Strip either if a redacted-error blob echoes
+                        # them back.
+                        "reason": re.sub(r"(secret_|ntn_)\S+", "[redacted]", message)[:200],
+                    }
+                )
+            )
+            return JSONResponse({"error": "oauth_exchange_failed"}, status_code=400)
+
+    @app.get("/notion/status")
+    async def notion_status(request: Request) -> JSONResponse:
+        claims = await _verify(request, deps)
+        if claims is None:
+            return JSONResponse({"error": "unauthenticated"}, status_code=401)
+        if deps.notion_tokens_store is None:
+            return JSONResponse({"connected": False, "workspaceName": None, "grantedAt": None})
+        try:
+            doc = await deps.notion_tokens_store.get(claims.uid)
+        except Exception:  # noqa: BLE001
+            doc = None
+        if doc is None:
+            return JSONResponse({"connected": False, "workspaceName": None, "grantedAt": None})
+        return JSONResponse(
+            {
+                "connected": True,
+                "workspaceName": doc.workspaceName,
+                "grantedAt": doc.grantedAt,
+            }
+        )
+
+    @app.delete("/notion")
+    async def notion_delete(request: Request) -> JSONResponse:
+        claims = await _verify(request, deps)
+        if claims is None:
+            return JSONResponse({"error": "unauthenticated"}, status_code=401)
+        # Notion has NO programmatic revoke. We only delete our docs;
+        # surface that in the response so the UI can prompt the user
+        # to also remove the integration at notion.so/my-integrations.
+        if deps.notion_tokens_store is not None:
+            with contextlib.suppress(Exception):
+                await deps.notion_tokens_store.delete(claims.uid)
+        if deps.notion_config_store is not None:
+            with contextlib.suppress(Exception):
+                await deps.notion_config_store.delete(claims.uid)
+        return JSONResponse(
+            {
+                "connected": False,
+                "workspaceName": None,
+                "grantedAt": None,
+                "note": (
+                    "Local connection cleared. To fully revoke, remove the "
+                    "Lifecoach integration at notion.so/my-integrations."
+                ),
+            }
+        )
+
     # ---- /chat (SSE) -----------------------------------------------------
 
     @app.post("/chat")
@@ -867,6 +993,34 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
         has_interacted_today = _session_has_user_interaction(existing_session)
         location_ctx: LocationCtx | None = LocationCtx(coord=coord) if coord else None
 
+        # Notion-connectedness — orthogonal capability flag computed per
+        # request from the token doc. False when the store isn't wired
+        # (Notion env vars unset) OR the user hasn't connected.
+        notion_connected = False
+        if deps.notion_tokens_store is not None:
+            notion_doc = await deps.notion_tokens_store.get(effective_user_id)
+            notion_connected = bool(notion_doc and notion_doc.refreshToken)
+
+        # Proactive capability-picker trigger: first lifetime turn for
+        # a signed-in user with no integrations connected. Uses
+        # `chatTurnCount <= 1` rather than a dedicated userMeta flag —
+        # the lifetime counter is already on the doc and naturally
+        # falls past 1 after the first turn, so the picker self-clears.
+        # Follow-up issue can wire a richer `picturedCapabilities`
+        # boolean for retry-on-LLM-fumble semantics.
+        workspace_connected_now = machine.current() == "workspace_connected"
+        signed_in = machine.current() in (
+            "email_verified",
+            "google_linked",
+            "workspace_connected",
+        )
+        show_picker = (
+            signed_in
+            and not workspace_connected_now
+            and not notion_connected
+            and chat_turn_count <= 1
+        )
+
         instruction_ctx = InstructionContext(
             now=deps.now(),
             timezone=timezone if isinstance(timezone, str) else None,
@@ -893,6 +1047,8 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
             has_interacted_today=has_interacted_today,
             yesterday_summary=yesterday_summary,
             week_summary=week_summary,
+            notion_connected=notion_connected,
+            show_capabilities_proactively=show_picker,
         )
 
         # Log the rendered prompt once — useful for prompt-engineering bug
