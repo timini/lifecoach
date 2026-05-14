@@ -115,6 +115,137 @@ describe('parseSseAssistant', () => {
     expect(parseSseAssistant(raw)).toEqual([]);
   });
 
+  it('emits a capabilities element from show_capabilities (history rehydration)', () => {
+    const fr = {
+      author: 'lifecoach',
+      content: {
+        parts: [
+          {
+            functionResponse: {
+              name: 'show_capabilities',
+              response: {
+                status: 'shown',
+                capabilities: [
+                  {
+                    id: 'workspace',
+                    title: 'Personal assistant',
+                    body: '',
+                    iconKey: 'workspace',
+                    status: 'connected',
+                    cta: null,
+                  },
+                  {
+                    id: 'notion',
+                    title: 'Task tracking',
+                    body: '',
+                    iconKey: 'notion',
+                    status: 'available',
+                    cta: 'connect_notion',
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      },
+    };
+    const raw = `data: ${JSON.stringify(fr)}\n\n`;
+    const elements = parseSseAssistant(raw);
+    expect(elements).toHaveLength(1);
+    expect(elements[0]).toMatchObject({ kind: 'capabilities' });
+    expect((elements[0] as { kind: 'capabilities'; tiles: unknown[] }).tiles).toHaveLength(2);
+  });
+
+  it('emits a single-tile picker from bare connect_notion (history rehydration)', () => {
+    const fr = {
+      author: 'lifecoach',
+      content: {
+        parts: [
+          {
+            functionResponse: {
+              name: 'connect_notion',
+              response: { status: 'oauth_prompted', provider: 'notion' },
+            },
+          },
+        ],
+      },
+    };
+    const raw = `data: ${JSON.stringify(fr)}\n\n`;
+    const elements = parseSseAssistant(raw);
+    expect(elements).toHaveLength(1);
+    expect(elements[0]).toMatchObject({ kind: 'capabilities' });
+    const tiles = (elements[0] as { kind: 'capabilities'; tiles: Array<{ id: string }> }).tiles;
+    expect(tiles).toHaveLength(1);
+    expect(tiles[0]?.id).toBe('notion');
+  });
+
+  it('flushes pending text before pushing a capabilities element', () => {
+    const text = {
+      author: 'lifecoach',
+      partial: true,
+      content: { parts: [{ text: 'here are the things I can do:' }] },
+    };
+    const fr = {
+      author: 'lifecoach',
+      content: {
+        parts: [
+          {
+            functionResponse: {
+              name: 'show_capabilities',
+              response: {
+                status: 'shown',
+                capabilities: [
+                  {
+                    id: 'workspace',
+                    title: 'P',
+                    body: '',
+                    iconKey: 'workspace',
+                    status: 'available',
+                    cta: 'connect_workspace',
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      },
+    };
+    const raw = `data: ${JSON.stringify(text)}\n\ndata: ${JSON.stringify(fr)}\n\n`;
+    const elements = parseSseAssistant(raw);
+    expect(elements).toHaveLength(2);
+    expect(elements[0]).toEqual({
+      kind: 'text',
+      text: 'here are the things I can do:',
+    });
+    expect(elements[1]).toMatchObject({ kind: 'capabilities' });
+  });
+
+  it('flushes pending text before pushing a bare connect_notion tile', () => {
+    const text = {
+      author: 'lifecoach',
+      partial: true,
+      content: { parts: [{ text: 'let me hook that up:' }] },
+    };
+    const fr = {
+      author: 'lifecoach',
+      content: {
+        parts: [
+          {
+            functionResponse: {
+              name: 'connect_notion',
+              response: { status: 'oauth_prompted', provider: 'notion' },
+            },
+          },
+        ],
+      },
+    };
+    const raw = `data: ${JSON.stringify(text)}\n\ndata: ${JSON.stringify(fr)}\n\n`;
+    const elements = parseSseAssistant(raw);
+    expect(elements).toHaveLength(2);
+    expect(elements[0]).toEqual({ kind: 'text', text: 'let me hook that up:' });
+    expect(elements[1]).toMatchObject({ kind: 'capabilities' });
+  });
+
   it('interleaves text then choice in emission order', () => {
     const text = {
       author: 'lifecoach',
@@ -627,6 +758,119 @@ describe('parseSseBlock — extra branches', () => {
       op: 'push',
       element: { kind: 'choice', single: false, question: 'pick some', options: ['a', 'b'] },
     });
+  });
+
+  it('pushes a capabilities element from show_capabilities response', () => {
+    const ops = parseSseBlock(
+      blockFor({
+        author: 'lifecoach',
+        content: {
+          parts: [
+            {
+              functionResponse: {
+                id: 'sc1',
+                name: 'show_capabilities',
+                response: {
+                  status: 'shown',
+                  capabilities: [
+                    {
+                      id: 'workspace',
+                      title: 'Personal assistant',
+                      body: 'Inbox + calendar.',
+                      iconKey: 'workspace',
+                      status: 'available',
+                      cta: 'connect_workspace',
+                    },
+                    {
+                      id: 'notion',
+                      title: 'Task tracking',
+                      body: 'Notion-backed TODOs.',
+                      iconKey: 'notion',
+                      status: 'available',
+                      cta: 'connect_notion',
+                    },
+                    {
+                      id: 'career_coaching',
+                      title: 'Career coaching',
+                      body: 'Coming soon.',
+                      iconKey: 'career',
+                      status: 'coming_soon',
+                      cta: null,
+                    },
+                  ],
+                },
+              },
+            },
+          ],
+        },
+      }),
+    );
+    expect(ops).toContainEqual(
+      expect.objectContaining({
+        op: 'push',
+        element: expect.objectContaining({ kind: 'capabilities' }),
+      }),
+    );
+    const pushed = ops.find(
+      (op) => op.op === 'push' && (op.element as { kind: string }).kind === 'capabilities',
+    ) as { op: 'push'; element: { kind: 'capabilities'; tiles: unknown[] } };
+    expect(pushed.element.tiles).toHaveLength(3);
+  });
+
+  it('drops capabilities tiles that are not well-formed', () => {
+    const ops = parseSseBlock(
+      blockFor({
+        author: 'lifecoach',
+        content: {
+          parts: [
+            {
+              functionResponse: {
+                id: 'sc2',
+                name: 'show_capabilities',
+                response: {
+                  status: 'shown',
+                  capabilities: [
+                    null,
+                    'not-an-object',
+                    { id: 'workspace', title: 'OK', iconKey: 'workspace', status: 'available' },
+                    { id: 42, title: 'bad-id', iconKey: 'x', status: 'available' },
+                  ],
+                },
+              },
+            },
+          ],
+        },
+      }),
+    );
+    const pushed = ops.find(
+      (op) => op.op === 'push' && (op.element as { kind: string }).kind === 'capabilities',
+    ) as { op: 'push'; element: { kind: 'capabilities'; tiles: unknown[] } };
+    expect(pushed.element.tiles).toHaveLength(1);
+  });
+
+  it('pushes a single-tile picker from a bare connect_notion response', () => {
+    const ops = parseSseBlock(
+      blockFor({
+        author: 'lifecoach',
+        content: {
+          parts: [
+            {
+              functionResponse: {
+                id: 'cn1',
+                name: 'connect_notion',
+                response: { status: 'oauth_prompted', provider: 'notion' },
+              },
+            },
+          ],
+        },
+      }),
+    );
+    const pushed = ops.find(
+      (op) => op.op === 'push' && (op.element as { kind: string }).kind === 'capabilities',
+    ) as { op: 'push'; element: { kind: 'capabilities'; tiles: Array<{ id: string }> } };
+    expect(pushed).toBeTruthy();
+    expect(pushed.element.tiles).toHaveLength(1);
+    expect(pushed.element.tiles[0]?.id).toBe('notion');
   });
 
   it('treats scope_required responses as ok (so the pill is not error-styled)', () => {
