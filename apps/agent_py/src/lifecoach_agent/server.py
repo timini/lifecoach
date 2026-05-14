@@ -93,6 +93,27 @@ from lifecoach_agent.storage.workspace_tokens import WorkspaceTokensStore
 
 logger = logging.getLogger("lifecoach_agent.server")
 
+
+def _is_opentelemetry_context_token_error(err: BaseException) -> bool:
+    """True for the benign OTel contextvars detach race seen during SSE close.
+
+    OpenTelemetry's context token is bound to the asyncio context that
+    created it. ADK tracing can occasionally close an async generator from a
+    sibling context after the model response has already been yielded; that
+    raises a ValueError whose traceback is noisy but not user-facing. Keep the
+    matcher intentionally narrow so unrelated ValueErrors still surface as
+    stream errors.
+    """
+    if not isinstance(err, ValueError):
+        return False
+    message = str(err)
+    return (
+        "created in a different Context" in message
+        and "Token" in message
+        and ("current_context" in message or "ContextVar" in message)
+    )
+
+
 # --- Tool factories (closure-bound per turn) -----------------------------
 #
 # Imported lazily by the runner factory built in `main.py`; the server
@@ -955,10 +976,15 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                 t_stream0 = _now_ms()
                 first_event_ms: int | None = None
 
-                async def _drive(msg: Any) -> bool:
-                    """Run the model once with `msg`; yield events into the
-                    SSE stream. Returns True if a turn-ending choice
-                    fired (caller should stop early)."""
+                async def _drive(msg: Any) -> AsyncIterator[bytes]:
+                    """Run the model once with `msg` and yield SSE event bytes.
+
+                    Keep the ADK async generator in the same task that owns the
+                    StreamingResponse generator. Closing it from a background
+                    task can make OpenTelemetry detach a context token from the
+                    wrong asyncio context, which floods stderr with benign
+                    ValueErrors during client disconnect/finalisation.
+                    """
                     nonlocal first_event_ms, first_text_ms, choice_shown
                     async for event in runner.run_async(
                         user_id=effective_user_id,
@@ -1008,34 +1034,12 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                         yield_payload = (
                             f"data: {json.dumps(_event_to_dict(event), default=str)}\n\n"
                         )
-                        # We can't yield from a nested async function in
-                        # Python the way TS yields — buffer through a
-                        # queue. Instead, we collect events into a queue
-                        # in the outer scope.
-                        await _outer_queue.put(yield_payload.encode("utf-8"))
+                        yield yield_payload.encode("utf-8")
                         if choice_shown:
-                            return True
-                    return False
+                            break
 
-                # We can't `yield` from inside `_drive` (it's a coroutine,
-                # not a generator). Use a queue + a background task so the
-                # outer generator stays the only yielder.
-                _outer_queue: asyncio.Queue[bytes | None] = asyncio.Queue()
-
-                async def _drive_then_signal(msg: Any) -> bool:
-                    try:
-                        return await _drive(msg)
-                    finally:
-                        # Sentinel so the consumer wakes up and moves on.
-                        await _outer_queue.put(None)
-
-                drive_task = asyncio.create_task(_drive_then_signal(new_message))
-                while True:
-                    chunk = await _outer_queue.get()
-                    if chunk is None:
-                        break
+                async for chunk in _drive(new_message):
                     yield chunk
-                _first_pass_choice = await drive_task  # noqa: F841 — kept for symmetry/log
                 timings["streamMs"] = _now_ms() - t_stream0
                 timings["ttfbMs"] = first_event_ms if first_event_ms is not None else -1
                 timings["ttftMs"] = first_text_ms if first_text_ms is not None else -1
@@ -1044,6 +1048,20 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                 # no retry. Forward-fix path: capture as eval + tune prompt.
                 yield b"event: done\ndata: {}\n\n"
             except Exception as err:  # noqa: BLE001
+                if _is_opentelemetry_context_token_error(err):
+                    # ADK/OpenTelemetry can raise this during async-generator
+                    # finalisation after the useful stream payload has already
+                    # been produced. Suppress it so Cloud Run/Sentry do not see
+                    # a false ERROR, but keep the normal SSE terminator for
+                    # clients that are still connected.
+                    logger.warning(
+                        "chat.stream_otel_context_detach_suppressed uid=%s sessionId=%s",
+                        effective_user_id,
+                        session_id,
+                    )
+                    yield b"event: done\ndata: {}\n\n"
+                    return
+
                 # Log the traceback to stdout — Sentry capture is silent
                 # without a DSN, and silent turns from swallowed runner
                 # exceptions are exactly the class we want to surface.

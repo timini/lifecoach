@@ -506,6 +506,42 @@ async def test_chat_emits_initial_padding_comment_to_flush_gfe_buffer() -> None:
     assert text.startswith(": " + (" " * 4096))
 
 
+@pytest.mark.asyncio
+async def test_chat_suppresses_adk_otel_context_token_detach_race() -> None:
+    """ADK/OpenTelemetry can raise a benign contextvars ValueError while
+    finalising the async stream. The server should not turn that into an
+    `event: error` or stderr traceback after useful payload was emitted."""
+
+    class _OtelDetachRaceRunner(FakeRunner):
+        def run_async(self, **_kwargs: Any) -> AsyncIterator[dict[str, Any]]:
+            self.calls_made += 1
+
+            async def gen() -> AsyncIterator[dict[str, Any]]:
+                yield _model_text("already streamed")
+                raise ValueError(
+                    "<Token var=<ContextVar name='current_context' default={} at 0x1> "
+                    "at 0x2> was created in a different Context"
+                )
+
+            return gen()
+
+    runner = _OtelDetachRaceRunner(events_per_call=[])
+    app = _make_app(runner=runner)
+    async with (
+        _client(app) as c,
+        c.stream(
+            "POST",
+            "/chat",
+            json={"userId": "u1", "sessionId": "s1", "message": "hi"},
+        ) as res,
+    ):
+        text = await _drain(res)
+    assert "already streamed" in text
+    assert "event: error" not in text
+    assert "event: done" in text
+    assert runner.calls_made == 1
+
+
 # The hard-cap behaviour these two tests covered (HTTP 429 + JSON
 # `usage_limit_exceeded`) was superseded by the 10-state funnel: walled
 # states now emit an SSE `event: wall` instead of a 429 so the FE can
