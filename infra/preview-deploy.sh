@@ -52,14 +52,19 @@ dev_output() {
 
 ensure_dev_next_server_actions_encryption_key() {
   # Previews reuse dev's stable Server Actions key (preview env doesn't own
-  # any secrets — see infra/envs/preview/main.tf). If a PR preview lands
-  # before dev has had a full apply with this resource, materialise just
-  # the secret/key prerequisites via a targeted apply on dev's state.
-  if gcloud secrets describe NEXT_SERVER_ACTIONS_ENCRYPTION_KEY --project="${PROJECT_ID}" >/dev/null 2>&1; then
-    return 0
-  fi
-
-  log "Creating NEXT_SERVER_ACTIONS_ENCRYPTION_KEY secret before preview web build"
+  # any secrets — see infra/envs/preview/main.tf). The targeted apply on
+  # dev's state covers two cases:
+  #   1. First preview after this resource was introduced — the secret
+  #      doesn't exist yet and has to be materialised here.
+  #   2. Intentional rotation on dev (`terraform taint random_id.next_server_actions_encryption_key`)
+  #      — the secret already exists, but its `latest` value needs to roll
+  #      BEFORE the preview web build reads it, or the just-built preview
+  #      image bakes in the old key while dev's running revisions use the
+  #      new one (Action IDs diverge between preview and dev).
+  #
+  # An existence-check short-circuit would silently skip case 2. The
+  # targeted apply is idempotent — no-op when nothing has changed.
+  log "Reconciling NEXT_SERVER_ACTIONS_ENCRYPTION_KEY secret before preview web build"
   (
     cd "${DEV_DIR}"
     terraform apply -auto-approve -input=false -var-file=terraform.tfvars \

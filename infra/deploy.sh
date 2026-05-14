@@ -79,14 +79,20 @@ ensure_next_server_actions_encryption_key() {
   # The stable Server Actions encryption key has to exist in Secret Manager
   # before the web Docker build, because Next embeds it into the compiled
   # action manifest during `next build`. The full apply at the end of this
-  # script is non-targeted and authoritative; this prereq only matters on
-  # the first deploy after this resource is introduced (or a fresh env),
-  # when the secret doesn't exist yet.
-  if gcloud secrets describe NEXT_SERVER_ACTIONS_ENCRYPTION_KEY --project="${PROJECT_ID}" >/dev/null 2>&1; then
-    return 0
-  fi
-
-  log "Creating NEXT_SERVER_ACTIONS_ENCRYPTION_KEY secret before web build"
+  # script is non-targeted and authoritative; this targeted prereq covers
+  # two cases:
+  #   1. First deploy after this resource is introduced (or a fresh env) —
+  #      the secret doesn't exist yet and has to be materialised here.
+  #   2. Intentional rotation (`terraform taint random_id.next_server_actions_encryption_key`)
+  #      — the secret already exists, but its `latest` value needs to roll
+  #      BEFORE the web build reads it, or the just-built image bakes in the
+  #      old key while the full apply at the end installs the new one on the
+  #      running revision (Action IDs diverge across the rolling deploy).
+  #
+  # An existence-check short-circuit would silently skip case 2 and reopen
+  # the action-id mismatch bug. The targeted apply is idempotent — no-op
+  # when nothing has changed — so it's safe to always run.
+  log "Reconciling NEXT_SERVER_ACTIONS_ENCRYPTION_KEY secret before web build"
   (
     cd "${ENV_DIR}"
     terraform apply -auto-approve -input=false -var-file=terraform.tfvars \
