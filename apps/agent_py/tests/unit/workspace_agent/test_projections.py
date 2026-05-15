@@ -7,6 +7,7 @@ import base64
 from lifecoach_agent.workspace_agent.projections import (
     BODY_BYTE_CAP,
     project_calendar_event,
+    project_calendar_list_entry,
     project_gmail_message,
     project_task,
 )
@@ -91,6 +92,36 @@ def test_project_gmail_message_handles_missing_payload() -> None:
 
 
 # -- calendar -------------------------------------------------------------
+
+
+def test_project_calendar_list_entry_minimum_fields() -> None:
+    raw = {
+        "id": "family_123@group.calendar.google.com",
+        "summary": "Family",
+        "description": "Shared family calendar",
+        "accessRole": "writer",
+        "timeZone": "Europe/London",
+        "primary": False,
+        "backgroundColor": "#abcdef",
+    }
+
+    proj = project_calendar_list_entry(raw)
+
+    assert proj.id == "family_123@group.calendar.google.com"
+    assert proj.summary == "Family"
+    assert proj.primary is False
+    assert proj.accessRole == "writer"
+    assert proj.timeZone == "Europe/London"
+    assert proj.description == "Shared family calendar"
+
+
+def test_project_calendar_list_entry_defaults() -> None:
+    proj = project_calendar_list_entry({"id": "primary"})
+
+    assert proj.summary == "(no title)"
+    assert proj.primary is False
+    assert proj.accessRole == "unknown"
+    assert proj.timeZone == ""
 
 
 def test_project_calendar_event_basic() -> None:
