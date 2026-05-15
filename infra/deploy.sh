@@ -111,7 +111,7 @@ next_server_actions_encryption_key() {
 
 firebase_build_args() {
   cd "${ENV_DIR}"
-  local api_key auth_domain fb_project_id app_id gws_client_id
+  local api_key auth_domain fb_project_id app_id gws_client_id notion_client_id
   api_key="$(terraform output -raw firebase_api_key 2>/dev/null || true)"
   auth_domain="$(terraform output -raw firebase_auth_domain 2>/dev/null || true)"
   fb_project_id="$(terraform output -raw project_id 2>/dev/null || true)"
@@ -119,6 +119,10 @@ firebase_build_args() {
   # Reused for the GIS popup on the web side; the server-side code exchange
   # (agent) mounts the matching secret via Secret Manager.
   gws_client_id="$(terraform output -raw google_client_id 2>/dev/null || true)"
+  # Notion OAuth client ID — public value, baked into the browser bundle
+  # so connectNotion can construct the authorize URL. Empty string when
+  # the env isn't configured for Notion; the web lib throws at that point.
+  notion_client_id="$(terraform output -raw notion_client_id 2>/dev/null || true)"
   cd - >/dev/null
   # Sentry — resolved from tfvars rather than terraform output so the
   # value is correct on the first deploy after introducing the variable.
@@ -132,6 +136,7 @@ firebase_build_args() {
   printf -- "--build-arg NEXT_PUBLIC_FIREBASE_PROJECT_ID=%s " "${fb_project_id}"
   printf -- "--build-arg NEXT_PUBLIC_FIREBASE_APP_ID=%s " "${app_id}"
   printf -- "--build-arg NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID=%s " "${gws_client_id}"
+  printf -- "--build-arg NEXT_PUBLIC_NOTION_OAUTH_CLIENT_ID=%s " "${notion_client_id}"
   printf -- "--build-arg NEXT_PUBLIC_GA_MEASUREMENT_ID=%s " "${ga_measurement_id}"
   printf -- "--build-arg NEXT_PUBLIC_SENTRY_DSN=%s " "${sentry_dsn}"
   printf -- "--build-arg NEXT_PUBLIC_SENTRY_ENVIRONMENT=%s " "${environment}"

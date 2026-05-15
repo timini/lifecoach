@@ -54,6 +54,19 @@ variable "google_client_secret" {
   description = "OAuth client secret for Google sign-in. Leave empty to skip."
 }
 
+variable "notion_client_id" {
+  type        = string
+  default     = ""
+  description = "Notion OAuth client ID (from notion.so/my-integrations). Public value — carried as a non-secret env var on the agent + web services. Leave empty to disable the Notion integration in this env."
+}
+
+variable "notion_client_secret" {
+  type        = string
+  default     = ""
+  sensitive   = true
+  description = "Notion OAuth client secret. Stored in Secret Manager (NOTION_OAUTH_CLIENT_SECRET). Leave empty to disable; agent will skip constructing the Notion oauth client."
+}
+
 variable "firebase_extra_authorized_domains" {
   type        = list(string)
   default     = []
@@ -91,8 +104,8 @@ variable "custom_domain_name" {
 
 variable "custom_domain_registrant_contact" {
   type = object({
-    email          = string
-    phone_number   = string
+    email        = string
+    phone_number = string
     postal_address = object({
       region_code         = string
       postal_code         = string

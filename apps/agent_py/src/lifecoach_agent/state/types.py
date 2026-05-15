@@ -52,6 +52,21 @@ ToolName = Literal[
     "add_calendar_event",
     "add_task",
     "complete_task",
+    # Notion surface. Orthogonal capability — registered when
+    # `ctx.notion_connected` regardless of UserState, NOT gated by a state
+    # literal. 1 AgentTool wrapping the Notion sub-agent + 4 narrow write
+    # FunctionTools + a connect UI directive.
+    "connect_notion",
+    "notion_review_tasks",
+    "add_notion_task",
+    "update_notion_task",
+    "set_notion_task_parent",
+    "complete_notion_task",
+    # Pure UI directive: emits the chat-rendered capability picker. The
+    # LLM calls this proactively on first signed-in turn (when no
+    # integrations connected) and on-demand when the user asks what we
+    # can do.
+    "show_capabilities",
     "upgrade_to_pro",
 ]
 
@@ -64,6 +79,9 @@ UIAffordance = Literal[
     "sign_in_with_google_button",
     "connect_workspace_button",
     "workspace_connected_indicator",
+    "connect_notion_button",
+    "notion_connected_indicator",
+    "capability_picker",
 ]
 
 

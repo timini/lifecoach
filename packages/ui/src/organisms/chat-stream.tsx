@@ -4,12 +4,14 @@ import { useState } from 'react';
 import { Spinner } from '../atoms/spinner';
 import { AuthPrompt } from '../molecules/auth-prompt';
 import { Bubble } from '../molecules/bubble';
+import type { CapabilityCta } from '../molecules/capability-tile';
 import { ChoicePrompt } from '../molecules/choice-prompt';
 import { ToolCallBadge } from '../molecules/tool-call-badge';
 import { UpgradePrompt } from '../molecules/upgrade-prompt';
 import { type WallCta, WallPrompt, type WallReason } from '../molecules/wall-prompt';
 import { WorkspacePrompt } from '../molecules/workspace-prompt';
 import { Renderer, library as openUILibrary } from '../openui/library';
+import { CapabilityPicker, type CapabilityPickerTile } from './capability-picker';
 import { Markdown } from './markdown';
 
 export type ChatStreamElement =
@@ -19,6 +21,7 @@ export type ChatStreamElement =
   | { kind: 'workspace' }
   | { kind: 'upgrade' }
   | { kind: 'wall'; reason: WallReason; cta: WallCta }
+  | { kind: 'capabilities'; tiles: CapabilityPickerTile[] }
   | {
       kind: 'tool-call';
       id: string;
@@ -70,6 +73,14 @@ export interface ChatStreamProps {
   /** Fired when the wall card's CTA is `upgrade_to_pro` and the user
    * clicks "I'm interested in Pro". Defaults to `onProInterest`. */
   onWallUpgradeToPro?: () => void;
+  /**
+   * Fired when a capability-picker tile's Connect button is clicked.
+   * Caller dispatches the relevant flow ('connect_workspace' →
+   * onConnectWorkspace, 'connect_notion' → notion oauth popup). If
+   * omitted, the renderer routes `connect_workspace` through
+   * `onConnectWorkspace` automatically; `connect_notion` does nothing.
+   */
+  onConnectCapability?: (cta: CapabilityCta) => void;
 }
 
 // Detects OpenUI Lang tags in assistant text. Mirrors the legacy gate from
@@ -91,12 +102,25 @@ export function ChatStream({
   onProInterest,
   onWallAuthUser,
   onWallUpgradeToPro,
+  onConnectCapability,
 }: ChatStreamProps) {
   // Wall-card handlers default to the existing flows. The wall lives inside
   // the assistant transcript so we deliberately reuse the same OAuth /
   // upgrade-interest plumbing already wired to AuthPrompt / UpgradePrompt.
   const wallAuth = onWallAuthUser ?? onGoogleSignIn;
   const wallUpgrade = onWallUpgradeToPro ?? onProInterest;
+  // Capability-picker tile dispatch. `connect_workspace` always routes
+  // through the existing handler (same flow as the WorkspacePrompt
+  // molecule). `connect_notion` requires the caller to supply
+  // onConnectCapability — without it, the Notion tile click is a no-op
+  // (no broken-flow risk; users can still connect via settings).
+  const capabilityDispatch = (cta: CapabilityCta) => {
+    if (onConnectCapability) {
+      onConnectCapability(cta);
+      return;
+    }
+    if (cta === 'connect_workspace') onConnectWorkspace();
+  };
   return (
     <>
       {messages.map((m) => {
@@ -121,6 +145,7 @@ export function ChatStream({
             onProInterest={onProInterest}
             onWallAuthUser={wallAuth}
             onWallUpgradeToPro={wallUpgrade}
+            onConnectCapability={capabilityDispatch}
           />
         );
       })}
@@ -151,6 +176,7 @@ interface AssistantGroupProps {
   onProInterest: () => void;
   onWallAuthUser: () => void;
   onWallUpgradeToPro: () => void;
+  onConnectCapability: (cta: CapabilityCta) => void;
 }
 
 function AssistantGroup({
@@ -165,6 +191,7 @@ function AssistantGroup({
   onProInterest,
   onWallAuthUser,
   onWallUpgradeToPro,
+  onConnectCapability,
 }: AssistantGroupProps) {
   // Index of the last text element — only that bubble carries the timestamp,
   // otherwise a sequence like [tool-call, tool-call, text] would either
@@ -227,6 +254,16 @@ function AssistantGroup({
               disabled={answered}
               onAuthUser={onWallAuthUser}
               onUpgradeToPro={onWallUpgradeToPro}
+            />
+          );
+        }
+        if (el.kind === 'capabilities') {
+          return (
+            <CapabilityPicker
+              key={elKey}
+              tiles={el.tiles}
+              onConnect={onConnectCapability}
+              disabled={answered}
             />
           );
         }
