@@ -41,6 +41,7 @@ them without further redesign:
 
 - `morning_triage_full_flow` ← shipped
 - `find_workspace_specific_lookup` (follow-up)
+- `find_workspace_calendar_list` (workspace sub-agent calendar-ID routing)
 - `add_calendar_event_after_confirm` (follow-up)
 - `complete_task_uses_patch` (follow-up)
 - `workspace_disconnected_decline` (follow-up)

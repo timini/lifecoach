@@ -22,6 +22,7 @@ from lifecoach_agent.workspace_agent.tools import (
     create_archive_messages_tool,
     create_complete_task_tool,
     create_get_message_tool,
+    create_list_calendars_tool,
     create_list_events_tool,
     create_list_inbox_tool,
     create_list_tasks_tool,
@@ -50,6 +51,10 @@ WORKSPACE_AGENT_INSTRUCTION = (
     "- When the query asks for a TRIAGE_REPORT or other markered JSON, emit it "
     "inside <TRIAGE_REPORT>...minified JSON...</TRIAGE_REPORT> tags exactly. "
     "Do not pretty-print; minified JSON is fine.\n"
+    "- If the query asks to list calendars, show calendar IDs, find a Family "
+    "calendar id, or choose a calendar for future events, call list_calendars "
+    "first. Do not call search_messages for calendar-list/calendar-ID requests "
+    "unless the user explicitly asks to search messages.\n"
     "- If a tool call returns status:'error', incorporate the error into your "
     "final answer (the parent agent maps error codes to user-facing messages)."
 )
@@ -96,6 +101,7 @@ def _build_read_tools(deps: WorkspaceToolDeps) -> list[Any]:
         create_list_inbox_tool(deps),
         create_get_message_tool(deps),
         create_search_messages_tool(deps),
+        create_list_calendars_tool(deps),
         create_list_events_tool(deps),
         create_list_tasks_tool(deps),
     ]
