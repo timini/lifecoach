@@ -27,7 +27,10 @@ def create_list_inbox_tool(deps: WorkspaceToolDeps) -> Any:
                 Default "1d" — last 24 hours.
             limit: Maximum number of messages to return (1–50). Default 15.
         """
-        q = f"{'is:unread ' if unread_only else ''}label:INBOX newer_than:{since}".strip()
+        # Keep triage scoped to Gmail's visible inbox. `in:inbox` intentionally
+        # excludes archived / moved mail; `newer_than` preserves the requested
+        # recency window.
+        q = f"{'is:unread ' if unread_only else ''}in:inbox newer_than:{since}".strip()
         max_results = max(1, min(int(limit), 50))
 
         list_result = await run_gws(
@@ -50,7 +53,7 @@ def create_list_inbox_tool(deps: WorkspaceToolDeps) -> Any:
             for m in (body.get("messages") or [])
             if isinstance(m, dict) and isinstance(m.get("id"), str)
         ]
-        ids = [i for i in ids if i]
+        ids = list(dict.fromkeys(i for i in ids if i))
         if not ids:
             return {"status": "ok", "messages": []}
 

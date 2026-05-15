@@ -1,7 +1,7 @@
 {
   "eval_set_id": "subagent_triage_basic_classification",
   "name": "Triage sub-agent — classifies a mixed inbox into the four buckets",
-  "description": "Targets the workspace sub-agent directly (NOT the main coach). The AgentTool wrapper hands it a JSON message `{\"since\":\"1d\"}` and the sub-agent must (a) call list_inbox once, (b) call get_message per id (4 messages stubbed: newsletter / action / event / info), (c) emit a final <TRIAGE_REPORT>{json}</TRIAGE_REPORT> with one item per bucket. Tool calls are mocked via `before_tool_callback` in `eval_triage_inbox_agent.py` so the run is deterministic / free of real Gmail. Final-response check asserts the TRIAGE_REPORT marker is present; the sub-agent's classification quality is the LLM-judge surface.",
+  "description": "Targets the workspace sub-agent directly (NOT the main coach). The AgentTool wrapper hands it a JSON message `{\"since\":\"1d\"}` and the sub-agent must (a) call list_inbox once, (b) call get_message once per distinct id (4 messages stubbed plus one duplicate summary: newsletter / action / event / info), (c) emit a final <TRIAGE_REPORT>{json}</TRIAGE_REPORT> with one item per bucket. Tool calls are mocked via `before_tool_callback` in `eval_triage_inbox_agent.py` so the run is deterministic / free of real Gmail. Final-response check asserts the TRIAGE_REPORT marker is present; the sub-agent's classification quality is the LLM-judge surface.",
   "eval_cases": [
     {
       "eval_id": "case_01_mixed_inbox_four_buckets",
