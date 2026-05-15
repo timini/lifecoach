@@ -48,6 +48,14 @@ module "firebase_auth" {
     ],
   )
 
+  # NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN override. Empty string (default) keeps
+  # the firebaseapp.com auto-domain. Flip to "auth.${var.custom_domain_name}"
+  # AFTER the Firebase Hosting custom-domain cert is ACTIVE (created by
+  # firebase-hosting-auth.tf) and AFTER the OAuth client has been updated to
+  # include the matching `/__/auth/handler` redirect URI. See the deployment
+  # sequence at the top of firebase-hosting-auth.tf.
+  auth_domain_override = var.firebase_auth_domain_override
+
   depends_on = [module.apis]
 }
 

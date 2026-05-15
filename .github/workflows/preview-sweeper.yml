@@ -2,7 +2,11 @@ name: Preview sweeper
 
 on:
   schedule:
-    - cron: '0 5 * * *' # daily 05:00 UTC
+    # Every 4 hours. Daily was too coarse: a Codex burst of duplicate PRs
+    # closed shortly after the morning sweep can sit for up to 24h and hit
+    # GCP global-IP / URL-map quotas mid-day. 6 runs/day, ~50s each = ~5
+    # workflow-minutes/day, negligible budget impact.
+    - cron: '0 */4 * * *'
   workflow_dispatch:
 
 # Don't run two sweeps concurrently — they'd race on the same state slots.

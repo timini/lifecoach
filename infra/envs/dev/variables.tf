@@ -91,8 +91,8 @@ variable "custom_domain_name" {
 
 variable "custom_domain_registrant_contact" {
   type = object({
-    email          = string
-    phone_number   = string
+    email        = string
+    phone_number = string
     postal_address = object({
       region_code         = string
       postal_code         = string
@@ -106,4 +106,10 @@ variable "custom_domain_registrant_contact" {
   nullable    = true
   sensitive   = true
   description = "Whois registrant contact, only used when an apex is registered via Cloud Domains. tranquil.coach is at Porkbun so this is unused today; kept for future TF-managed apexes on Cloud Domains-supported TLDs. Set in terraform.tfvars (gitignored)."
+}
+
+variable "firebase_auth_domain_override" {
+  type        = string
+  default     = ""
+  description = "Hostname to surface as NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN to the web bundle. Empty (default) keeps the firebaseapp.com auto-domain — sign-in still works but users see the firebaseapp.com URL briefly during the OAuth popup. Set to \"auth.tranquil.coach\" (the Firebase Hosting custom domain provisioned by infra/envs/dev/firebase-hosting-auth.tf) to surface the branded subdomain instead. See the deployment sequence comment at the top of firebase-hosting-auth.tf — flip only AFTER the cert is ACTIVE and the OAuth client has the matching /__/auth/handler URI."
 }

@@ -101,6 +101,16 @@ dev_tfvar() {
 GA_MEASUREMENT_ID="$(dev_tfvar google_analytics_measurement_id)"
 SENTRY_DSN_VALUE="$(dev_tfvar sentry_dsn)"
 
+# firebase_auth_domain_override: same staleness concern as infra/deploy.sh —
+# `dev_output firebase_auth_domain` above reflects dev's LAST APPLIED state.
+# If dev's tfvars was changed to flip the override but dev hasn't been
+# re-applied yet, a preview build would bake the old firebaseapp.com domain
+# into the image. Read directly from dev's tfvars and let it take precedence.
+FIREBASE_AUTH_DOMAIN_OVERRIDE="$(dev_tfvar firebase_auth_domain_override)"
+if [[ -n "${FIREBASE_AUTH_DOMAIN_OVERRIDE}" ]]; then
+  FIREBASE_AUTH_DOMAIN="${FIREBASE_AUTH_DOMAIN_OVERRIDE}"
+fi
+
 ensure_dev_next_server_actions_encryption_key
 NEXT_SERVER_ACTIONS_ENCRYPTION_KEY="$(gcloud secrets versions access latest \
   --secret=NEXT_SERVER_ACTIONS_ENCRYPTION_KEY \
