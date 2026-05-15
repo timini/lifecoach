@@ -7,6 +7,7 @@ import base64
 from lifecoach_agent.workspace_agent.projections import (
     BODY_BYTE_CAP,
     project_calendar_event,
+    project_calendar_list_entry,
     project_gmail_message,
     project_task,
 )
@@ -126,6 +127,25 @@ def test_project_calendar_event_all_day_and_defaults() -> None:
     assert proj.start.date == "2026-05-12"
     assert proj.end.date == "2026-05-13"
     assert proj.calendarId is None
+
+
+def test_project_calendar_list_entry_keeps_selection_metadata() -> None:
+    raw = {
+        "id": "family-123@group.calendar.google.com",
+        "summary": "Family",
+        "primary": False,
+        "accessRole": "writer",
+        "timeZone": "America/New_York",
+        "description": "Shared family planning",
+        "backgroundColor": "#abcdef",
+    }
+    proj = project_calendar_list_entry(raw)
+    assert proj.id == "family-123@group.calendar.google.com"
+    assert proj.summary == "Family"
+    assert proj.primary is False
+    assert proj.accessRole == "writer"
+    assert proj.timeZone == "America/New_York"
+    assert proj.description == "Shared family planning"
 
 
 # -- tasks ----------------------------------------------------------------

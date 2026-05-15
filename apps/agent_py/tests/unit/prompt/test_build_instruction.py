@@ -103,6 +103,9 @@ def test_workspace_cheatsheet_only_when_workspace_connected() -> None:
     assert "triage_inbox" in out_ws
     assert "find_workspace" in out_ws
     assert "archive_messages" in out_ws
+    assert "list my Google calendars" in out_ws
+    assert "list_calendars" in out_ws
+    assert "must not search Gmail" in out_ws
 
 
 def test_signup_soft_only_when_nudge_mode_signup_soft() -> None:

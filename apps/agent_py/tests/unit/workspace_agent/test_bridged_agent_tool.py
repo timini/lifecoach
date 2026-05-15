@@ -275,3 +275,14 @@ async def test_bridge_is_a_noop_when_no_parent_call_id() -> None:
     await tool._bridge_inner_tool_event(inner, tool_context)
 
     assert session_service.events == []
+
+
+def test_find_workspace_sub_agent_includes_list_calendars() -> None:
+    """Calendar-ID lookups need a direct calendarList.list read tool,
+    not Gmail search or event listing."""
+    deps = WorkspaceToolDeps(store=_FakeStore(), uid="u1")  # type: ignore[arg-type]
+    tool = create_find_workspace_tool(deps)
+    names = {getattr(inner, "name", None) for inner in tool.agent.tools}
+    assert "list_calendars" in names
+    assert "search_messages" in names
+    assert "list_events" in names
