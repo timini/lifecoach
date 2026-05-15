@@ -1,0 +1,40 @@
+{
+  "eval_set_id": "find_workspace_calendar_list",
+  "name": "List Google calendars for family calendar ID",
+  "description": "User asks for Google calendar IDs and the Family calendar. Agent should route the specific lookup through find_workspace rather than triage or email search; the workspace sub-agent instruction covers list_calendars.",
+  "eval_cases": [
+    {
+      "eval_id": "case_01_list_google_calendars_find_family_id",
+      "session_input": {
+        "app_name": "lifecoach",
+        "user_id": "test-user-find-family-calendar",
+        "state": {
+          "_lifecoach_user_state": "workspace_connected",
+          "_lifecoach_now": "2026-05-15T11:30:00+00:00"
+        }
+      },
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [
+              {
+                "text": "list my Google calendars and find the family calendar ID"
+              }
+            ],
+            "role": "user"
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "find_workspace",
+                "args": {
+                  "query": "list my Google calendars and find the family calendar ID"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
