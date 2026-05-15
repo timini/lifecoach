@@ -15,6 +15,8 @@ GET_MESSAGE_TOOL_NAME = "get_message"
 
 
 def create_get_message_tool(deps: WorkspaceToolDeps) -> Any:
+    message_cache: dict[tuple[str, str], dict[str, Any]] = {}
+
     async def get_message(id: str, format: Literal["full", "metadata"] = "full") -> dict[str, Any]:
         """Fetch a single Gmail message by id and return the projected
         shape (decoded body, allow-listed headers). Read-only.
@@ -24,6 +26,11 @@ def create_get_message_tool(deps: WorkspaceToolDeps) -> Any:
             format: "full" includes the body (decoded text); "metadata"
                 omits it. Default "full".
         """
+        cache_key = (id, format)
+        cached = message_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         result = await run_gws(
             store=deps.store,
             uid=deps.uid,
@@ -39,7 +46,12 @@ def create_get_message_tool(deps: WorkspaceToolDeps) -> Any:
             return {"status": "error", "code": result.code, "message": result.message}
         raw = result.body if isinstance(result.body, dict) else {}
         projection = project_gmail_message(raw)
-        return {"status": "ok", "message": projection.model_dump(by_alias=True, exclude_none=True)}
+        response = {
+            "status": "ok",
+            "message": projection.model_dump(by_alias=True, exclude_none=True),
+        }
+        message_cache[cache_key] = response
+        return response
 
     from google.adk.tools import FunctionTool
 

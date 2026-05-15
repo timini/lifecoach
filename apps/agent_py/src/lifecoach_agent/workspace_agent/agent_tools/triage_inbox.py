@@ -36,8 +36,8 @@ The parent will hand you a JSON message with an optional `since` key (Gmail-styl
 
 Procedure:
 1. Call list_inbox with the since value (e.g. since="1d") to get message ids + snippets.
-2. For each message, call get_message with the id (e.g. id=<the id from step 1>) to read the decoded body and headers. Parallel calls are fine.
-3. Classify EVERY message into exactly one bucket:
+2. Build a seen_message_ids set from the list_inbox results. For each distinct id, call get_message at most once (e.g. id=<the id from step 1>) to read the decoded body and headers. Parallel calls are fine, but never re-read duplicate ids.
+3. Classify EVERY distinct message into exactly one bucket:
    - noise: newsletters, automated reports, marketing — no action
    - actions: the user must do something — distil into a 1-line task
    - events: a meeting/appointment with date+time — propose start/end
