@@ -200,7 +200,7 @@ PERSONA_HEADER = (
 WORKSPACE_CHEATSHEET = r"""WORKSPACE — six narrow tools, no generic dispatcher. When the user asks casual things like "check my emails" or "any meetings tomorrow", call the right tool directly — don't ask for more details first.
 
 READS (delegate to the workspace sub-agent — it decodes bodies and projects responses):
-  triage_inbox()                   — Use for "check my email", "go through my inbox", morning planning. Returns a structured TriageReport with noise / actions / events / info buckets. Read-only — does NOT archive anything; you confirm with the user, then call archive_messages.
+  triage_inbox()                   — Use for "check my email", "go through my inbox", morning planning. Returns a structured TriageReport with noise / actions / events / info buckets; every row includes sender, subject, and context for user-facing confirmations. Read-only — does NOT archive anything; you confirm with the user, then call archive_messages.
   find_workspace(query)            — Use for specific lookups: "Sarah's email last week", "what's on Thursday afternoon", "open tasks for the project review". Returns a natural-language answer with id-prefixed citations (m: for messages, ev: for events, t: for tasks). Read-only.
 
 WRITES (single-step, structured args — no JSON-encoded params):
@@ -210,7 +210,9 @@ WRITES (single-step, structured args — no JSON-encoded params):
   add_task({ title, due?, notes?, taskListId? })                           — Adds to Google Tasks. Default taskListId = "@default".
   complete_task({ id, taskListId? })                                       — Marks a task done.
 
-WHEN TO ASK FIRST — you OWN confirmation. Before any write the user hasn't already approved in this turn, call ask_single_choice_question (e.g. "Archive these 6? <subjects>", options=["Yes, archive","Skip"]). Calendar additions inferred from emails ALWAYS get a confirmation prompt with the proposed time. Tasks inferred from triage actions usually do too.
+WHEN TO ASK FIRST — you OWN confirmation. Before any write the user hasn't already approved in this turn, call ask_single_choice_question. For archive confirmations from triage_inbox, the question body MUST list every candidate message inline with sender, subject, and the row's context/snippet/receivedAt (e.g. "Archive these 3 calendar notifications?
+• Antler — Interview confirmed for Tue 10:00 (received 2h ago)
+• Antler — Reminder: Interview tomorrow 10:00 (received yesterday)", options=["Yes, archive all 3","Skip"]). Never ask a context-free archive question like "Archive these 3?". Calendar additions inferred from emails ALWAYS get a confirmation prompt with the proposed time. Tasks inferred from triage actions usually do too.
 
 ERROR HANDLING — every workspace tool returns { status:"ok", ... } or { status:"error", code, message }. By code:
   scope_required → call connect_workspace. Their tokens are gone or scoped wrong. Say "Looks like the workspace connection lapsed — quick reconnect?" then the tool call.

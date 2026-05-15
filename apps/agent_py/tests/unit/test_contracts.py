@@ -17,6 +17,7 @@ from lifecoach_agent.contracts import (
     AuthUserArgs,
     ChoiceQuestion,
     GoalUpdate,
+    TriageReport,
     UserProfile,  # noqa: F401 — type alias, imported for parity with TS index
     WorkspaceStatus,
     empty_user_profile,
@@ -205,6 +206,67 @@ def test_workspace_status_rejects_extra_keys() -> None:
     with pytest.raises(ValidationError):
         WorkspaceStatus.model_validate(
             {"connected": True, "scopes": [], "grantedAt": None, "extra": 1}
+        )
+
+
+# --- TriageReport ---------------------------------------------------------
+
+
+def test_triage_report_requires_context_on_every_row() -> None:
+    parsed = TriageReport.model_validate(
+        {
+            "noise": [
+                {
+                    "id": "m1",
+                    "from": "Antler <calendar@antler.example>",
+                    "subject": "Interview confirmed for Tue 10:00",
+                    "receivedAt": "Mon, 11 May 2026 09:00:00 +0100",
+                    "snippet": "Your interview is confirmed for Tuesday at 10:00.",
+                    "context": "received Mon 09:00 — interview confirmed for Tue 10:00",
+                }
+            ],
+            "actions": [
+                {
+                    "id": "m2",
+                    "from": "Alex <alex@example.com>",
+                    "subject": "Contract renewal",
+                    "context": "asks you to sign by Friday",
+                    "task": "Sign the renewal by Friday",
+                }
+            ],
+            "events": [
+                {
+                    "id": "m3",
+                    "from": "Sarah <sarah@example.com>",
+                    "subject": "Lunch Tuesday 12:30?",
+                    "context": "lunch proposed Tuesday at 12:30",
+                    "proposedStart": "2026-05-12T12:30:00+01:00",
+                }
+            ],
+            "info": [
+                {
+                    "id": "m4",
+                    "from": "School <admin@school.example>",
+                    "subject": "Photo day",
+                    "context": "Friday photo day; uniform, no PE kit",
+                    "note": "Friday photo day",
+                }
+            ],
+        }
+    )
+    assert "Tue 10:00" in parsed.noise[0].context
+    assert parsed.events[0].from_ == "Sarah <sarah@example.com>"
+
+
+def test_triage_report_rejects_context_free_archive_candidates() -> None:
+    with pytest.raises(ValidationError):
+        TriageReport.model_validate(
+            {
+                "noise": [{"id": "m1", "from": "news@example.com", "subject": "Digest"}],
+                "actions": [],
+                "events": [],
+                "info": [],
+            }
         )
 
 

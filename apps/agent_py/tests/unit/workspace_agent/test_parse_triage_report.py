@@ -16,10 +16,17 @@ from lifecoach_agent.workspace_agent.agent_tools.triage_inbox import (
 
 _VALID_REPORT_JSON = (
     "{"
-    '"noise":[{"id":"m1","from":"news@x","subject":"Digest"}],'
-    '"actions":[{"id":"m2","from":"a@x","subject":"Sign-off","task":"sign contract by Friday"}],'
-    '"events":[{"id":"m3","subject":"Lunch","proposedStart":"2026-05-12T12:30:00+01:00"}],'
-    '"info":[{"id":"m4","from":"school@x","subject":"Photo day","note":"Friday, uniform"}]'
+    '"noise":[{"id":"m1","from":"news@x","subject":"Digest",'
+    '"receivedAt":"Mon, 11 May 2026 09:00:00 +0100",'
+    '"snippet":"Weekly stories","context":"received Mon 09:00 — weekly stories"}],'
+    '"actions":[{"id":"m2","from":"a@x","subject":"Sign-off",'
+    '"context":"asks you to sign by Friday","task":"sign contract by Friday"}],'
+    '"events":[{"id":"m3","from":"sarah@x","subject":"Lunch",'
+    '"context":"lunch proposed Tue 12:30 at Tortilla",'
+    '"proposedStart":"2026-05-12T12:30:00+01:00"}],'
+    '"info":[{"id":"m4","from":"school@x","subject":"Photo day",'
+    '"context":"Friday photo day; uniform, no PE kit",'
+    '"note":"Friday, uniform"}]'
     "}"
 )
 
@@ -44,7 +51,7 @@ def test_schema_invalid_json_returns_parse_error() -> None:
     # Valid JSON, but `actions` entry is missing the required `task` field.
     bad = (
         '<TRIAGE_REPORT>{"noise":[],"actions":[{"id":"m2","from":"a@x",'
-        '"subject":"x"}],"events":[],"info":[]}</TRIAGE_REPORT>'
+        '"subject":"x","context":"needs a reply"}],"events":[],"info":[]}</TRIAGE_REPORT>'
     )
     out = parse_triage_report(bad)
     assert out.status == "parse_error"
@@ -91,3 +98,21 @@ def test_marker_with_inner_whitespace_is_stripped() -> None:
     out = parse_triage_report(text)
     assert out.status == "ok"
     assert out.report is not None
+
+
+def test_schema_requires_context_for_archive_prompts() -> None:
+    bad = (
+        '<TRIAGE_REPORT>{"noise":[{"id":"m1","from":"news@x",'
+        '"subject":"Digest"}],"actions":[],"events":[],"info":[]}</TRIAGE_REPORT>'
+    )
+    out = parse_triage_report(bad)
+    assert out.status == "parse_error"
+    assert out.report is None
+
+
+def test_event_rows_include_sender_and_context() -> None:
+    out = parse_triage_report(f"<TRIAGE_REPORT>{_VALID_REPORT_JSON}</TRIAGE_REPORT>")
+    assert out.status == "ok"
+    assert out.report is not None
+    assert out.report.events[0].from_ == "sarah@x"
+    assert "Tue 12:30" in out.report.events[0].context

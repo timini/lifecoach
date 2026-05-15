@@ -336,3 +336,9 @@ def test_available_practices_block_lists_disabled_practices() -> None:
     assert "Plan the day" in out
     assert "Evening gratitude" in out
     assert "Journaling" in out
+
+
+def test_workspace_archive_confirmation_requires_message_context() -> None:
+    out = build_instruction(_base_ctx(user_state="workspace_connected"))
+    assert "sender, subject, and the row's context/snippet/receivedAt" in out
+    assert "Never ask a context-free archive question" in out

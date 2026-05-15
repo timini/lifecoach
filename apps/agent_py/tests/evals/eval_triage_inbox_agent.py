@@ -45,6 +45,7 @@ _INBOX: list[dict[str, Any]] = [
         "from": "Substack Weekly <newsletter@substack.com>",
         "subject": "Your weekly digest — 12 stories",
         "snippet": "Top stories this week: AI breakthroughs, market roundup, ...",
+        "date": "Mon, 11 May 2026 09:00:00 +0100",
         "body": (
             "Hi,\n\nHere are this week's top picks across your subscriptions:\n"
             "1. The AI boom continues...\n2. Market roundup...\n3. New from..."
@@ -57,6 +58,7 @@ _INBOX: list[dict[str, Any]] = [
         "from": "Alex <alex@studio.example>",
         "subject": "Contract renewal — needs your sign-off this week",
         "snippet": "Hey — the contract renewal for next quarter is ready...",
+        "date": "Mon, 11 May 2026 09:00:00 +0100",
         "body": (
             "Hey,\n\nThe renewal contract is ready for sign-off. Could you "
             "review and sign by Friday? Standard terms, no surprises. "
@@ -69,6 +71,7 @@ _INBOX: list[dict[str, Any]] = [
         "from": "Sarah <sarah@example.com>",
         "subject": "Lunch Tuesday 12:30?",
         "snippet": "Want to grab lunch Tuesday around 12:30 at Tortilla?...",
+        "date": "Mon, 11 May 2026 09:00:00 +0100",
         "body": (
             "Hi!\n\nWant to grab lunch Tuesday 12 May at 12:30 at Tortilla "
             "in Soho? Have a few project ideas I'd love to run by you.\n\n"
@@ -81,6 +84,7 @@ _INBOX: list[dict[str, Any]] = [
         "from": "Greenfield Primary <admin@greenfield.school>",
         "subject": "Maya — school photo day Friday",
         "snippet": "Reminder that school photo day for Year 3 is this Friday...",
+        "date": "Mon, 11 May 2026 09:00:00 +0100",
         "body": (
             "Dear Parent,\n\nThis is a reminder that school photo day for "
             "Year 3 is this Friday 15 May. Maya should wear school uniform "
@@ -110,7 +114,7 @@ def _get_message_response(message_id: str) -> dict[str, Any]:
                 "threadId": m["threadId"],
                 "from": m["from"],
                 "subject": m["subject"],
-                "date": "Mon, 11 May 2026 09:00:00 +0100",
+                "date": m["date"],
                 "snippet": m["snippet"],
                 "body": m["body"],
                 "truncated": False,
