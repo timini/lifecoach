@@ -1,0 +1,44 @@
+{
+  "eval_set_id": "subagent_find_workspace_calendar_list",
+  "name": "Find Workspace sub-agent lists calendars for Family calendar ID",
+  "agent_module": "tests.evals.eval_find_workspace_agent",
+  "description": "Targets the workspace search sub-agent directly. A direct Google calendar-list / calendar-ID request must call list_calendars, not Gmail search.",
+  "eval_cases": [
+    {
+      "eval_id": "case_01_list_calendars_find_family_id",
+      "session_input": {
+        "app_name": "find_workspace",
+        "user_id": "eval-find-workspace-uid",
+        "state": {}
+      },
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [
+              {
+                "text": "{\"query\":\"list my Google calendars and find the family calendar ID\"}"
+              }
+            ],
+            "role": "user"
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "list_calendars",
+                "args": {}
+              }
+            ]
+          },
+          "final_response": {
+            "parts": [
+              {
+                "text": "family-123@group.calendar.google.com"
+              }
+            ],
+            "role": "model"
+          }
+        }
+      ]
+    }
+  ]
+}
