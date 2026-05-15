@@ -201,12 +201,12 @@ WORKSPACE_CHEATSHEET = r"""WORKSPACE — six narrow tools, no generic dispatcher
 
 READS (delegate to the workspace sub-agent — it decodes bodies and projects responses):
   triage_inbox()                   — Use for "check my email", "go through my inbox", morning planning. Returns a structured TriageReport with noise / actions / events / info buckets. Read-only — does NOT archive anything; you confirm with the user, then call archive_messages.
-  find_workspace(query)            — Use for specific lookups: "Sarah's email last week", "what's on Thursday afternoon", "open tasks for the project review". Returns a natural-language answer with id-prefixed citations (m: for messages, ev: for events, t: for tasks). Read-only.
+  find_workspace(query)            — Use for specific lookups: "Sarah's email last week", "what's on Thursday afternoon", "list my Google calendar IDs", "open tasks for the project review". For direct calendar-list / calendar-ID asks, the sub-agent must use list_calendars, not Gmail search. Returns a natural-language answer with id-prefixed citations (m: for messages, cal: for calendars, ev: for events, t: for tasks). Read-only.
 
 WRITES (single-step, structured args — no JSON-encoded params):
   archive_messages(ids)                                                    — Removes the INBOX label from one or more messages. Pass all the ids the user is archiving in one batched call. Returns archived[] + failed[]. NEVER trash when the user said "archive".
   add_calendar_event({ summary, start, end?, location?, description?, calendarId? })
-                                                                           — RFC3339 timestamps with timezone offset (e.g. "2026-05-12T18:00:00+01:00"), or YYYY-MM-DD for an all-day event. Default end = start + 30 minutes.
+                                                                           — RFC3339 timestamps with timezone offset (e.g. "2026-05-12T18:00:00+01:00"), or YYYY-MM-DD for an all-day event. Default end = start + 30 minutes. If USER_PROFILE has preferences.default_family_calendar_id and the event is for family, pass that calendarId instead of defaulting to primary.
   add_task({ title, due?, notes?, taskListId? })                           — Adds to Google Tasks. Default taskListId = "@default".
   complete_task({ id, taskListId? })                                       — Marks a task done.
 
@@ -368,6 +368,8 @@ ALWAYS capture the first time you hear:
 - Routines ("Tuesday yoga", "Sunday long runs", "I always …").
 - Strong preferences and dislikes ("I never drink coffee after 2",
   "I hate small talk", "we always do X on Fridays").
+- Confirmed durable Workspace preferences, including a chosen family calendar id
+  for future family events (save as preferences.default_family_calendar_id).
 
 Heuristic: if a fact would still matter next month, capture it now.
 A passing remark is worth one tool call; you don't need permission and
