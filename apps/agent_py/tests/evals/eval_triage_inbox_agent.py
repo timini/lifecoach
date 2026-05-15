@@ -137,7 +137,7 @@ def _stub_before_tool(
         return {"status": "error", "code": "bad_request", "message": "missing id"}
     # search_messages / list_events / list_tasks not exercised by this
     # eval; return generic empty success so a stray call doesn't error.
-    if name in {"search_messages", "list_events", "list_tasks"}:
+    if name in {"search_messages", "list_calendars", "list_events", "list_tasks"}:
         return {"status": "ok", "items": [], "messages": [], "events": [], "tasks": []}
     return None
 

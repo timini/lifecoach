@@ -1,0 +1,36 @@
+{
+  "eval_set_id": "find_workspace_calendar_list",
+  "name": "Calendar-list lookup",
+  "description": "Issue #130: a request to list Google calendars and find the Family calendar ID should call list_calendars, not Gmail search.",
+  "agent_module": "tests.evals.eval_find_workspace_agent",
+  "eval_cases": [
+    {
+      "eval_id": "case_01_list_family_calendar_id",
+      "session_input": {
+        "app_name": "find_workspace",
+        "user_id": "test-user-find-calendar-id",
+        "state": {}
+      },
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [
+              {
+                "text": "{\"query\":\"list my Google calendars and find the family calendar ID\"}"
+              }
+            ],
+            "role": "user"
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "list_calendars",
+                "args": {}
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

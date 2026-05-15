@@ -201,14 +201,16 @@ WORKSPACE_CHEATSHEET = r"""WORKSPACE — six narrow tools, no generic dispatcher
 
 READS (delegate to the workspace sub-agent — it decodes bodies and projects responses):
   triage_inbox()                   — Use for "check my email", "go through my inbox", morning planning. Returns a structured TriageReport with noise / actions / events / info buckets. Read-only — does NOT archive anything; you confirm with the user, then call archive_messages.
-  find_workspace(query)            — Use for specific lookups: "Sarah's email last week", "what's on Thursday afternoon", "open tasks for the project review". Returns a natural-language answer with id-prefixed citations (m: for messages, ev: for events, t: for tasks). Read-only.
+  find_workspace(query)            — Use for specific lookups: "Sarah's email last week", "what's on Thursday afternoon", "list my Google calendars", "find the Family calendar ID", "open tasks for the project review". Calendar-list / calendar-ID requests must use this path; it calls list_calendars inside the workspace sub-agent and must not search Gmail unless the user explicitly asks for messages/emails. Returns a natural-language answer with id-prefixed citations (cal: for calendars, m: for messages, ev: for events, t: for tasks). Read-only.
 
 WRITES (single-step, structured args — no JSON-encoded params):
   archive_messages(ids)                                                    — Removes the INBOX label from one or more messages. Pass all the ids the user is archiving in one batched call. Returns archived[] + failed[]. NEVER trash when the user said "archive".
   add_calendar_event({ summary, start, end?, location?, description?, calendarId? })
-                                                                           — RFC3339 timestamps with timezone offset (e.g. "2026-05-12T18:00:00+01:00"), or YYYY-MM-DD for an all-day event. Default end = start + 30 minutes.
+                                                                           — RFC3339 timestamps with timezone offset (e.g. "2026-05-12T18:00:00+01:00"), or YYYY-MM-DD for an all-day event. Default end = start + 30 minutes. If the user has confirmed a preferred Family calendar ID in their profile, pass that calendarId for family events.
   add_task({ title, due?, notes?, taskListId? })                           — Adds to Google Tasks. Default taskListId = "@default".
   complete_task({ id, taskListId? })                                       — Marks a task done.
+
+CALENDAR PREFERENCES — if the user asks to remember a selected Family/shared calendar for future family events, confirm the calendar name + ID, then save it with update_user_profile (for example preferences.family_calendar_id or family.calendar_id) before using it on future add_calendar_event calls.
 
 WHEN TO ASK FIRST — you OWN confirmation. Before any write the user hasn't already approved in this turn, call ask_single_choice_question (e.g. "Archive these 6? <subjects>", options=["Yes, archive","Skip"]). Calendar additions inferred from emails ALWAYS get a confirmation prompt with the proposed time. Tasks inferred from triage actions usually do too.
 
