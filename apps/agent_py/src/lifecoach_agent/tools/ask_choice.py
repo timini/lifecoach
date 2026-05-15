@@ -20,7 +20,7 @@ async def ask_single_choice_question(question: str, options: list[str]) -> dict[
     additional text this turn — wait for the user to pick.
 
     Args:
-        question: The question to show to the user (1+ chars).
+        question: The question to show to the user (1+ chars). If asking to archive multiple triaged emails, include one bullet per message with sender, subject, and one-line context (received date/snippet/meeting time) so the user can decide without opening Gmail.
         options: 2–8 short answer options, each non-empty.
     """
     _validate(question, options)
@@ -34,7 +34,7 @@ async def ask_multiple_choice_question(question: str, options: list[str]) -> dic
     additional text this turn — wait for the user to pick.
 
     Args:
-        question: The question to show to the user (1+ chars).
+        question: The question to show to the user (1+ chars). If asking to archive multiple triaged emails, include one bullet per message with sender, subject, and one-line context (received date/snippet/meeting time) so the user can decide without opening Gmail.
         options: 2–8 short answer options, each non-empty.
     """
     _validate(question, options)

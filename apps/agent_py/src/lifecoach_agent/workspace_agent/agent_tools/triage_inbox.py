@@ -36,7 +36,7 @@ The parent will hand you a JSON message with an optional `since` key (Gmail-styl
 
 Procedure:
 1. Call list_inbox with the since value (e.g. since="1d") to get message ids + snippets.
-2. For each message, call get_message with the id (e.g. id=<the id from step 1>) to read the decoded body and headers. Parallel calls are fine.
+2. For each message, call get_message with the id (e.g. id=<the id from step 1>) to read the decoded body and headers. Parallel calls are fine. Keep the sender, subject, Date header, snippet, and any meeting time found in body.
 3. Classify EVERY message into exactly one bucket:
    - noise: newsletters, automated reports, marketing — no action
    - actions: the user must do something — distil into a 1-line task
@@ -50,10 +50,12 @@ DO NOT call any write tools. The parent agent owns confirmations and writes.
 Final answer: emit ONLY a single line of the form
 <TRIAGE_REPORT>...minified JSON object with keys noise, actions, events, info, each an array...</TRIAGE_REPORT>
 matching this schema:
-- noise:   id, threadId?, from, subject
-- actions: id, threadId?, from, subject, task
-- events:  id, threadId?, subject, proposedStart, proposedEnd?, location?
-- info:    id, threadId?, from, subject, note
+- noise:   id, threadId?, from, subject, context
+- actions: id, threadId?, from, subject, context, task
+- events:  id, threadId?, from, subject, context, proposedStart, proposedEnd?, location?
+- info:    id, threadId?, from, subject, context, note
+
+`context` is REQUIRED: one short human-readable line the parent can show in confirmation prompts, using the received date/relative time, the snippet, or the meeting time embedded in the message body (for calendar notifications). Example: "received Mon 09:00 — reminder for Tue 10:00". Do not omit it.
 
 Be terse. The parent agent will paraphrase."""
 

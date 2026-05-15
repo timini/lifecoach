@@ -105,6 +105,14 @@ def test_workspace_cheatsheet_only_when_workspace_connected() -> None:
     assert "archive_messages" in out_ws
 
 
+
+
+def test_workspace_cheatsheet_requires_contextful_archive_confirmations() -> None:
+    out = build_instruction(_base_ctx(user_state="workspace_connected"))
+    assert "MUST list each candidate message" in out
+    assert "sender, subject, and one-line context" in out
+    assert "Do not ask context-free questions" in out
+
 def test_signup_soft_only_when_nudge_mode_signup_soft() -> None:
     out_none = build_instruction(_base_ctx())
     assert "SIGNUP_NUDGE" not in out_none

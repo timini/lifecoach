@@ -72,7 +72,14 @@ def _tool_stubs() -> dict[str, Any]:
         "triage_inbox": {
             "status": "ok",
             "report": {
-                "noise": [{"id": "m1", "from": "n@x", "subject": "Newsletter"}],
+                "noise": [
+                    {
+                        "id": "m1",
+                        "from": "n@x",
+                        "subject": "Newsletter",
+                        "context": "received today — weekly digest",
+                    }
+                ],
                 "actions": [],
                 "events": [],
                 "info": [],
