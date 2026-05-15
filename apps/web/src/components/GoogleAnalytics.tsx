@@ -3,7 +3,12 @@
 import { usePathname } from 'next/navigation';
 import Script from 'next/script';
 import { type ReactNode, useEffect } from 'react';
-import { googleAnalyticsMeasurementId, trackAction, trackPageView } from '../lib/analytics';
+import {
+  buildAnalyticsBootstrapScript,
+  googleAnalyticsMeasurementId,
+  trackAction,
+  trackPageView,
+} from '../lib/analytics';
 
 /**
  * Mounts Google Analytics once when `NEXT_PUBLIC_GA_MEASUREMENT_ID` is set,
@@ -51,13 +56,7 @@ export function GoogleAnalytics(): ReactNode {
         strategy="afterInteractive"
       />
       <Script id="google-analytics" strategy="afterInteractive">
-        {`
-          window.dataLayer = window.dataLayer || [];
-          function gtag(){dataLayer.push(arguments);}
-          window.gtag = gtag;
-          gtag('js', new Date());
-          gtag('config', '${measurementId}', { send_page_view: false });
-        `}
+        {buildAnalyticsBootstrapScript(measurementId)}
       </Script>
     </>
   );
