@@ -117,20 +117,27 @@ jobs:
             const e2eEmoji = e2eOutcome === 'success' ? '✅' : (e2eOutcome === 'running' ? '⏳' : '❌');
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
 
-            // The .run.app URL is always immediately reachable. The custom
-            // domain (when enabled) is on a 15-30 min cert-provisioning lag
-            // for first-time hostnames; surface it as a secondary line with
-            // a note so reviewers don't think the preview is broken if
-            // they try lifecoach.dev too early.
-            const webLines = [`- **Web:** ${webUrl}`];
-            if (customWebUrl) {
-              webLines.push(`- **Web (custom domain, Firebase Auth-ready):** ${customWebUrl}  _— first deploy of a new hostname has a ~15-30 min HTTPS-cert warm-up. The .run.app URL above works immediately and is what Playwright targets._`);
-            }
+            // Prefer the custom-domain URL exclusively — *.run.app URLs are
+            // on the Public Suffix List, so Firebase Auth's wildcarding
+            // doesn't cover them and we'd otherwise have to maintain a
+            // per-PR allowlist in tfvars. The custom URL is on a 15-30 min
+            // cert-provisioning lag for a first-time hostname; reviewers
+            // see a brief HTTPS error during that window. Worth it to keep
+            // one obvious, auth-working URL in the comment.
+            //
+            // The .run.app URL is still wired internally — Playwright targets
+            // it via E2E_BASE_URL — but we no longer surface it here.
+            //
+            // Fallback path: when custom_web_url is empty (dev's domain module
+            // hasn't applied yet, or rolled back), show the .run.app URL so
+            // the comment isn't link-less.
+            const webLine = customWebUrl
+              ? `- **Web:** ${customWebUrl}  _— Firebase Auth-ready. Fresh PRs have a ~15-30 min HTTPS-cert warm-up._`
+              : `- **Web:** ${webUrl}  _— custom domain not provisioned; this *.run.app URL won't pass Firebase Auth._`;
             const body = [
               '### 🚀 Preview deployed',
               '',
-              ...webLines,
-              `- **Agent:** ${agentUrl}`,
+              webLine,
               '',
               `**E2E:** ${e2eEmoji} \`${e2eOutcome}\` — see [the run](${runUrl}) for details.`,
               '',
@@ -226,15 +233,15 @@ jobs:
             const e2eEmoji = e2eOutcome === 'success' ? '✅' : (e2eOutcome === 'running' ? '⏳' : '❌');
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
 
-            const webLines = [`- **Web:** ${webUrl}`];
-            if (customWebUrl) {
-              webLines.push(`- **Web (custom domain, Firebase Auth-ready):** ${customWebUrl}  _— first deploy of a new hostname has a ~15-30 min HTTPS-cert warm-up. The .run.app URL above works immediately and is what Playwright targets._`);
-            }
+            // Same single-URL logic as the pre-e2e comment — see the longer
+            // rationale there.
+            const webLine = customWebUrl
+              ? `- **Web:** ${customWebUrl}  _— Firebase Auth-ready. Fresh PRs have a ~15-30 min HTTPS-cert warm-up._`
+              : `- **Web:** ${webUrl}  _— custom domain not provisioned; this *.run.app URL won't pass Firebase Auth._`;
             const body = [
               '### 🚀 Preview deployed',
               '',
-              ...webLines,
-              `- **Agent:** ${agentUrl}`,
+              webLine,
               '',
               `**E2E:** ${e2eEmoji} \`${e2eOutcome}\` — see [the run](${runUrl}) for details.`,
               '',
