@@ -77,6 +77,9 @@ A short orientation:
 │   │   │                         google-auth-library)
 │   │   ├── tests/evals/          ADK eval harness + 6 flagship cases
 │   │   └── Dockerfile
+│   ├── e2e/                      Playwright + Gemini-judge specs that drive
+│   │                             a deployed web preview (chat-persistence,
+│   │                             sessions-drawer, chat-quality)
 │   └── web/                      Next.js 15 App Router, React 19
 │       ├── src/
 │       │   ├── app/

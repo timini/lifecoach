@@ -36,7 +36,7 @@ just tf-apply dev
 
 ## E2E test user
 
-The Playwright chat-persistence spec (`apps/web/e2e/chat-persistence.spec.ts`) needs a stable Email/Password user in Firebase Auth. Provision it once per environment:
+The Playwright chat-persistence spec (`apps/e2e/e2e/chat-persistence.spec.ts`) needs a stable Email/Password user in Firebase Auth. Provision it once per environment:
 
 ```bash
 just provision-e2e-user dev
