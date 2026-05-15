@@ -15,8 +15,7 @@ export function readE2ECreds(): E2ECreds {
   if (!email || !password) {
     throw new Error(
       'E2E_TEST_EMAIL and E2E_TEST_PASSWORD must be set. ' +
-        'Provision the test user with `pnpm tsx scripts/provision-e2e-user.ts ' +
-        '--project=<gcp-project-id>` and pull the password via ' +
+        'The e2e user already exists in dev/prod — pull the password via ' +
         '`gcloud secrets versions access latest --secret=E2E_TEST_PASSWORD`.',
     );
   }

@@ -30,6 +30,6 @@ firebase-debug.log
 firestore-debug.log
 
 # Playwright e2e artefacts
-apps/web/test-results
-apps/web/playwright-report
-apps/web/.last-run.json
+apps/e2e/test-results
+apps/e2e/playwright-report
+apps/e2e/.last-run.json

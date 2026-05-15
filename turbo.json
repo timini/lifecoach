@@ -32,6 +32,21 @@
     },
     "clean": {
       "cache": false
+    },
+    "e2e": {
+      "cache": false,
+      "passThroughEnv": [
+        "E2E_BASE_URL",
+        "E2E_TEST_EMAIL",
+        "E2E_TEST_PASSWORD",
+        "E2E_JUDGE_MODEL",
+        "E2E_JUDGE_LOCATION",
+        "GOOGLE_APPLICATION_CREDENTIALS",
+        "GOOGLE_CLOUD_PROJECT",
+        "GCP_PROJECT",
+        "GOOGLE_PROJECT",
+        "CI"
+      ]
     }
   }
 }
