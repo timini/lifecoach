@@ -32,6 +32,12 @@ variable "extra_authorized_domains" {
   description = "Domains (no scheme) to allow for sign-in popups/redirects. The Firebase defaults (<project>.firebaseapp.com and <project>.web.app) are always included; pass the Cloud Run host etc. here."
 }
 
+variable "auth_domain_override" {
+  type        = string
+  default     = ""
+  description = "Hostname to surface as NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN to the web bundle. Empty (default) → use the Firebase-managed <project>.firebaseapp.com. Set to a custom Firebase Hosting domain (e.g. \"auth.tranquil.coach\") so the OAuth popup redirects through your own branded subdomain. The override domain MUST already be wired up as a Firebase Hosting custom domain (see infra/envs/dev/firebase-hosting-auth.tf) and its DNS / cert must be ACTIVE before flipping this — otherwise sign-in 404s. Toggling this changes the redirect_uri Google sees during OAuth, so the OAuth client's Authorized Redirect URIs must include the matching `https://<auth_domain_override>/__/auth/handler`."
+}
+
 # --- Firebase project ------------------------------------------------------
 
 resource "google_firebase_project" "fb" {
@@ -136,7 +142,7 @@ output "firebase_api_key" {
 }
 
 output "firebase_auth_domain" {
-  value = data.google_firebase_web_app_config.web.auth_domain
+  value = var.auth_domain_override != "" ? var.auth_domain_override : data.google_firebase_web_app_config.web.auth_domain
 }
 
 output "firebase_project_id" {
