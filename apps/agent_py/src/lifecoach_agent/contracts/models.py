@@ -315,18 +315,29 @@ class TaskProjection(BaseModel):
 # --- triage report -------------------------------------------------------
 
 
-class TriageNoise(BaseModel):
+class TriageMessageContext(BaseModel):
+    """Fields every triage row carries so the parent agent can build
+    informed confirmation prompts without re-reading Gmail.
+
+    ``context`` is deliberately human-facing: one terse line with a
+    received-at clue, message snippet, or extracted meeting time.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
+    receivedAt: str | None = None  # noqa: N815
+    snippet: str | None = None
+    context: str
+
+
+class TriageNoise(TriageMessageContext):
     id: str
     threadId: str | None = None  # noqa: N815
     from_: str = Field(alias="from")
     subject: str
 
 
-class TriageAction(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class TriageAction(TriageMessageContext):
     id: str
     threadId: str | None = None  # noqa: N815
     from_: str = Field(alias="from")
@@ -334,20 +345,17 @@ class TriageAction(BaseModel):
     task: str
 
 
-class TriageEvent(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class TriageEvent(TriageMessageContext):
     id: str
     threadId: str | None = None  # noqa: N815
+    from_: str = Field(alias="from")
     subject: str
     proposedStart: str  # noqa: N815
     proposedEnd: str | None = None  # noqa: N815
     location: str | None = None
 
 
-class TriageInfo(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class TriageInfo(TriageMessageContext):
     id: str
     threadId: str | None = None  # noqa: N815
     from_: str = Field(alias="from")
