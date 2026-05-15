@@ -61,6 +61,7 @@ _KNOWN_AGENT_MODULES: set[str] = {
     "tests.evals.eval_email_verified_agent",
     "tests.evals.eval_google_linked_agent",
     "tests.evals.eval_triage_inbox_agent",
+    "tests.evals.eval_workspace_agent",
     "tests.evals.eval_anon_signup_soft_agent",
     "tests.evals.eval_anon_signup_hard_agent",
     "tests.evals.eval_anon_throttled_agent",

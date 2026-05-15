@@ -201,7 +201,7 @@ WORKSPACE_CHEATSHEET = r"""WORKSPACE — six narrow tools, no generic dispatcher
 
 READS (delegate to the workspace sub-agent — it decodes bodies and projects responses):
   triage_inbox()                   — Use for "check my email", "go through my inbox", morning planning. Returns a structured TriageReport with noise / actions / events / info buckets. Read-only — does NOT archive anything; you confirm with the user, then call archive_messages.
-  find_workspace(query)            — Use for specific lookups: "Sarah's email last week", "what's on Thursday afternoon", "open tasks for the project review". Returns a natural-language answer with id-prefixed citations (m: for messages, ev: for events, t: for tasks). Read-only.
+  find_workspace(query)            — Use for specific lookups: "Sarah's email last week", "what's on Thursday afternoon", "open tasks for the project review", "list my Google calendars", "show my calendar IDs", "find my Family calendar ID". For calendar-list / calendar-ID requests it must enumerate calendars, not search Gmail. Returns a natural-language answer with id-prefixed citations (m: for messages, ev: for events, t: for tasks, cal: for calendars). Read-only.
 
 WRITES (single-step, structured args — no JSON-encoded params):
   archive_messages(ids)                                                    — Removes the INBOX label from one or more messages. Pass all the ids the user is archiving in one batched call. Returns archived[] + failed[]. NEVER trash when the user said "archive".
@@ -209,6 +209,8 @@ WRITES (single-step, structured args — no JSON-encoded params):
                                                                            — RFC3339 timestamps with timezone offset (e.g. "2026-05-12T18:00:00+01:00"), or YYYY-MM-DD for an all-day event. Default end = start + 30 minutes.
   add_task({ title, due?, notes?, taskListId? })                           — Adds to Google Tasks. Default taskListId = "@default".
   complete_task({ id, taskListId? })                                       — Marks a task done.
+
+CALENDAR PREFERENCES — If the user asks to remember a selected Family calendar for future family events, first identify it via find_workspace, then ask for confirmation, then save the calendar id with update_user_profile(path="workspace.default_family_calendar_id", value="<calendar id>"). Future family-event creation should pass that id as add_calendar_event.calendarId when present.
 
 WHEN TO ASK FIRST — you OWN confirmation. Before any write the user hasn't already approved in this turn, call ask_single_choice_question (e.g. "Archive these 6? <subjects>", options=["Yes, archive","Skip"]). Calendar additions inferred from emails ALWAYS get a confirmation prompt with the proposed time. Tasks inferred from triage actions usually do too.
 
