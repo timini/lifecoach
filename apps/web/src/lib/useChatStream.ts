@@ -49,6 +49,61 @@ export interface UseChatStreamApi {
  *
  * Auth, location, sessionId, and viewMode are inputs — the page owns those.
  */
+
+/** Attach a bridged workspace child tool-call under its parent.
+ * Walks the tree recursively because parents can themselves be nested
+ * (we currently render only one level of nesting in chat-stream, but
+ * the data shape supports deeper). If no parent is found yet the child
+ * is dropped — the bridged event always arrives after the parent's
+ * push op in the live stream because BridgedAgentTool can only emit
+ * once ADK has started the outer AgentTool run. The history path
+ * (`eventsToMessages`) handles child-before-parent rehydration. */
+function attachChildToolCall(
+  elements: AssistantElement[],
+  parentId: string,
+  child: AssistantElement,
+): AssistantElement[] {
+  let found = false;
+  const next = elements.map((el) => {
+    if (el.kind !== 'tool-call') return el;
+    if (el.id === parentId) {
+      found = true;
+      return { ...el, children: [...(el.children ?? []), child] };
+    }
+    if (el.children) {
+      const recursed = attachChildToolCall(el.children, parentId, child);
+      if (recursed !== el.children) {
+        found = true;
+        return { ...el, children: recursed };
+      }
+    }
+    return el;
+  });
+  // Fallback: if no parent was found (live event arrived before its
+  // outer AgentTool's push op — should not happen, but safe-guard so
+  // the badge doesn't disappear) append flat.
+  return found ? next : [...elements, child];
+}
+
+/** Flip the matching tool-call (possibly nested) to done. When
+ * `op.parentId` is set we scope the search to that branch so two
+ * sub-agent calls with the same `name`-based id don't collide. */
+function finishToolCall(
+  elements: AssistantElement[],
+  op: Extract<AssistantOp, { op: 'finish-tool-call' }>,
+): AssistantElement[] {
+  return elements.map((el) => {
+    if (el.kind !== 'tool-call') return el;
+    if (el.id === op.id && !el.done && (!op.parentId || el.parentId === op.parentId)) {
+      return { ...el, done: true, ok: op.ok, response: op.response };
+    }
+    if (el.children) {
+      return { ...el, children: finishToolCall(el.children, op) };
+    }
+    return el;
+  });
+}
+
 export function useChatStream({
   user,
   sessionId,
@@ -104,13 +159,15 @@ export function useChatStream({
               elements = [...elements, { kind: 'text', text: op.text }];
             }
           } else if (op.op === 'push') {
-            elements = [...elements, op.element];
+            if (op.element.kind === 'tool-call' && op.element.parentId) {
+              // Bridged workspace sub-agent call: nest under its
+              // parent AgentTool badge instead of pushing flat.
+              elements = attachChildToolCall(elements, op.element.parentId, op.element);
+            } else {
+              elements = [...elements, op.element];
+            }
           } else if (op.op === 'finish-tool-call') {
-            elements = elements.map((el) =>
-              el.kind === 'tool-call' && el.id === op.id && !el.done
-                ? { ...el, done: true, ok: op.ok, response: op.response }
-                : el,
-            );
+            elements = finishToolCall(elements, op);
           }
         }
         return { ...m, elements };
