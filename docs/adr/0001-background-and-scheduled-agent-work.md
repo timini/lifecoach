@@ -326,7 +326,14 @@ All production infrastructure changes must be represented in Terraform (project 
 - `daily sum(model_cost_estimate_usd) > $X` (X = product-defined budget; ADR open question) → notify.
 - `background_run_terminal_failed_total{error_code="WORKSPACE_TOKEN_REVOKED"} rate > N/h` → notify (likely a Google-side incident or scope rollout).
 
-**Admin / debug**: add `GET /background/admin/runs?uid=<firebase-uid>&limit=50` authenticated via IAM-only Cloud Run `roles/run.invoker` (operator group; no Firebase admin claim is involved). The endpoint returns sanitized run records — no OAuth tokens, no email content, no raw error messages from third-party APIs. Cloud Logging queries with structured fields are the primary debug surface; this endpoint is the convenience layer.
+**Admin / debug**: add `GET /background/admin/runs?uid=<firebase-uid>&limit=50` returning sanitized run records — no OAuth tokens, no email content, no raw error messages from third-party APIs. Cloud Logging queries with structured fields are the primary debug surface; this endpoint is the convenience layer.
+
+**Auth on the admin route is load-bearing.** Cloud Run IAM (`roles/run.invoker`) alone is **not** sufficient as long as the agent service stays `allow_unauthenticated = true` in dev/preview (which it currently is — see `infra/modules/cloud-run-service/main.tf` and `infra/envs/dev/main.tf`). Co-locating the admin route on the public agent service would expose per-user run data to anyone with the URL. Pick one of:
+
+1. **Dedicated non-public Cloud Run service** for admin endpoints (e.g. `lifecoach-background-admin`) with `allow_unauthenticated = false`. Cloud Run IAM does the gating. Operator group gets `roles/run.invoker`. Simplest if you don't mind a second deploy unit.
+2. **In-app verification on the admin route** when colocated on the public agent service. The handler must verify a Google-signed OIDC token in `Authorization: Bearer <token>` (verify `iss`, `aud` = the agent's URL, signature against Google's JWKS) AND check that the principal's email is in an operator allowlist. The shared `x-agent-internal-bearer` middleware is **not** appropriate here — it's a static secret meant for service-to-service calls from `apps/web`, not for human operator auth.
+
+Choose option 1 unless splitting the service has higher friction than implementing the OIDC verifier; for the first iteration of background work, option 1 is recommended because it keeps the auth model trivial to reason about. Either way, the ADR is now explicit that "IAM-only Cloud Run invoker" is **only** acceptable when the service is non-public — and the existing agent service is public.
 
 **Budget alert**: a separate `google_billing_budget` alert at the project level (independent of per-user usage caps) — caps the worst-case runaway cost from a misbehaving classifier loop. Track as a follow-up if not in the first implementation PR.
 
