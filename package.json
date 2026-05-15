@@ -16,7 +16,8 @@
     "lint": "biome check --write .",
     "lint:ci": "biome check .",
     "typecheck": "turbo run typecheck",
-    "clean": "turbo run clean && rm -rf node_modules"
+    "clean": "turbo run clean && rm -rf node_modules",
+    "test:e2e": "turbo run e2e"
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",

@@ -121,7 +121,7 @@ check-py: lint-py typecheck-py test-py
 # --- E2E -------------------------------------------------------------------
 
 e2e:
-    pnpm --filter @lifecoach/web exec playwright test
+    pnpm --filter @lifecoach/e2e e2e
 
 # --- Infra -----------------------------------------------------------------
 
@@ -189,7 +189,7 @@ e2e-preview pr:
     E2E_BASE_URL="$base_url" \
     E2E_TEST_EMAIL="e2e-test@lifecoach.invalid" \
     E2E_TEST_PASSWORD="$password" \
-    pnpm --filter @lifecoach/web exec playwright test
+    pnpm --filter @lifecoach/e2e e2e
 
 # --- Ops -------------------------------------------------------------------
 #
@@ -210,7 +210,7 @@ e2e-deployed env="dev":
     E2E_BASE_URL="$base_url" \
     E2E_TEST_EMAIL="e2e-test@lifecoach.invalid" \
     E2E_TEST_PASSWORD="$password" \
-    pnpm --filter @lifecoach/web exec playwright test
+    pnpm --filter @lifecoach/e2e e2e
 
 logs-agent env="dev":
     #!/usr/bin/env bash

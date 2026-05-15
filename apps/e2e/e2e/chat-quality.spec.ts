@@ -45,8 +45,7 @@ const ASSISTANT_CONTENT_SEL =
 
 async function runConversation(page: Page, turns: string[]): Promise<JudgeTurn[]> {
   const transcript: JudgeTurn[] = [];
-  for (let i = 0; i < turns.length; i++) {
-    const userMsg = turns[i];
+  for (const [i, userMsg] of turns.entries()) {
     const beforeCount = await page.locator(ASSISTANT_CONTENT_SEL).count();
     await sendChat(page, userMsg);
 

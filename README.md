@@ -77,6 +77,7 @@ A short orientation:
 │   │   │                         google-auth-library)
 │   │   ├── tests/evals/          ADK eval harness + 6 flagship cases
 │   │   └── Dockerfile
+│   ├── e2e/                      Playwright browser tests for the web app
 │   └── web/                      Next.js 15 App Router, React 19
 │       ├── src/
 │       │   ├── app/
