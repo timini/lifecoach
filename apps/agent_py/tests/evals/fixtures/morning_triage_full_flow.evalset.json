@@ -1,7 +1,7 @@
 {
   "eval_set_id": "morning_triage_full_flow",
   "name": "Morning triage end-to-end",
-  "description": "Workspace-connected user, morning window, day_planning practice on. Expects the agent to (a) call triage_inbox, (b) ask before archiving the noise bucket, (c) emit at least one substantive reply. This is the PR #54 regression class — if the agent goes silent after a tool call this case fails the response-match evaluator loudly.",
+  "description": "Workspace-connected user, morning window, day_planning practice on. Expects the agent to (a) call triage_inbox, (b) ask before archiving the noise bucket with sender/subject/context visible in the choice prompt, (c) emit at least one substantive reply. This is the PR #54 regression class — if the agent goes silent after a tool call this case fails the response-match evaluator loudly.",
   "eval_cases": [
     {
       "eval_id": "case_01_morning_check_in",
@@ -17,7 +17,11 @@
       "conversation": [
         {
           "user_content": {
-            "parts": [{ "text": "morning" }],
+            "parts": [
+              {
+                "text": "morning"
+              }
+            ],
             "role": "user"
           },
           "intermediate_data": {
@@ -25,6 +29,13 @@
               {
                 "name": "triage_inbox",
                 "args": {}
+              },
+              {
+                "name": "ask_single_choice_question",
+                "args": {
+                  "question": "Archive 1 messages?\n• Newsletter <n@x> — Newsletter (received 2h ago; weekly digest snippet)",
+                  "options": ["Yes, archive all 1", "Skip"]
+                }
               }
             ]
           }

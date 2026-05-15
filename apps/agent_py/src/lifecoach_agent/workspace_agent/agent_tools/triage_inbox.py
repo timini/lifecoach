@@ -50,10 +50,15 @@ DO NOT call any write tools. The parent agent owns confirmations and writes.
 Final answer: emit ONLY a single line of the form
 <TRIAGE_REPORT>...minified JSON object with keys noise, actions, events, info, each an array...</TRIAGE_REPORT>
 matching this schema:
-- noise:   id, threadId?, from, subject
-- actions: id, threadId?, from, subject, task
-- events:  id, threadId?, subject, proposedStart, proposedEnd?, location?
-- info:    id, threadId?, from, subject, note
+- noise:   id, threadId?, from, subject, context
+- actions: id, threadId?, from, subject, context, task
+- events:  id, threadId?, from, subject, context, proposedStart, proposedEnd?, location?
+- info:    id, threadId?, from, subject, context, note
+
+The required `context` is a one-line user-visible summary that lets the
+parent ask for archive/write confirmation without another Gmail lookup.
+Prefer received-at/date + snippet (for calendar notifications, include the
+embedded meeting time/status such as cancelled/replaced/confirmed).
 
 Be terse. The parent agent will paraphrase."""
 
