@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * Playwright config for the chat-persistence e2e (and any future e2e specs).
+ * Playwright config for the standalone e2e app.
  *
  * Designed to run against an already-deployed Cloud Run instance — there's
  * no `webServer` block, so you point it at dev or prod via E2E_BASE_URL and

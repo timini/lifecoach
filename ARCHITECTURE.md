@@ -663,7 +663,7 @@ Five distinct test surfaces. CI gates the lot at **90% line + branch coverage** 
 | **Python unit** | pytest | `apps/agent_py/tests/unit/` | Tools (with injected fakes), context fetchers (httpx + respx), storage (in-memory `FakeFirestore`), prompt assembly, server endpoints (httpx ASGI), real-Firestore adapter |
 | **Tier-0 eval shape** | pytest | `apps/agent_py/tests/evals/test_eval_cases.py` | JSON parses, every fixture has stable `eval_set_id`, agent module imports — free, deterministic, runs in `just eval` |
 | **Tier-1 eval (real LLM)** | pytest + ADK `AgentEvaluator` | same | Each `*.evalset.json` runs the agent end-to-end against real Gemini, asserts tool trajectory + final response. Gated by `LIFECOACH_EVAL_REAL_LLM=1`; manual / nightly only — costs money. `just eval-real` |
-| **E2E + LLM judge** | Playwright + Gemini judge | `apps/web/e2e/` | Drives the deployed UI: chat-persistence, sessions-drawer, **chat-quality** (3-turn coaching conversation, judged for substance by Gemini via Vertex). Catches the regression classes unit tests miss: silent turns, SSE wire-format drift, choice/auth widgets not rendering. |
+| **E2E + LLM judge** | Playwright + Gemini judge | `apps/e2e/e2e/` | Drives the deployed UI: chat-persistence, sessions-drawer, **chat-quality** (3-turn coaching conversation, judged for substance by Gemini via Vertex). Catches the regression classes unit tests miss: silent turns, SSE wire-format drift, choice/auth widgets not rendering. |
 
 ### 12.1 Eval fixtures (`apps/agent_py/tests/evals/fixtures/`)
 
@@ -697,7 +697,7 @@ Five distinct test surfaces. CI gates the lot at **90% line + branch coverage** 
 
 ### 12.2 E2E + LLM judge
 
-`apps/web/e2e/chat-quality.spec.ts` drives a 3-turn conversation through the deployed Cloud Run preview as a fresh anon user, captures every assistant-side element (`[data-from="assistant"]`, `[data-testid="choice-prompt"]`, `[data-testid="auth-prompt"]`, `[data-testid="workspace-prompt"]`), and POSTs the transcript to `judge.ts` which calls Gemini via Vertex (`@google/genai`, ADC for auth). The judge returns a per-turn pass/fail verdict with reasons; the spec fails with a per-turn diagnostic.
+`apps/e2e/e2e/chat-quality.spec.ts` drives a 3-turn conversation through the deployed Cloud Run preview as a fresh anon user, captures every assistant-side element (`[data-from="assistant"]`, `[data-testid="choice-prompt"]`, `[data-testid="auth-prompt"]`, `[data-testid="workspace-prompt"]`), and POSTs the transcript to `judge.ts` which calls Gemini via Vertex (`@google/genai`, ADC for auth). The judge returns a per-turn pass/fail verdict with reasons; the spec fails with a per-turn diagnostic.
 
 The judge is prompted to flag the failure modes existing specs miss:
 
@@ -711,7 +711,7 @@ Local run:
 ```bash
 gcloud auth application-default login   # one-time
 E2E_BASE_URL=$(cd infra/envs/preview && terraform output -raw web_url) \
-  pnpm --filter @lifecoach/web exec playwright test chat-quality.spec.ts
+  pnpm --filter @lifecoach/e2e e2e -- chat-quality.spec.ts
 ```
 
 CI runs all four specs against the per-PR preview as the final step of `pr-preview-deploy.yml`.

@@ -187,7 +187,7 @@ jobs:
       - name: Resolve Playwright version
         id: pw_version
         run: |
-          v=$(node -p "require('./apps/web/package.json').devDependencies['@playwright/test'] || require('./apps/web/package.json').dependencies['@playwright/test']")
+          v=$(node -p "require('./apps/e2e/package.json').devDependencies['@playwright/test'] || require('./apps/e2e/package.json').dependencies['@playwright/test']")
           echo "version=${v}" >> "$GITHUB_OUTPUT"
 
       - name: Cache Playwright browsers
@@ -201,9 +201,9 @@ jobs:
         run: |
           if [[ "${{ steps.pw_cache.outputs.cache-hit }}" == "true" ]]; then
             # Browser binaries restored from cache — only need OS deps.
-            pnpm --filter @lifecoach/web exec playwright install-deps chromium
+            pnpm --filter @lifecoach/e2e exec playwright install-deps chromium
           else
-            pnpm --filter @lifecoach/web exec playwright install --with-deps chromium
+            pnpm --filter @lifecoach/e2e exec playwright install --with-deps chromium
           fi
 
       - name: Run e2e against preview
@@ -214,7 +214,7 @@ jobs:
           E2E_BASE_URL: ${{ steps.deploy.outputs.web_url }}
           E2E_TEST_EMAIL: e2e-test@lifecoach.invalid
           E2E_TEST_PASSWORD: ${{ steps.e2e_password.outputs.password }}
-        run: pnpm --filter @lifecoach/web exec playwright test
+        run: pnpm --filter @lifecoach/e2e e2e
 
       - name: Comment preview URLs (post-e2e)
         if: always()

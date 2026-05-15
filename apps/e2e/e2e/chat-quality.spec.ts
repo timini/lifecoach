@@ -47,6 +47,9 @@ async function runConversation(page: Page, turns: string[]): Promise<JudgeTurn[]
   const transcript: JudgeTurn[] = [];
   for (let i = 0; i < turns.length; i++) {
     const userMsg = turns[i];
+    if (userMsg === undefined) {
+      throw new Error(`Missing user message for turn ${i + 1}`);
+    }
     const beforeCount = await page.locator(ASSISTANT_CONTENT_SEL).count();
     await sendChat(page, userMsg);
 

@@ -137,7 +137,7 @@ just eval-real       # Tier-1 evals against real Gemini (gated by LIFECOACH_EVAL
 just coverage        # enforce 90% gate (TS)
 just lint            # biome --write (TS)
 just typecheck       # tsc -b (TS — web + packages)
-just e2e             # playwright (web e2e)
+just e2e             # playwright (e2e app)
 ```
 
 Don't invent new scripts in root `package.json` for one-off work — add a recipe to the Justfile if it's routine, otherwise just type the command.
