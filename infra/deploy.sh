@@ -120,6 +120,18 @@ firebase_build_args() {
   # (agent) mounts the matching secret via Secret Manager.
   gws_client_id="$(terraform output -raw google_client_id 2>/dev/null || true)"
   cd - >/dev/null
+  # firebase_auth_domain_override: when set in tfvars, takes precedence over
+  # the (stale-until-apply) terraform output. The output reflects the LAST
+  # APPLIED state, so on the deploy that introduces a new override value
+  # we'd otherwise bake the old firebaseapp.com domain into the web image
+  # while terraform apply later updates the output — and the image would
+  # never get rebuilt against the new value. tfvar() reads the working
+  # tree, so the override is visible build-time-immediately.
+  local auth_domain_override
+  auth_domain_override="$(tfvar firebase_auth_domain_override)"
+  if [[ -n "${auth_domain_override}" ]]; then
+    auth_domain="${auth_domain_override}"
+  fi
   # Sentry — resolved from tfvars rather than terraform output so the
   # value is correct on the first deploy after introducing the variable.
   # Empty DSN = SDK no-ops; that's intentional, not a silent failure.
