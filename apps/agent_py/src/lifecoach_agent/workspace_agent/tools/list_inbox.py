@@ -14,6 +14,30 @@ from lifecoach_agent.workspace_agent.tools._deps import WorkspaceToolDeps
 LIST_INBOX_TOOL_NAME = "list_inbox"
 
 
+def _build_inbox_query(*, unread_only: bool, since: str) -> str:
+    parts = ["in:inbox"]
+    if unread_only:
+        parts.append("is:unread")
+    parts.append(f"newer_than:{since}")
+    return " ".join(parts)
+
+
+def _dedupe_message_ids(messages: Any) -> list[str]:
+    ids: list[str] = []
+    seen: set[str] = set()
+    if not isinstance(messages, list):
+        return ids
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        mid = message.get("id")
+        if not isinstance(mid, str) or not mid or mid in seen:
+            continue
+        seen.add(mid)
+        ids.append(mid)
+    return ids
+
+
 def create_list_inbox_tool(deps: WorkspaceToolDeps) -> Any:
     async def list_inbox(
         unread_only: bool = False, since: str = "1d", limit: int = 15
@@ -27,7 +51,7 @@ def create_list_inbox_tool(deps: WorkspaceToolDeps) -> Any:
                 Default "1d" — last 24 hours.
             limit: Maximum number of messages to return (1–50). Default 15.
         """
-        q = f"{'is:unread ' if unread_only else ''}label:INBOX newer_than:{since}".strip()
+        q = _build_inbox_query(unread_only=unread_only, since=since)
         max_results = max(1, min(int(limit), 50))
 
         list_result = await run_gws(
@@ -45,12 +69,7 @@ def create_list_inbox_tool(deps: WorkspaceToolDeps) -> Any:
             return {"status": "error", "code": list_result.code, "message": list_result.message}
 
         body = list_result.body if isinstance(list_result.body, dict) else {}
-        ids = [
-            m.get("id")
-            for m in (body.get("messages") or [])
-            if isinstance(m, dict) and isinstance(m.get("id"), str)
-        ]
-        ids = [i for i in ids if i]
+        ids = _dedupe_message_ids(body.get("messages"))
         if not ids:
             return {"status": "ok", "messages": []}
 
