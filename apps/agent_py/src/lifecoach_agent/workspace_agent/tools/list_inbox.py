@@ -27,7 +27,11 @@ def create_list_inbox_tool(deps: WorkspaceToolDeps) -> Any:
                 Default "1d" — last 24 hours.
             limit: Maximum number of messages to return (1–50). Default 15.
         """
-        q = f"{'is:unread ' if unread_only else ''}label:INBOX newer_than:{since}".strip()
+        query_parts = ["in:inbox"]
+        if unread_only:
+            query_parts.append("is:unread")
+        query_parts.append(f"newer_than:{since}")
+        q = " ".join(query_parts)
         max_results = max(1, min(int(limit), 50))
 
         list_result = await run_gws(
@@ -50,7 +54,14 @@ def create_list_inbox_tool(deps: WorkspaceToolDeps) -> Any:
             for m in (body.get("messages") or [])
             if isinstance(m, dict) and isinstance(m.get("id"), str)
         ]
-        ids = [i for i in ids if i]
+        unique_ids: list[str] = []
+        seen_ids: set[str] = set()
+        for mid in ids:
+            if not mid or mid in seen_ids:
+                continue
+            seen_ids.add(mid)
+            unique_ids.append(mid)
+        ids = unique_ids
         if not ids:
             return {"status": "ok", "messages": []}
 
@@ -71,13 +82,15 @@ def create_list_inbox_tool(deps: WorkspaceToolDeps) -> Any:
             ]
         )
         messages: list[dict[str, Any]] = []
+        returned_ids: set[str] = set()
         for detail in details:
             if not isinstance(detail, RunGwsOk):
                 continue
             m = detail.body if isinstance(detail.body, dict) else {}
             mid = m.get("id")
-            if not isinstance(mid, str):
+            if not isinstance(mid, str) or mid in returned_ids:
                 continue
+            returned_ids.add(mid)
             messages.append(
                 {
                     "id": mid,
