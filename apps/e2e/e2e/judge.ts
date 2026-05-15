@@ -67,7 +67,7 @@ function stripJsonFencing(text: string): string {
   // Be tolerant of accidental ```json ... ``` fencing even though the
   // prompt asks for raw JSON.
   const fence = /^```(?:json)?\s*([\s\S]*?)\s*```$/m.exec(text.trim());
-  return fence ? fence[1] : text;
+  return fence?.[1] ?? text;
 }
 
 export async function judgeTranscript(turns: JudgeTurn[]): Promise<JudgeVerdict> {

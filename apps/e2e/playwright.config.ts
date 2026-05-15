@@ -1,12 +1,12 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * Playwright config for the chat-persistence e2e (and any future e2e specs).
+ * Playwright config for the @lifecoach/e2e app.
  *
  * Designed to run against an already-deployed Cloud Run instance — there's
  * no `webServer` block, so you point it at dev or prod via E2E_BASE_URL and
- * provide test creds via E2E_TEST_EMAIL / E2E_TEST_PASSWORD. The same spec
- * runs unchanged against either environment.
+ * provide test creds via E2E_TEST_EMAIL / E2E_TEST_PASSWORD. The same specs
+ * run unchanged against either environment.
  */
 const baseURL = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
 
