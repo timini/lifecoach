@@ -78,7 +78,7 @@ def test_emits_when_planned_yesterday() -> None:
 def test_workspace_arm_when_workspace_connected() -> None:
     out = day_planning.directive(_ctx(user_state="workspace_connected"))  # type: ignore[misc]
     assert out is not None
-    assert "Archive these" in out
+    assert "list EVERY message inline" in out
     assert "triage_inbox" in out
     assert "archive_messages" in out
     assert "add_calendar_event" in out
@@ -89,7 +89,7 @@ def test_light_arm_when_google_linked() -> None:
     assert out is not None
     assert "most important thing" in out
     assert "triage_inbox" not in out
-    assert "Archive these" not in out
+    assert "list EVERY message inline" not in out
 
 
 def test_light_arm_when_anonymous() -> None:
