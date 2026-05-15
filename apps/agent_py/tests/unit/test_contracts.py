@@ -17,6 +17,7 @@ from lifecoach_agent.contracts import (
     AuthUserArgs,
     ChoiceQuestion,
     GoalUpdate,
+    TriageReport,
     UserProfile,  # noqa: F401 — type alias, imported for parity with TS index
     WorkspaceStatus,
     empty_user_profile,
@@ -205,6 +206,66 @@ def test_workspace_status_rejects_extra_keys() -> None:
     with pytest.raises(ValidationError):
         WorkspaceStatus.model_validate(
             {"connected": True, "scopes": [], "grantedAt": None, "extra": 1}
+        )
+
+
+# --- Workspace triage -----------------------------------------------------
+
+
+def test_triage_report_requires_context_on_every_bucket() -> None:
+    parsed = TriageReport.model_validate(
+        {
+            "noise": [
+                {
+                    "id": "m1",
+                    "from": "Newsletter <n@example.com>",
+                    "subject": "Weekly digest",
+                    "context": "received 2h ago; automated digest",
+                }
+            ],
+            "actions": [
+                {
+                    "id": "m2",
+                    "from": "Alex <alex@example.com>",
+                    "subject": "Contract renewal",
+                    "context": "received today; asks for sign-off by Friday",
+                    "task": "Sign the contract by Friday",
+                }
+            ],
+            "events": [
+                {
+                    "id": "m3",
+                    "from": "Sarah <sarah@example.com>",
+                    "subject": "Lunch Tuesday 12:30?",
+                    "context": "received yesterday; lunch Tue 12:30 at Tortilla",
+                    "proposedStart": "2026-05-12T12:30:00+01:00",
+                }
+            ],
+            "info": [
+                {
+                    "id": "m4",
+                    "from": "School <admin@school.example>",
+                    "subject": "Photo day",
+                    "context": "received yesterday; Year 3 photo day Friday",
+                    "note": "Maya needs uniform Friday",
+                }
+            ],
+        }
+    )
+
+    assert "received 2h ago" in parsed.noise[0].context
+    assert parsed.events[0].from_ == "Sarah <sarah@example.com>"
+
+
+def test_triage_report_rejects_archive_candidate_without_context() -> None:
+    with pytest.raises(ValidationError):
+        TriageReport.model_validate(
+            {
+                "noise": [{"id": "m1", "from": "n@example.com", "subject": "Digest"}],
+                "actions": [],
+                "events": [],
+                "info": [],
+            }
         )
 
 

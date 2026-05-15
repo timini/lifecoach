@@ -70,10 +70,14 @@ Cross-reference what the report surfaces against this prompt's profile,
 recent_goals, and yesterday's summary BEFORE talking about it. An email
 about "Maya's parents' evening" matters more if Maya is in the profile.
 
-Ask ONCE before archiving the noise bucket:
+Ask ONCE before archiving the noise bucket. The confirmation question MUST
+list each candidate message inline, using the triage report's per-message
+`from`, `subject`, and `context`, so the user can decide without opening
+Gmail. Do not ask a context-free question such as "Archive these 3 calendar
+notifications?". Shape:
   ask_single_choice_question({
-    question: "Archive these N? <2-3 subjects, … rest>",
-    options: ["Yes, archive", "Skip"]
+    question: "Archive N messages?\n• <sender> — <subject> (<context>)\n• ...",
+    options: ["Yes, archive all N", "Skip"]
   })
 On "Yes, archive": call archive_messages({ ids: noise.map(n => n.id) }) —
 one batched call, all ids together. NEVER trash; archive_messages removes
@@ -108,7 +112,13 @@ GOOD (DAY_PLANNING with Workspace — triage_inbox, batched archive confirmation
 User: "Morning. Coffee in. Ready when you are."
 Assistant: [calls triage_inbox]
 "Six newsletters and three things worth a look this morning."
-[calls ask_single_choice_question question="Archive these 6? Substack digest, LinkedIn weekly, two newsletters from your kids' schools (just FYI), Strava recap, AWS billing alert. (Note — the school ones look auto, no actions in either.)" options=["Yes, archive", "Skip"]]
+[calls ask_single_choice_question question="Archive 6 messages?
+• Substack Weekly — Your weekly digest (received 2h ago; subscription digest)
+• LinkedIn — Weekly update (received 3h ago; automated recap)
+• Greenfield Primary — Year 3 newsletter (received yesterday; school FYI, no action)
+• Greenfield Primary — Lunch menu (received yesterday; school FYI, no action)
+• Strava — Weekly recap (received yesterday; automated fitness recap)
+• AWS — Billing alert (received 2d ago; automated threshold notice)" options=["Yes, archive all 6", "Skip"]]
 User: "Yes, archive"
 Assistant: [calls archive_messages ids=[<id1>, <id2>, <id3>, <id4>, <id5>, <id6>]]
 "Done. Real things: Maya's parent-teacher meeting got bumped to Tuesday 6pm, and there's a contractor invoice waiting on you."

@@ -392,7 +392,7 @@ Every tool lives in `src/lifecoach_agent/tools/` (one file, one tool factory). B
 | `connect_workspace` | none | Renders Connect-Workspace card | **yes (turn-ending)** |
 | `memory_save` | `{text}` | Writes to Vertex Memory Bank | no |
 | `upgrade_to_pro` | none | Renders Pro upgrade card | **yes (turn-ending)** |
-| `triage_inbox` | `{since?: "1d" \| "12h" \| ...}` | AgentTool wrapping a workspace sub-agent. Returns a structured `TriageReport` with noise / actions / events / info buckets (read-only). | no |
+| `triage_inbox` | `{since?: "1d" \| "12h" \| ...}` | AgentTool wrapping a workspace sub-agent. Returns a structured `TriageReport` with noise / actions / events / info buckets (read-only). Every item includes `from`, `subject`, and a one-line `context` so confirmation prompts can show what will be archived or written without another Gmail lookup. | no |
 | `find_workspace` | `{query: string}` | AgentTool wrapping a workspace sub-agent. Natural-language lookup across Gmail / Calendar / Tasks; cites with `m:` / `ev:` / `t:` id prefixes (read-only). | no |
 | `archive_messages` | `{ids: string[]}` | Batched modify-remove-INBOX. Returns `archived[]` + `failed[]`. Any per-id `scope_required` surfaces as a top-level error so the LLM can call `connect_workspace`. | no |
 | `add_calendar_event` | `{summary, start, end?, location?, description?, calendarId?}` | `calendar.events.insert`. `end` defaults to start + 30 min for timed events, start + 1 day for all-day. | no |
@@ -669,7 +669,7 @@ Five distinct test surfaces. CI gates the lot at **90% line + branch coverage** 
 
 | `eval_set_id` | Tests |
 |---|---|
-| `morning_triage_full_flow` | Workspace-connected morning, day_planning ON. Expects the main agent to call `triage_inbox` and then continue with substantive content; the silent-turn class fails here loudly. |
+| `morning_triage_full_flow` | Workspace-connected morning, day_planning ON. Expects the main agent to call `triage_inbox`, then ask before archiving with sender / subject / context visible in the choice prompt, and then continue with substantive content; the silent-turn and context-free archive prompt classes fail here loudly. |
 | `add_calendar_event_after_confirm` | Confirm via single-choice → `add_calendar_event({summary, start, end})`. |
 | `complete_task_uses_patch` | Codex P1 — must use `complete_task` (which goes through `tasks.tasks.patch` server-side), never delete. |
 | `find_workspace_specific_lookup` | Natural-language lookup → `find_workspace({query})`, NOT `triage_inbox` (different intent). |
@@ -679,7 +679,7 @@ Five distinct test surfaces. CI gates the lot at **90% line + branch coverage** 
 | `workspace_no_trigger_for_unrelated_ask_google_linked` | Negative guardrail. `google_linked` user asking unrelated wellbeing / coaching questions → no tool calls. Prevents the trigger from over-firing. |
 | `workspace_no_trigger_for_unrelated_ask_anonymous` | Same negative guard for `anonymous` — over-fire of `auth_user` on general questions would also be a regression. |
 | `silent_turn_simple_greeting` | One-word "hi" must produce a substantive reply — guards the 2026-05-11 silent-turn class where stale Firestore events / `{name}` placeholder leaks crashed the prompt. |
-| **`subagent_triage_basic_classification`** | Targets the **triage sub-agent directly** (not via the AgentTool). Mocks `list_inbox` + `get_message` via `before_tool_callback` with a 4-message inbox; asserts the sub-agent walks the right tool sequence and emits `<TRIAGE_REPORT>` in its final response. See `tests/evals/eval_triage_inbox_agent.py` for the stubs. |
+| **`subagent_triage_basic_classification`** | Targets the **triage sub-agent directly** (not via the AgentTool). Mocks `list_inbox` + `get_message` via `before_tool_callback` with a 4-message inbox; asserts the sub-agent walks the right tool sequence and emits `<TRIAGE_REPORT>` in its final response. The report schema requires per-item `context`, which the parent uses in archive confirmations. See `tests/evals/eval_triage_inbox_agent.py` for the stubs. |
 
 **Usage-funnel fixtures (issue #64).** Each pins one position in the 10-state cost-ceiling funnel. The matching `eval_*_agent.py` modules thread the right `(user_state, usage_state, chat_turn_count)` into `build_eval_root_agent` so the prompt the model sees actually reflects the funnel position (the `SIGNUP_HARD` directive, USAGE credit-count block, etc.). Tier-1 fixtures here cover trajectory behaviour; model-name and wall short-circuit behaviour are covered by unit / integration tests in `tests/unit/state/test_usage_state.py` and `tests/unit/test_server.py` respectively.
 
