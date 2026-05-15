@@ -6,7 +6,7 @@ AgentTool wraps. Tier-1 evals point at it via `agent_module=` so the
 sub-agent's classification logic runs end-to-end against real Gemini,
 with `list_inbox` + `get_message` short-circuited by canned responses.
 
-Mocked inbox covers all four buckets the sub-agent classifies into:
+Mocked visible inbox covers all four buckets the sub-agent classifies into:
 
   - m1: newsletter        → noise
   - m2: action email      → actions (1-line task distilled)
@@ -14,8 +14,9 @@ Mocked inbox covers all four buckets the sub-agent classifies into:
   - m4: info update       → info (touches a known profile fact)
 
 The sub-agent's `before_tool_callback` inspects args and routes to the
-right canned response, so the model genuinely walks through one
-`list_inbox` + four `get_message` calls before emitting the
+right canned response. The list response deliberately includes a duplicate
+summary for m2, so the model must still walk through one `list_inbox` +
+four distinct `get_message` calls before emitting the
 <TRIAGE_REPORT>{json}</TRIAGE_REPORT> blob the eval asserts on.
 """
 
@@ -95,7 +96,12 @@ def _list_inbox_response() -> dict[str, Any]:
     return {
         "status": "ok",
         "messages": [
-            {"id": m["id"], "threadId": m["threadId"], "snippet": m["snippet"]} for m in _INBOX
+            *[{"id": m["id"], "threadId": m["threadId"], "snippet": m["snippet"]} for m in _INBOX],
+            {
+                "id": "m2",
+                "threadId": "t2",
+                "snippet": "Duplicate summary that must not trigger a second read",
+            },
         ],
     }
 
