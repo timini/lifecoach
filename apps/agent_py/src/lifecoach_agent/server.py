@@ -612,11 +612,22 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
             # is `/v1/search` post-grant). The bootstrap persists the
             # discovered ids back here, so the search is one-shot per
             # uid.
+            #
+            # Reconnect handling: if a config already exists for this uid
+            # AND the workspace matches, preserve database_id +
+            # grantedParentPageIds — a local revoke, token refresh failure,
+            # or reauthorization should NOT abandon the user's existing
+            # Lifecoach Tasks database (which would lose every task they
+            # ever logged). When the workspace differs (user reconnected
+            # a different Notion workspace), reset both — the prior DB id
+            # belongs to a workspace we can no longer access.
+            existing = await deps.notion_config_store.get(claims.uid)
+            preserve = existing is not None and existing.workspaceId == tokens.workspaceId
             await deps.notion_config_store.set(
                 claims.uid,
                 workspace_id=tokens.workspaceId,
-                granted_parent_page_ids=[],
-                database_id=None,
+                granted_parent_page_ids=(existing.grantedParentPageIds if preserve else []),
+                database_id=(existing.databaseId if preserve else None),
             )
             return JSONResponse(
                 {

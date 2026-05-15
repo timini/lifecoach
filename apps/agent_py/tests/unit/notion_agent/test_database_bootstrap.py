@@ -147,9 +147,7 @@ async def test_discovers_granted_parent_pages_via_search_when_empty() -> None:
                 return httpx.Response(200, json={"id": "db-new"})
 
             mock.post(f"{NOTION_API_BASE}/v1/databases").mock(side_effect=_create_handler)
-            mock.patch(f"{NOTION_API_BASE}/v1/databases/db-new").respond(
-                200, json={"id": "db-new"}
-            )
+            mock.patch(f"{NOTION_API_BASE}/v1/databases/db-new").respond(200, json={"id": "db-new"})
             deps = make_deps(fs, http)
             db_id = await get_or_create_database(deps)
 

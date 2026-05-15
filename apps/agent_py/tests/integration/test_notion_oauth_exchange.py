@@ -146,6 +146,105 @@ async def test_oauth_exchange_persists_tokens_and_seeds_config() -> None:
 
 
 @pytest.mark.asyncio
+async def test_oauth_exchange_preserves_existing_db_on_same_workspace_reconnect() -> None:
+    """Regression: a reconnect (local revoke / token refresh failure /
+    reauthorization) must NOT abandon the user's existing Lifecoach Tasks
+    database. The earlier handler unconditionally wrote databaseId=None
+    and grantedParentPageIds=[], so the next tool call would discover
+    parent pages and create a fresh empty DB — losing every task the
+    user ever logged. When the workspace matches, both fields are
+    carried forward."""
+    async with httpx.AsyncClient() as http:
+        with respx.mock(assert_all_called=False) as mock:
+            mock.post(NOTION_TOKEN_URL).respond(
+                200,
+                json={
+                    "access_token": "ntn_AT2",
+                    "refresh_token": "ntn_RT2",
+                    "expires_in": 3600,
+                    "bot_id": "bot-1",
+                    "workspace_id": "ws-1",
+                    "workspace_name": "Tim's Notion",
+                    "owner": {"type": "user", "user": {"id": "u-1"}},
+                    "token_type": "bearer",
+                },
+            )
+            app, _tokens_store, config_store = _make_app(http)
+            # Seed config as if the user had previously connected and
+            # bootstrapped a database.
+            await config_store.set(
+                "u1",
+                workspace_id="ws-1",
+                granted_parent_page_ids=["page-A", "page-B"],
+                database_id="db-existing",
+            )
+
+            async with _client(app) as c:
+                res = await c.post(
+                    "/notion/oauth-exchange",
+                    json={
+                        "code": "AUTH-CODE-2",
+                        "redirect_uri": "https://tranquil.coach/notion/callback",
+                    },
+                    headers={"Authorization": "Bearer x"},
+                )
+            assert res.status_code == 200, res.text
+
+            cfg = await config_store.get("u1")
+            assert cfg is not None
+            assert cfg.workspaceId == "ws-1"
+            assert cfg.databaseId == "db-existing"
+            assert cfg.grantedParentPageIds == ["page-A", "page-B"]
+
+
+@pytest.mark.asyncio
+async def test_oauth_exchange_resets_db_when_workspace_changes() -> None:
+    """When the user reconnects a DIFFERENT Notion workspace, the prior
+    databaseId belongs to a workspace we can no longer access. Reset both
+    grantedParentPageIds and databaseId so the bootstrap can re-discover
+    against the new workspace."""
+    async with httpx.AsyncClient() as http:
+        with respx.mock(assert_all_called=False) as mock:
+            mock.post(NOTION_TOKEN_URL).respond(
+                200,
+                json={
+                    "access_token": "ntn_AT3",
+                    "refresh_token": "ntn_RT3",
+                    "expires_in": 3600,
+                    "bot_id": "bot-2",
+                    "workspace_id": "ws-2",
+                    "workspace_name": "Different Workspace",
+                    "owner": {"type": "user", "user": {"id": "u-2"}},
+                    "token_type": "bearer",
+                },
+            )
+            app, _tokens_store, config_store = _make_app(http)
+            await config_store.set(
+                "u1",
+                workspace_id="ws-1",
+                granted_parent_page_ids=["page-A"],
+                database_id="db-from-ws1",
+            )
+
+            async with _client(app) as c:
+                res = await c.post(
+                    "/notion/oauth-exchange",
+                    json={
+                        "code": "AUTH-CODE-3",
+                        "redirect_uri": "https://tranquil.coach/notion/callback",
+                    },
+                    headers={"Authorization": "Bearer x"},
+                )
+            assert res.status_code == 200, res.text
+
+            cfg = await config_store.get("u1")
+            assert cfg is not None
+            assert cfg.workspaceId == "ws-2"
+            assert cfg.databaseId is None
+            assert cfg.grantedParentPageIds == []
+
+
+@pytest.mark.asyncio
 async def test_oauth_exchange_returns_400_when_code_missing() -> None:
     async with httpx.AsyncClient() as http:
         app, _t, _c = _make_app(http)
