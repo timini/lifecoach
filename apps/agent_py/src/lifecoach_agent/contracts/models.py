@@ -322,6 +322,7 @@ class TriageNoise(BaseModel):
     threadId: str | None = None  # noqa: N815
     from_: str = Field(alias="from")
     subject: str
+    context: str
 
 
 class TriageAction(BaseModel):
@@ -331,6 +332,7 @@ class TriageAction(BaseModel):
     threadId: str | None = None  # noqa: N815
     from_: str = Field(alias="from")
     subject: str
+    context: str
     task: str
 
 
@@ -339,7 +341,9 @@ class TriageEvent(BaseModel):
 
     id: str
     threadId: str | None = None  # noqa: N815
+    from_: str = Field(alias="from")
     subject: str
+    context: str
     proposedStart: str  # noqa: N815
     proposedEnd: str | None = None  # noqa: N815
     location: str | None = None
@@ -352,6 +356,7 @@ class TriageInfo(BaseModel):
     threadId: str | None = None  # noqa: N815
     from_: str = Field(alias="from")
     subject: str
+    context: str
     note: str
 
 

@@ -16,10 +16,17 @@ from lifecoach_agent.workspace_agent.agent_tools.triage_inbox import (
 
 _VALID_REPORT_JSON = (
     "{"
-    '"noise":[{"id":"m1","from":"news@x","subject":"Digest"}],'
-    '"actions":[{"id":"m2","from":"a@x","subject":"Sign-off","task":"sign contract by Friday"}],'
-    '"events":[{"id":"m3","subject":"Lunch","proposedStart":"2026-05-12T12:30:00+01:00"}],'
-    '"info":[{"id":"m4","from":"school@x","subject":"Photo day","note":"Friday, uniform"}]'
+    '"noise":[{"id":"m1","from":"news@x","subject":"Digest",'
+    '"context":"received today — weekly newsletter"}],'
+    '"actions":[{"id":"m2","from":"a@x","subject":"Sign-off",'
+    '"context":"received Mon 09:00 — asks for signature by Friday",'
+    '"task":"sign contract by Friday"}],'
+    '"events":[{"id":"m3","from":"sarah@x","subject":"Lunch",'
+    '"context":"received Mon 09:00 — lunch Tuesday 12:30",'
+    '"proposedStart":"2026-05-12T12:30:00+01:00"}],'
+    '"info":[{"id":"m4","from":"school@x","subject":"Photo day",'
+    '"context":"received Mon 09:00 — Friday uniform reminder",'
+    '"note":"Friday, uniform"}]'
     "}"
 )
 
@@ -44,7 +51,7 @@ def test_schema_invalid_json_returns_parse_error() -> None:
     # Valid JSON, but `actions` entry is missing the required `task` field.
     bad = (
         '<TRIAGE_REPORT>{"noise":[],"actions":[{"id":"m2","from":"a@x",'
-        '"subject":"x"}],"events":[],"info":[]}</TRIAGE_REPORT>'
+        '"subject":"x","context":"received today — needs sign-off"}],"events":[],"info":[]}</TRIAGE_REPORT>'
     )
     out = parse_triage_report(bad)
     assert out.status == "parse_error"
@@ -91,3 +98,13 @@ def test_marker_with_inner_whitespace_is_stripped() -> None:
     out = parse_triage_report(text)
     assert out.status == "ok"
     assert out.report is not None
+
+
+def test_noise_context_is_required_for_archive_confirmations() -> None:
+    bad = (
+        '<TRIAGE_REPORT>{"noise":[{"id":"m1","from":"news@x","subject":"Digest"}],'
+        '"actions":[],"events":[],"info":[]}</TRIAGE_REPORT>'
+    )
+    out = parse_triage_report(bad)
+    assert out.status == "parse_error"
+    assert out.report is None
