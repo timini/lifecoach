@@ -393,7 +393,7 @@ Every tool lives in `src/lifecoach_agent/tools/` (one file, one tool factory). B
 | `memory_save` | `{text}` | Writes to Vertex Memory Bank | no |
 | `upgrade_to_pro` | none | Renders Pro upgrade card | **yes (turn-ending)** |
 | `triage_inbox` | `{since?: "1d" \| "12h" \| ...}` | AgentTool wrapping a workspace sub-agent. Returns a structured `TriageReport` with noise / actions / events / info buckets (read-only). Every item carries per-message context (`from`, `subject`, `receivedAt`, `snippet`, all non-empty) so the parent's archive/event/task confirmation prompt can list each candidate inline. | no |
-| `find_workspace` | `{query: string}` | AgentTool wrapping a workspace sub-agent. Natural-language lookup across Gmail / Calendar / Tasks; cites with `m:` / `ev:` / `t:` id prefixes (read-only). | no |
+| `find_workspace` | `{query: string}` | AgentTool wrapping a workspace sub-agent. Natural-language lookup across Gmail / Calendar / Tasks — including calendar-list / calendar-ID requests, which route to the internal `list_calendars` read (not Gmail search). Cites with `cal:` / `m:` / `ev:` / `t:` id prefixes (read-only). | no |
 | `archive_messages` | `{ids: string[]}` | Batched modify-remove-INBOX. Returns `archived[]` + `failed[]`. Any per-id `scope_required` surfaces as a top-level error so the LLM can call `connect_workspace`. | no |
 | `add_calendar_event` | `{summary, start, end?, location?, description?, calendarId?}` | `calendar.events.insert`. `end` defaults to start + 30 min for timed events, start + 1 day for all-day. | no |
 | `add_task` | `{title, due?, notes?, taskListId?}` | `tasks.tasks.insert`. Default `taskListId="@default"`. | no |
@@ -442,15 +442,15 @@ workspace_agent/
   agent.py                 create_workspace_agent(...)  — the inner LlmAgent
   gws_client.py            low-level call_workspace(service, resource, method, params) → result | err
   run_gws.py               auth + dispatch + classify + log helper every tool routes through
-  projections/             gmail_message / calendar_event / task — drop API bloat, base64-decode bodies, 4 KB cap
-  tools/                   5 internal sub-agent reads (list_inbox, get_message, search_messages, list_events, list_tasks)
+  projections/             gmail_message / calendar_event / calendar_list / task — drop API bloat, base64-decode bodies, 4 KB cap
+  tools/                   6 internal sub-agent reads (list_inbox, get_message, search_messages, list_calendars, list_events, list_tasks)
                           + 4 narrow writes (archive_messages, add_calendar_event, add_task, complete_task)
   agent_tools/             2 AgentTool wrappers (triage_inbox, find_workspace) exposed to the main agent
 ```
 
 **The main-facing surface (six tools):**
 
-- **`triage_inbox()`** and **`find_workspace(query)`** are `AgentTool`s. Each wraps a dedicated `LlmAgent` instance with a scoped instruction and the same five internal read tools — the sub-agent classifies an inbox or answers a natural-language lookup, the wrapper returns the result to the parent. `triage_inbox` emits `<TRIAGE_REPORT>{json}</TRIAGE_REPORT>`; `parse_triage_report` validates against `TriageReportSchema` and returns `{status:"ok", report}` or `{status:"parse_error", raw}`.
+- **`triage_inbox()`** and **`find_workspace(query)`** are `AgentTool`s. Each wraps a dedicated `LlmAgent` instance with a scoped instruction and the same six internal read tools — the sub-agent classifies an inbox or answers a natural-language lookup, the wrapper returns the result to the parent. `triage_inbox` emits `<TRIAGE_REPORT>{json}</TRIAGE_REPORT>`; `parse_triage_report` validates against `TriageReportSchema` and returns `{status:"ok", report}` or `{status:"parse_error", raw}`.
 - **`archive_messages`**, **`add_calendar_event`**, **`add_task`**, **`complete_task`** are narrow `FunctionTool`s — direct, no LLM hop. The main agent owns confirmation via `ask_single_choice_question`; writes only fire after explicit user approval.
 
 `gws_client.call_workspace` is the bottom-layer dispatcher. It walks the Discovery API tree (`gmail.users.messages.list(...)` etc.) via `google-api-python-client`, classifying errors into `scope_required`, `forbidden`, `network`, `rate_limited`, `not_found`, `bad_request`, `timeout`, `upstream`, `invalid_args`. Every workspace tool routes through `run_gws.py`, which (a) resolves the access token via `WorkspaceTokensStore`, (b) calls the dispatcher, (c) deletes the user's token doc on `scope_required` so the next turn demotes back to `google_linked` and the LLM invites reconnect.
@@ -680,6 +680,7 @@ Five distinct test surfaces. CI gates the lot at **90% line + branch coverage** 
 | `workspace_no_trigger_for_unrelated_ask_anonymous` | Same negative guard for `anonymous` — over-fire of `auth_user` on general questions would also be a regression. |
 | `silent_turn_simple_greeting` | One-word "hi" must produce a substantive reply — guards the 2026-05-11 silent-turn class where stale Firestore events / `{name}` placeholder leaks crashed the prompt. |
 | **`subagent_triage_basic_classification`** | Targets the **triage sub-agent directly** (not via the AgentTool). Mocks `list_inbox` + `get_message` via `before_tool_callback` with a 4-message inbox; asserts the sub-agent walks the right tool sequence and emits `<TRIAGE_REPORT>` in its final response. See `tests/evals/eval_triage_inbox_agent.py` for the stubs. |
+| **`find_workspace_calendar_list`** | Targets the **find_workspace sub-agent directly** (issue #130). Mocks `list_calendars` via `before_tool_callback`; a "list my Google calendars and find the family calendar ID" request must call `list_calendars` (not Gmail search) and return the Family calendar ID. See `tests/evals/eval_find_workspace_agent.py`. |
 
 **Usage-funnel fixtures (issue #64).** Each pins one position in the 10-state cost-ceiling funnel. The matching `eval_*_agent.py` modules thread the right `(user_state, usage_state, chat_turn_count)` into `build_eval_root_agent` so the prompt the model sees actually reflects the funnel position (the `SIGNUP_HARD` directive, USAGE credit-count block, etc.). Tier-1 fixtures here cover trajectory behaviour; model-name and wall short-circuit behaviour are covered by unit / integration tests in `tests/unit/state/test_usage_state.py` and `tests/unit/test_server.py` respectively.
 

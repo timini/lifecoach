@@ -35,9 +35,9 @@ TRIAGE_INBOX_INSTRUCTION = """You are the inbox-triage sub-agent for a coaching 
 The parent will hand you a JSON message with an optional `since` key (Gmail-style window like "1d" / "12h"; default "1d").
 
 Procedure:
-1. Call list_inbox with the since value (e.g. since="1d") to get message ids + snippets.
-2. For each message, call get_message with the id (e.g. id=<the id from step 1>) to read the decoded body and headers. Parallel calls are fine.
-3. Classify EVERY message into exactly one bucket:
+1. Call list_inbox with the since value (e.g. since="1d") to get inbox-only message ids + snippets. list_inbox is already scoped to the visible Gmail inbox and de-duplicates ids for you.
+2. Build a seen_message_ids set from that result. For each distinct id, call get_message exactly once (e.g. id=<the id from step 1>) to read the decoded body and headers. Parallel calls are fine, but duplicate get_message calls for the same id in one triage run are forbidden.
+3. Classify EVERY distinct message into exactly one bucket:
    - noise: newsletters, automated reports, marketing — no action
    - actions: the user must do something — distil into a 1-line task
    - events: a meeting/appointment with date+time — propose start/end

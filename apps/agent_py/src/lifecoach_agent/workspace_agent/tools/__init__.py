@@ -20,6 +20,10 @@ from lifecoach_agent.workspace_agent.tools.get_message import (
     GET_MESSAGE_TOOL_NAME,
     create_get_message_tool,
 )
+from lifecoach_agent.workspace_agent.tools.list_calendars import (
+    LIST_CALENDARS_TOOL_NAME,
+    create_list_calendars_tool,
+)
 from lifecoach_agent.workspace_agent.tools.list_events import (
     LIST_EVENTS_TOOL_NAME,
     create_list_events_tool,
@@ -43,6 +47,7 @@ __all__ = [
     "ARCHIVE_MESSAGES_TOOL_NAME",
     "COMPLETE_TASK_TOOL_NAME",
     "GET_MESSAGE_TOOL_NAME",
+    "LIST_CALENDARS_TOOL_NAME",
     "LIST_EVENTS_TOOL_NAME",
     "LIST_INBOX_TOOL_NAME",
     "LIST_TASKS_TOOL_NAME",
@@ -52,6 +57,7 @@ __all__ = [
     "create_archive_messages_tool",
     "create_complete_task_tool",
     "create_get_message_tool",
+    "create_list_calendars_tool",
     "create_list_events_tool",
     "create_list_inbox_tool",
     "create_list_tasks_tool",
