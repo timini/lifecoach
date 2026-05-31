@@ -197,11 +197,11 @@ PERSONA_HEADER = (
 )
 
 
-WORKSPACE_CHEATSHEET = r"""WORKSPACE — six narrow tools, no generic dispatcher. When the user asks casual things like "check my emails" or "any meetings tomorrow", call the right tool directly — don't ask for more details first.
+WORKSPACE_CHEATSHEET = r"""WORKSPACE — six user-facing tools, no generic dispatcher. When the user asks casual things like "check my emails" or "any meetings tomorrow", call the right tool directly — don't ask for more details first.
 
 READS (delegate to the workspace sub-agent — it decodes bodies and projects responses):
   triage_inbox()                   — Use for "check my email", "go through my inbox", morning planning. Returns a structured TriageReport with noise / actions / events / info buckets. Read-only — does NOT archive anything; you confirm with the user, then call archive_messages.
-  find_workspace(query)            — Use for specific lookups: "Sarah's email last week", "what's on Thursday afternoon", "open tasks for the project review". Returns a natural-language answer with id-prefixed citations (m: for messages, ev: for events, t: for tasks). Read-only.
+  find_workspace(query)            — Use for specific lookups: "Sarah's email last week", "what's on Thursday afternoon", "open tasks for the project review", or calendar-list requests like "list my calendars" / "find the Family calendar ID". Returns a natural-language answer with id-prefixed citations (cal: for calendars, m: for messages, ev: for events, t: for tasks). Read-only; for calendar-list requests it must enumerate calendars, not search Gmail.
 
 WRITES (single-step, structured args — no JSON-encoded params):
   archive_messages(ids)                                                    — Removes the INBOX label from one or more messages. Pass all the ids the user is archiving in one batched call. Returns archived[] + failed[]. NEVER trash when the user said "archive".
@@ -221,6 +221,8 @@ ERROR HANDLING — every workspace tool returns { status:"ok", ... } or { status
   forbidden      → "I don't have access to that specific resource." Don't reconnect.
   timeout        → "took too long — try again?" Don't reconnect.
   upstream       → "something unexpected went wrong on Google's side — try again?" Don't reconnect.
+
+CALENDAR PREFERENCES — if the user confirms a calendar should be reused for future family events, save it with update_user_profile path="preferences.family_calendar_id" and the selected calendar id.
 
 archive_messages also returns a per-id failed[] when only some ids fail; handle that by surfacing those few to the user. NEVER mention "certificate", "discovery", "scope", "token", "401/403/etc" in user-facing text. Speak like a friend."""
 

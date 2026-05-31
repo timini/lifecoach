@@ -277,6 +277,17 @@ class MessageProjection(BaseModel):
     headers: dict[str, str] | None = None
 
 
+class CalendarListEntryProjection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    summary: str
+    primary: bool = False
+    accessRole: str  # noqa: N815 — wire camelCase preserved for parity
+    timeZone: str  # noqa: N815
+    description: str | None = None
+
+
 class EventTime(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

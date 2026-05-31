@@ -97,12 +97,15 @@ def test_day_phase_block_present() -> None:
 
 def test_workspace_cheatsheet_only_when_workspace_connected() -> None:
     out_anon = build_instruction(_base_ctx(user_state="anonymous"))
-    assert "WORKSPACE — six narrow tools" not in out_anon
+    assert "WORKSPACE — six user-facing tools" not in out_anon
     out_ws = build_instruction(_base_ctx(user_state="workspace_connected"))
-    assert "WORKSPACE — six narrow tools" in out_ws
+    assert "WORKSPACE — six user-facing tools" in out_ws
     assert "triage_inbox" in out_ws
     assert "find_workspace" in out_ws
     assert "archive_messages" in out_ws
+    # Calendar-list requests route through find_workspace (issue #130).
+    assert "find the Family calendar ID" in out_ws
+    assert "cal: for calendars" in out_ws
 
 
 def test_signup_soft_only_when_nudge_mode_signup_soft() -> None:
