@@ -50,10 +50,12 @@ DO NOT call any write tools. The parent agent owns confirmations and writes.
 Final answer: emit ONLY a single line of the form
 <TRIAGE_REPORT>...minified JSON object with keys noise, actions, events, info, each an array...</TRIAGE_REPORT>
 matching this schema:
-- noise:   id, threadId?, from, subject
-- actions: id, threadId?, from, subject, task
-- events:  id, threadId?, subject, proposedStart, proposedEnd?, location?
-- info:    id, threadId?, from, subject, note
+- noise:   id, threadId?, from, subject, receivedAt, snippet
+- actions: id, threadId?, from, subject, receivedAt, snippet, task
+- events:  id, threadId?, from, subject, receivedAt, snippet, proposedStart, proposedEnd?, location?
+- info:    id, threadId?, from, subject, receivedAt, snippet, note
+
+For EVERY bucket entry, copy `from`, `subject`, `receivedAt` (the message Date header from get_message), and a short `snippet` from the projected message. These are required and must be non-empty — the parent uses them verbatim in user-facing confirmation prompts (especially the archive prompt) so the user can decide without opening Gmail. If a header is genuinely empty, use a short placeholder like "(no subject)" rather than an empty string.
 
 Be terse. The parent agent will paraphrase."""
 

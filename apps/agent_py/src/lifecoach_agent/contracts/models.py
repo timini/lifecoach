@@ -315,13 +315,23 @@ class TaskProjection(BaseModel):
 # --- triage report -------------------------------------------------------
 
 
+# Every triage item carries per-message context (issue #141): the parent
+# coach renders `receivedAt` + `snippet` verbatim in the archive / event /
+# task confirmation prompt, so the user can decide without opening Gmail.
+# These two fields are min_length=1 to match the Zod `.min(1)` in
+# packages/shared-types/src/triageReport.ts — a blank context would defeat
+# the prompt requirement and drift from the TS contract.
+
+
 class TriageNoise(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str
     threadId: str | None = None  # noqa: N815
-    from_: str = Field(alias="from")
-    subject: str
+    from_: str = Field(alias="from", min_length=1)
+    subject: str = Field(min_length=1)
+    receivedAt: str = Field(min_length=1)  # noqa: N815
+    snippet: str = Field(min_length=1)
 
 
 class TriageAction(BaseModel):
@@ -329,8 +339,10 @@ class TriageAction(BaseModel):
 
     id: str
     threadId: str | None = None  # noqa: N815
-    from_: str = Field(alias="from")
-    subject: str
+    from_: str = Field(alias="from", min_length=1)
+    subject: str = Field(min_length=1)
+    receivedAt: str = Field(min_length=1)  # noqa: N815
+    snippet: str = Field(min_length=1)
     task: str
 
 
@@ -339,7 +351,10 @@ class TriageEvent(BaseModel):
 
     id: str
     threadId: str | None = None  # noqa: N815
-    subject: str
+    from_: str = Field(alias="from", min_length=1)
+    subject: str = Field(min_length=1)
+    receivedAt: str = Field(min_length=1)  # noqa: N815
+    snippet: str = Field(min_length=1)
     proposedStart: str  # noqa: N815
     proposedEnd: str | None = None  # noqa: N815
     location: str | None = None
@@ -350,8 +365,10 @@ class TriageInfo(BaseModel):
 
     id: str
     threadId: str | None = None  # noqa: N815
-    from_: str = Field(alias="from")
-    subject: str
+    from_: str = Field(alias="from", min_length=1)
+    subject: str = Field(min_length=1)
+    receivedAt: str = Field(min_length=1)  # noqa: N815
+    snippet: str = Field(min_length=1)
     note: str
 
 

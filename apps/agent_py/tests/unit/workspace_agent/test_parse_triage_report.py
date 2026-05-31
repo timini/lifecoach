@@ -16,10 +16,17 @@ from lifecoach_agent.workspace_agent.agent_tools.triage_inbox import (
 
 _VALID_REPORT_JSON = (
     "{"
-    '"noise":[{"id":"m1","from":"news@x","subject":"Digest"}],'
-    '"actions":[{"id":"m2","from":"a@x","subject":"Sign-off","task":"sign contract by Friday"}],'
-    '"events":[{"id":"m3","subject":"Lunch","proposedStart":"2026-05-12T12:30:00+01:00"}],'
-    '"info":[{"id":"m4","from":"school@x","subject":"Photo day","note":"Friday, uniform"}]'
+    '"noise":[{"id":"m1","from":"news@x","subject":"Digest",'
+    '"receivedAt":"Mon, 11 May 2026 09:00:00 +0100","snippet":"Top stories"}],'
+    '"actions":[{"id":"m2","from":"a@x","subject":"Sign-off",'
+    '"receivedAt":"Mon, 11 May 2026 09:05:00 +0100","snippet":"Please sign",'
+    '"task":"sign contract by Friday"}],'
+    '"events":[{"id":"m3","from":"sarah@x","subject":"Lunch",'
+    '"receivedAt":"Mon, 11 May 2026 09:10:00 +0100","snippet":"Lunch Tuesday",'
+    '"proposedStart":"2026-05-12T12:30:00+01:00"}],'
+    '"info":[{"id":"m4","from":"school@x","subject":"Photo day",'
+    '"receivedAt":"Mon, 11 May 2026 09:15:00 +0100","snippet":"Photo day Friday",'
+    '"note":"Friday, uniform"}]'
     "}"
 )
 
@@ -41,10 +48,12 @@ def test_malformed_json_inside_markers_returns_parse_error() -> None:
 
 
 def test_schema_invalid_json_returns_parse_error() -> None:
-    # Valid JSON, but `actions` entry is missing the required `task` field.
+    # Valid JSON, but the `noise` entry is missing the required `snippet`
+    # context field — the parser must reject a context-free archive candidate.
     bad = (
-        '<TRIAGE_REPORT>{"noise":[],"actions":[{"id":"m2","from":"a@x",'
-        '"subject":"x"}],"events":[],"info":[]}</TRIAGE_REPORT>'
+        '<TRIAGE_REPORT>{"noise":[{"id":"m1","from":"n@x","subject":"x",'
+        '"receivedAt":"Mon, 11 May 2026 09:00:00 +0100"}],"actions":[],'
+        '"events":[],"info":[]}</TRIAGE_REPORT>'
     )
     out = parse_triage_report(bad)
     assert out.status == "parse_error"
@@ -57,6 +66,7 @@ def test_happy_path_returns_validated_report() -> None:
     assert out.report is not None
     assert len(out.report.noise) == 1
     assert out.report.noise[0].id == "m1"
+    assert out.report.noise[0].snippet == "Top stories"
     assert len(out.report.actions) == 1
     assert out.report.actions[0].task == "sign contract by Friday"
     assert out.report.events[0].proposedStart == "2026-05-12T12:30:00+01:00"

@@ -31,3 +31,15 @@ export {
   type WorkspaceStatus,
 } from './workspace.js';
 export { PRACTICE_METADATA, practiceEnabledPath, type PracticeMetadata } from './practices.js';
+export {
+  TriageActionSchema,
+  TriageEventSchema,
+  TriageInfoSchema,
+  TriageNoiseSchema,
+  TriageReportSchema,
+  type TriageAction,
+  type TriageEvent,
+  type TriageInfo,
+  type TriageNoise,
+  type TriageReport,
+} from './triageReport.js';
