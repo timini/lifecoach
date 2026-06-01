@@ -392,7 +392,7 @@ Every tool lives in `src/lifecoach_agent/tools/` (one file, one tool factory). B
 | `connect_workspace` | none | Renders Connect-Workspace card | **yes (turn-ending)** |
 | `memory_save` | `{text}` | Writes to Vertex Memory Bank | no |
 | `upgrade_to_pro` | none | Renders Pro upgrade card | **yes (turn-ending)** |
-| `triage_inbox` | `{since?: "1d" \| "12h" \| ...}` | AgentTool wrapping a workspace sub-agent. Returns a structured `TriageReport` with noise / actions / events / info buckets (read-only). | no |
+| `triage_inbox` | `{since?: "1d" \| "12h" \| ...}` | AgentTool wrapping a workspace sub-agent. Returns a structured `TriageReport` with noise / actions / events / info buckets (read-only). Every item carries per-message context (`from`, `subject`, `receivedAt`, `snippet`, all non-empty) so the parent's archive/event/task confirmation prompt can list each candidate inline. | no |
 | `find_workspace` | `{query: string}` | AgentTool wrapping a workspace sub-agent. Natural-language lookup across Gmail / Calendar / Tasks — including calendar-list / calendar-ID requests, which route to the internal `list_calendars` read (not Gmail search). Cites with `cal:` / `m:` / `ev:` / `t:` id prefixes (read-only). | no |
 | `archive_messages` | `{ids: string[]}` | Batched modify-remove-INBOX. Returns `archived[]` + `failed[]`. Any per-id `scope_required` surfaces as a top-level error so the LLM can call `connect_workspace`. | no |
 | `add_calendar_event` | `{summary, start, end?, location?, description?, calendarId?}` | `calendar.events.insert`. `end` defaults to start + 30 min for timed events, start + 1 day for all-day. | no |
@@ -520,7 +520,7 @@ Notable client files:
 
 | Package | Type | Purpose |
 |---|---|---|
-| `@lifecoach/shared-types` | TS Zod | Source of truth for all data crossing the web↔agent boundary: `UserProfileSchema`, `GoalUpdateSchema`, `ChoiceQuestionSchema`, `AuthUserArgsSchema`, `WorkspaceStatusSchema`. Python mirror at `apps/agent_py/src/lifecoach_agent/contracts/`, parity tested in `tests/unit/test_contracts.py`. |
+| `@lifecoach/shared-types` | TS Zod | Source of truth for all data crossing the web↔agent boundary: `UserProfileSchema`, `GoalUpdateSchema`, `ChoiceQuestionSchema`, `AuthUserArgsSchema`, `WorkspaceStatusSchema`, `TriageReportSchema` (per-message context fields are `.min(1)`). Python mirror at `apps/agent_py/src/lifecoach_agent/contracts/`, parity tested in `tests/unit/test_contracts.py`. |
 | `@lifecoach/user-state` | TS pure | `UserStateMachine` + `UsageStateMachine` for `apps/web`. Mirrored in Python at `lifecoach_agent/state/`. |
 | `@lifecoach/ui` | TS React | Tailwind 4 design system: atoms / molecules / organisms / templates. Consumed as source by `apps/web`. Stories in `*.stories.tsx` are the test surface (vitest browser mode via `@storybook/addon-vitest`). |
 | `@lifecoach/testing` | TS | Test helpers + fakes for `apps/web` and `packages/*`. |
