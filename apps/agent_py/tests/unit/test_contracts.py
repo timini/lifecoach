@@ -313,3 +313,151 @@ def test_triage_report_rejects_blank_snippet() -> None:
                 "info": [],
             }
         )
+
+
+def test_triage_report_rejects_blank_id() -> None:
+    with pytest.raises(ValidationError):
+        TriageReport.model_validate(
+            {
+                "noise": [
+                    {
+                        "id": "",
+                        "from": "news@example.com",
+                        "subject": "Digest",
+                        "receivedAt": "Mon, 11 May 2026 09:00:00 +0100",
+                        "snippet": "Top stories",
+                    }
+                ],
+                "actions": [],
+                "events": [],
+                "info": [],
+            }
+        )
+
+
+def test_triage_report_rejects_blank_thread_id() -> None:
+    with pytest.raises(ValidationError):
+        TriageReport.model_validate(
+            {
+                "noise": [
+                    {
+                        "id": "m1",
+                        "threadId": "",
+                        "from": "news@example.com",
+                        "subject": "Digest",
+                        "receivedAt": "Mon, 11 May 2026 09:00:00 +0100",
+                        "snippet": "Top stories",
+                    }
+                ],
+                "actions": [],
+                "events": [],
+                "info": [],
+            }
+        )
+
+
+def test_triage_report_rejects_blank_task() -> None:
+    with pytest.raises(ValidationError):
+        TriageReport.model_validate(
+            {
+                "noise": [],
+                "actions": [
+                    {
+                        "id": "m2",
+                        "from": "a@x",
+                        "subject": "Sign-off",
+                        "receivedAt": "Mon, 11 May 2026 09:05:00 +0100",
+                        "snippet": "Please sign",
+                        "task": "",
+                    }
+                ],
+                "events": [],
+                "info": [],
+            }
+        )
+
+
+def test_triage_report_rejects_blank_proposed_start() -> None:
+    with pytest.raises(ValidationError):
+        TriageReport.model_validate(
+            {
+                "noise": [],
+                "actions": [],
+                "events": [
+                    {
+                        "id": "m3",
+                        "from": "sarah@x",
+                        "subject": "Lunch",
+                        "receivedAt": "Mon, 11 May 2026 09:10:00 +0100",
+                        "snippet": "Lunch Tuesday",
+                        "proposedStart": "",
+                    }
+                ],
+                "info": [],
+            }
+        )
+
+
+def test_triage_report_rejects_blank_proposed_end() -> None:
+    with pytest.raises(ValidationError):
+        TriageReport.model_validate(
+            {
+                "noise": [],
+                "actions": [],
+                "events": [
+                    {
+                        "id": "m3",
+                        "from": "sarah@x",
+                        "subject": "Lunch",
+                        "receivedAt": "Mon, 11 May 2026 09:10:00 +0100",
+                        "snippet": "Lunch Tuesday",
+                        "proposedStart": "2026-05-12T12:30:00+01:00",
+                        "proposedEnd": "",
+                    }
+                ],
+                "info": [],
+            }
+        )
+
+
+def test_triage_report_rejects_blank_location() -> None:
+    with pytest.raises(ValidationError):
+        TriageReport.model_validate(
+            {
+                "noise": [],
+                "actions": [],
+                "events": [
+                    {
+                        "id": "m3",
+                        "from": "sarah@x",
+                        "subject": "Lunch",
+                        "receivedAt": "Mon, 11 May 2026 09:10:00 +0100",
+                        "snippet": "Lunch Tuesday",
+                        "proposedStart": "2026-05-12T12:30:00+01:00",
+                        "location": "",
+                    }
+                ],
+                "info": [],
+            }
+        )
+
+
+def test_triage_report_rejects_blank_note() -> None:
+    with pytest.raises(ValidationError):
+        TriageReport.model_validate(
+            {
+                "noise": [],
+                "actions": [],
+                "events": [],
+                "info": [
+                    {
+                        "id": "m4",
+                        "from": "school@x",
+                        "subject": "Photo day",
+                        "receivedAt": "Mon, 11 May 2026 09:15:00 +0100",
+                        "snippet": "Photo day Friday",
+                        "note": "",
+                    }
+                ],
+            }
+        )

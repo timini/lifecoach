@@ -337,8 +337,8 @@ class TaskProjection(BaseModel):
 class TriageNoise(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    id: str
-    threadId: str | None = None  # noqa: N815
+    id: str = Field(min_length=1)
+    threadId: str | None = Field(default=None, min_length=1)  # noqa: N815
     from_: str = Field(alias="from", min_length=1)
     subject: str = Field(min_length=1)
     receivedAt: str = Field(min_length=1)  # noqa: N815
@@ -348,39 +348,39 @@ class TriageNoise(BaseModel):
 class TriageAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    id: str
-    threadId: str | None = None  # noqa: N815
+    id: str = Field(min_length=1)
+    threadId: str | None = Field(default=None, min_length=1)  # noqa: N815
     from_: str = Field(alias="from", min_length=1)
     subject: str = Field(min_length=1)
     receivedAt: str = Field(min_length=1)  # noqa: N815
     snippet: str = Field(min_length=1)
-    task: str
+    task: str = Field(min_length=1)
 
 
 class TriageEvent(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    id: str
-    threadId: str | None = None  # noqa: N815
+    id: str = Field(min_length=1)
+    threadId: str | None = Field(default=None, min_length=1)  # noqa: N815
     from_: str = Field(alias="from", min_length=1)
     subject: str = Field(min_length=1)
     receivedAt: str = Field(min_length=1)  # noqa: N815
     snippet: str = Field(min_length=1)
-    proposedStart: str  # noqa: N815
-    proposedEnd: str | None = None  # noqa: N815
-    location: str | None = None
+    proposedStart: str = Field(min_length=1)  # noqa: N815
+    proposedEnd: str | None = Field(default=None, min_length=1)  # noqa: N815
+    location: str | None = Field(default=None, min_length=1)
 
 
 class TriageInfo(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    id: str
-    threadId: str | None = None  # noqa: N815
+    id: str = Field(min_length=1)
+    threadId: str | None = Field(default=None, min_length=1)  # noqa: N815
     from_: str = Field(alias="from", min_length=1)
     subject: str = Field(min_length=1)
     receivedAt: str = Field(min_length=1)  # noqa: N815
     snippet: str = Field(min_length=1)
-    note: str
+    note: str = Field(min_length=1)
 
 
 class TriageReport(BaseModel):

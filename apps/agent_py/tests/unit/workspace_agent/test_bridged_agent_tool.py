@@ -60,6 +60,78 @@ def _tool_context(session_service: _SessionService) -> Any:
 # --- Factory wiring ------------------------------------------------------
 
 
+@pytest.mark.asyncio
+async def test_triage_inbox_bridged_agent_tool_parses_and_validates_raw_output() -> None:
+    import json
+    from unittest.mock import AsyncMock, patch
+
+    from lifecoach_agent.workspace_agent.agent_tools.triage_inbox import TriageInboxBridgedAgentTool
+
+    agent = SimpleNamespace(name="triage_inbox", description="triage gmail")
+    tool = TriageInboxBridgedAgentTool(agent=agent)  # type: ignore[arg-type]
+
+    # Mock super().run_async to return a valid triage report
+    valid_text = (
+        "<TRIAGE_REPORT>{"
+        '"noise":[{"id":"m1","from":"news@x","subject":"Digest",'
+        '"receivedAt":"Mon, 11 May 2026 09:00:00 +0100","snippet":"Top stories"}],'
+        '"actions":[],"events":[],"info":[]'
+        "}</TRIAGE_REPORT>"
+    )
+
+    with patch(
+        "lifecoach_agent.workspace_agent.bridged_agent_tool.BridgedAgentTool.run_async",
+        new_callable=AsyncMock,
+    ) as mock_run:
+        mock_run.return_value = valid_text
+
+        args = {"since": "1d"}
+        tool_context = SimpleNamespace(_invocation_context=None)
+
+        result = await tool.run_async(args=args, tool_context=tool_context)  # type: ignore[arg-type]
+
+        parsed = json.loads(result)
+        assert parsed["status"] == "ok"
+        assert len(parsed["report"]["noise"]) == 1
+        assert parsed["report"]["noise"][0]["id"] == "m1"
+        assert parsed["report"]["noise"][0]["snippet"] == "Top stories"
+
+
+@pytest.mark.asyncio
+async def test_triage_inbox_bridged_agent_tool_returns_parse_error_on_invalid_report() -> None:
+    import json
+    from unittest.mock import AsyncMock, patch
+
+    from lifecoach_agent.workspace_agent.agent_tools.triage_inbox import TriageInboxBridgedAgentTool
+
+    agent = SimpleNamespace(name="triage_inbox", description="triage gmail")
+    tool = TriageInboxBridgedAgentTool(agent=agent)  # type: ignore[arg-type]
+
+    # Mock super().run_async to return an invalid triage report (missing snippet)
+    invalid_text = (
+        "<TRIAGE_REPORT>{"
+        '"noise":[{"id":"m1","from":"news@x","subject":"Digest",'
+        '"receivedAt":"Mon, 11 May 2026 09:00:00 +0100"}],'
+        '"actions":[],"events":[],"info":[]'
+        "}</TRIAGE_REPORT>"
+    )
+
+    with patch(
+        "lifecoach_agent.workspace_agent.bridged_agent_tool.BridgedAgentTool.run_async",
+        new_callable=AsyncMock,
+    ) as mock_run:
+        mock_run.return_value = invalid_text
+
+        args = {"since": "1d"}
+        tool_context = SimpleNamespace(_invocation_context=None)
+
+        result = await tool.run_async(args=args, tool_context=tool_context)  # type: ignore[arg-type]
+
+        parsed = json.loads(result)
+        assert parsed["status"] == "parse_error"
+        assert parsed["raw"] == invalid_text
+
+
 class _FakeStore:
     pass
 

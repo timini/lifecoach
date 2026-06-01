@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from google.adk.tools.agent_tool import AgentTool
+from google.adk.tools.tool_context import ToolContext
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from lifecoach_agent.contracts.models import TriageReport
@@ -80,6 +81,20 @@ class TriageInboxToolResult:
     report: TriageReport | None = None
 
 
+class TriageInboxBridgedAgentTool(BridgedAgentTool):
+    """BridgedAgentTool variant for triage_inbox that parses and validates
+    the sub-agent's raw output via parse_triage_report before returning it.
+    """
+
+    async def run_async(self, *, args: dict[str, Any], tool_context: ToolContext) -> Any:
+        raw_text = await super().run_async(args=args, tool_context=tool_context)
+        result = parse_triage_report(raw_text)
+        if result.status == "ok" and result.report is not None:
+            return json.dumps({"status": "ok", "report": result.report.model_dump(by_alias=True)})
+        else:
+            return json.dumps({"status": "parse_error", "raw": result.raw})
+
+
 def create_triage_inbox_tool(
     deps: WorkspaceToolDeps,
     *,
@@ -92,7 +107,9 @@ def create_triage_inbox_tool(
         instruction=TRIAGE_INBOX_INSTRUCTION,
         input_schema=TriageInboxInput,
     )
-    return BridgedAgentTool(agent=agent, event_queue=event_queue, skip_summarization=False)
+    return TriageInboxBridgedAgentTool(
+        agent=agent, event_queue=event_queue, skip_summarization=False
+    )
 
 
 _MARKER_RE = re.compile(r"<TRIAGE_REPORT>([\s\S]*?)</TRIAGE_REPORT>")
