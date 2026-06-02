@@ -88,6 +88,11 @@ def _tool_stubs() -> dict[str, Any]:
             "status": "ok",
             "event": {"id": "ev1", "summary": "(stub)", "start": {}, "end": {}},
         },
+        "edit_calendar_event": {
+            "status": "ok",
+            "event": {"id": "ev1", "summary": "(stub edited)", "start": {}, "end": {}},
+        },
+        "delete_calendar_event": {"status": "ok", "deleted": "ev1", "calendarId": "primary"},
         "add_task": {
             "status": "ok",
             "task": {
@@ -186,7 +191,7 @@ def _make_stub_tools_for_state(state: UserState) -> list[Any]:
       - anonymous / email_pending / email_verified: + auth_user
       - google_linked / workspace_connected: + connect_workspace
         (reconnect path stays available)
-      - workspace_connected: + the six workspace tools
+      - workspace_connected: + the eight workspace tools
     """
     from google.adk.tools import FunctionTool
 
@@ -234,7 +239,7 @@ def _make_stub_tools_for_state(state: UserState) -> list[Any]:
 
         tools.append(FunctionTool(connect_workspace))
 
-    # --- workspace_connected gets the six workspace tools ----------
+    # --- workspace_connected gets the eight workspace tools ----------
     if state == "workspace_connected":
 
         async def triage_inbox(since: str | None = None) -> dict[str, Any]:
@@ -260,6 +265,28 @@ def _make_stub_tools_for_state(state: UserState) -> list[Any]:
             """Calendar insert — eval stub."""
             return {"status": "stubbed"}
 
+        async def edit_calendar_event(
+            eventId: str,  # noqa: N803
+            summary: str | None = None,
+            start: str | None = None,
+            end: str | None = None,
+            location: str | None = None,
+            description: str | None = None,
+            attendees: list[str] | None = None,
+            calendarId: str = "primary",  # noqa: N803
+            sendUpdates: str = "all",  # noqa: N803
+        ) -> dict[str, Any]:
+            """Calendar patch — eval stub."""
+            return {"status": "stubbed"}
+
+        async def delete_calendar_event(
+            eventId: str,  # noqa: N803
+            calendarId: str = "primary",  # noqa: N803
+            sendUpdates: str = "all",  # noqa: N803
+        ) -> dict[str, Any]:
+            """Calendar delete — eval stub."""
+            return {"status": "stubbed"}
+
         async def add_task(
             title: str,
             due: str | None = None,
@@ -282,6 +309,8 @@ def _make_stub_tools_for_state(state: UserState) -> list[Any]:
                 FunctionTool(find_workspace),
                 FunctionTool(archive_messages),
                 FunctionTool(add_calendar_event),
+                FunctionTool(edit_calendar_event),
+                FunctionTool(delete_calendar_event),
                 FunctionTool(add_task),
                 FunctionTool(complete_task),
             ]
