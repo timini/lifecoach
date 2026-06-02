@@ -103,13 +103,14 @@ describe('UserStateMachine — policy per state', () => {
       'add_calendar_event',
       'add_task',
       'complete_task',
+      'draft_email',
     ] as const;
     const withWorkspace = all
       .filter((p) => workspaceTools.some((t) => p.tools.includes(t)))
       .map((p) => p.state);
     expect(withWorkspace).toEqual(['workspace_connected']);
 
-    // And workspace_connected exposes ALL six.
+    // And workspace_connected exposes ALL seven.
     const ws = new UserStateMachine('workspace_connected').policy().tools;
     for (const t of workspaceTools) expect(ws).toContain(t);
   });
@@ -240,6 +241,7 @@ describe('UserStateMachine — policy per state', () => {
             "ask_single_choice_question",
             "complete_task",
             "connect_workspace",
+            "draft_email",
             "find_workspace",
             "google_search",
             "log_goal_update",

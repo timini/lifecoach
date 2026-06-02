@@ -10,6 +10,7 @@ Returned tools, in order:
   4. add_calendar_event(...)  — FunctionTool — direct, no LLM hop
   5. add_task(...)            — FunctionTool — direct, no LLM hop
   6. complete_task(id)        — FunctionTool — direct, no LLM hop
+  7. draft_email(...)         — FunctionTool — direct, no LLM hop
 """
 
 from __future__ import annotations
@@ -55,10 +56,12 @@ from lifecoach_agent.workspace_agent.tools import (
     ADD_TASK_TOOL_NAME,
     ARCHIVE_MESSAGES_TOOL_NAME,
     COMPLETE_TASK_TOOL_NAME,
+    DRAFT_EMAIL_TOOL_NAME,
     create_add_calendar_event_tool,
     create_add_task_tool,
     create_archive_messages_tool,
     create_complete_task_tool,
+    create_draft_email_tool,
 )
 from lifecoach_agent.workspace_agent.tools._deps import WorkspaceToolDeps
 
@@ -84,7 +87,7 @@ class WorkspaceModuleDeps:
 
 
 def create_workspace_tools(deps: WorkspaceModuleDeps) -> list[Any]:
-    """Build the 6 workspace-facing tools (2 AgentTools + 4 narrow writes)
+    """Build the 7 workspace-facing tools (2 AgentTools + 5 narrow writes)
     for the main agent. Closes over `deps.uid` + `deps.store` so the LLM
     never sees auth values."""
     main_tool_deps = WorkspaceToolDeps(
@@ -98,10 +101,11 @@ def create_workspace_tools(deps: WorkspaceModuleDeps) -> list[Any]:
         create_add_calendar_event_tool(main_tool_deps),
         create_add_task_tool(main_tool_deps),
         create_complete_task_tool(main_tool_deps),
+        create_draft_email_tool(main_tool_deps),
     ]
 
 
-# Names of the 6 tools the factory returns, in order. Importable for the
+# Names of the 7 tools the factory returns, in order. Importable for the
 # state policy + tests.
 WORKSPACE_TOOL_NAMES: tuple[str, ...] = (
     TRIAGE_INBOX_TOOL_NAME,
@@ -110,6 +114,7 @@ WORKSPACE_TOOL_NAMES: tuple[str, ...] = (
     ADD_CALENDAR_EVENT_TOOL_NAME,
     ADD_TASK_TOOL_NAME,
     COMPLETE_TASK_TOOL_NAME,
+    DRAFT_EMAIL_TOOL_NAME,
 )
 
 
@@ -118,6 +123,7 @@ __all__ = [
     "ADD_TASK_TOOL_NAME",
     "ARCHIVE_MESSAGES_TOOL_NAME",
     "COMPLETE_TASK_TOOL_NAME",
+    "DRAFT_EMAIL_TOOL_NAME",
     "FIND_WORKSPACE_TOOL_NAME",
     "MAX_RESPONSE_BYTES",
     "TRIAGE_INBOX_TOOL_NAME",
@@ -143,6 +149,7 @@ __all__ = [
     "create_add_task_tool",
     "create_archive_messages_tool",
     "create_complete_task_tool",
+    "create_draft_email_tool",
     "create_find_workspace_tool",
     "create_triage_inbox_tool",
     "create_workspace_agent",

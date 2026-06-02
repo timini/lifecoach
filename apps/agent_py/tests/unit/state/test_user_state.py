@@ -91,6 +91,7 @@ def test_workspace_connected_is_only_state_with_workspace_tools() -> None:
         "add_calendar_event",
         "add_task",
         "complete_task",
+        "draft_email",
     }
     states_with_workspace = [
         UserStateMachine(s).policy().state
@@ -98,7 +99,7 @@ def test_workspace_connected_is_only_state_with_workspace_tools() -> None:
         if workspace_tools & set(UserStateMachine(s).policy().tools)
     ]
     assert states_with_workspace == ["workspace_connected"]
-    # And workspace_connected exposes ALL six.
+    # And workspace_connected exposes ALL seven.
     ws_tools = set(UserStateMachine("workspace_connected").policy().tools)
     assert workspace_tools.issubset(ws_tools)
 

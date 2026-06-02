@@ -21,6 +21,7 @@ from lifecoach_agent.workspace_agent.tools import (
     create_add_task_tool,
     create_archive_messages_tool,
     create_complete_task_tool,
+    create_draft_email_tool,
     create_get_message_tool,
     create_list_events_tool,
     create_list_inbox_tool,
@@ -107,4 +108,5 @@ def _build_write_tools(deps: WorkspaceToolDeps) -> list[Any]:
         create_add_calendar_event_tool(deps),
         create_add_task_tool(deps),
         create_complete_task_tool(deps),
+        create_draft_email_tool(deps),
     ]

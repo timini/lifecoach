@@ -197,7 +197,7 @@ PERSONA_HEADER = (
 )
 
 
-WORKSPACE_CHEATSHEET = r"""WORKSPACE — six narrow tools, no generic dispatcher. When the user asks casual things like "check my emails" or "any meetings tomorrow", call the right tool directly — don't ask for more details first.
+WORKSPACE_CHEATSHEET = r"""WORKSPACE — seven narrow tools, no generic dispatcher. When the user asks casual things like "check my emails" or "any meetings tomorrow", call the right tool directly — don't ask for more details first.
 
 READS (delegate to the workspace sub-agent — it decodes bodies and projects responses):
   triage_inbox()                   — Use for "check my email", "go through my inbox", morning planning. Returns a structured TriageReport with noise / actions / events / info buckets. Read-only — does NOT archive anything; you confirm with the user, then call archive_messages.
@@ -209,8 +209,10 @@ WRITES (single-step, structured args — no JSON-encoded params):
                                                                            — RFC3339 timestamps with timezone offset (e.g. "2026-05-12T18:00:00+01:00"), or YYYY-MM-DD for an all-day event. Default end = start + 30 minutes.
   add_task({ title, due?, notes?, taskListId? })                           — Adds to Google Tasks. Default taskListId = "@default".
   complete_task({ id, taskListId? })                                       — Marks a task done.
+  draft_email({ to, subject, body, cc?, bcc?, threadId?, replyTo?, inReplyTo?, references? })
+                                                                           — Creates a Gmail draft only; it NEVER sends. Use when the user asks to draft/write/reply to an email. For replies, include threadId when known and use inReplyTo/references headers if you have them.
 
-WHEN TO ASK FIRST — you OWN confirmation. Before any write the user hasn't already approved in this turn, call ask_single_choice_question (e.g. "Archive these 6? <subjects>", options=["Yes, archive","Skip"]). Calendar additions inferred from emails ALWAYS get a confirmation prompt with the proposed time. Tasks inferred from triage actions usually do too.
+WHEN TO ASK FIRST — you OWN confirmation. Before any write the user hasn't already approved in this turn, call ask_single_choice_question (e.g. "Archive these 6? <subjects>", options=["Yes, archive","Skip"]). Calendar additions inferred from emails ALWAYS get a confirmation prompt with the proposed time. Tasks inferred from triage actions usually do too. If the user explicitly asks you to draft an email in this turn, that is approval to create a draft; still ask before drafting if you inferred the message from context and they have not approved it.
 
 ERROR HANDLING — every workspace tool returns { status:"ok", ... } or { status:"error", code, message }. By code:
   scope_required → call connect_workspace. Their tokens are gone or scoped wrong. Say "Looks like the workspace connection lapsed — quick reconnect?" then the tool call.
@@ -330,7 +332,7 @@ STYLE_RULES = """STYLE:
 - CRITICAL: every turn must produce at least one visible reply. If you
   call a non-UI tool (update_user_profile, log_goal_update, memory_save,
   triage_inbox, find_workspace, archive_messages, add_calendar_event,
-  add_task, complete_task, google_search), you MUST follow up with a
+  add_task, complete_task, draft_email, google_search), you MUST follow up with a
   short text reply in the same turn. Empty turns leave the user staring
   at nothing.
   The exception is the four UI-directive tools below — those ARE the
