@@ -126,6 +126,8 @@ const REPLAYABLE_TOOLS = new Set<string>([
   'find_workspace',
   'archive_messages',
   'add_calendar_event',
+  'edit_calendar_event',
+  'delete_calendar_event',
   'add_task',
   'complete_task',
   'update_user_profile',
