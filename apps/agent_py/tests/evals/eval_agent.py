@@ -106,6 +106,10 @@ def _tool_stubs() -> dict[str, Any]:
                 "status": "completed",
             },
         },
+        "draft_email": {
+            "status": "ok",
+            "draft": {"id": "draft1", "messageId": "msg1", "threadId": "thread1"},
+        },
         # ---- choice tools (turn-ending) ----
         "ask_single_choice_question": {
             "status": "shown",
@@ -276,6 +280,17 @@ def _make_stub_tools_for_state(state: UserState) -> list[Any]:
             """Tasks patch — eval stub."""
             return {"status": "stubbed"}
 
+        async def draft_email(
+            to: str,
+            subject: str,
+            body: str,
+            cc: str | None = None,
+            bcc: str | None = None,
+            threadId: str | None = None,  # noqa: N803
+        ) -> dict[str, Any]:
+            """Gmail draft create — eval stub. Never sends."""
+            return {"status": "stubbed"}
+
         tools.extend(
             [
                 FunctionTool(triage_inbox),
@@ -284,6 +299,7 @@ def _make_stub_tools_for_state(state: UserState) -> list[Any]:
                 FunctionTool(add_calendar_event),
                 FunctionTool(add_task),
                 FunctionTool(complete_task),
+                FunctionTool(draft_email),
             ]
         )
 

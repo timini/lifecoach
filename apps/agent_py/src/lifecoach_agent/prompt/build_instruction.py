@@ -197,7 +197,7 @@ PERSONA_HEADER = (
 )
 
 
-WORKSPACE_CHEATSHEET = r"""WORKSPACE — six narrow tools, no generic dispatcher. When the user asks casual things like "check my emails" or "any meetings tomorrow", call the right tool directly — don't ask for more details first.
+WORKSPACE_CHEATSHEET = r"""WORKSPACE — seven narrow tools, no generic dispatcher. When the user asks casual things like "check my emails" or "any meetings tomorrow", call the right tool directly — don't ask for more details first.
 
 READS (delegate to the workspace sub-agent — it decodes bodies and projects responses):
   triage_inbox()                   — Use for "check my email", "go through my inbox", morning planning. Returns a structured TriageReport with noise / actions / events / info buckets. Read-only — does NOT archive anything; you confirm with the user, then call archive_messages.
@@ -209,8 +209,11 @@ WRITES (single-step, structured args — no JSON-encoded params):
                                                                            — RFC3339 timestamps with timezone offset (e.g. "2026-05-12T18:00:00+01:00"), or YYYY-MM-DD for an all-day event. Default end = start + 30 minutes.
   add_task({ title, due?, notes?, taskListId? })                           — Adds to Google Tasks. Default taskListId = "@default".
   complete_task({ id, taskListId? })                                       — Marks a task done.
+  draft_email({ to, subject, body, cc?, bcc?, threadId? })                    — Creates a Gmail draft only. It NEVER sends. Use when the user asks to draft, compose, write, or prepare an email/reply.
 
-WHEN TO ASK FIRST — you OWN confirmation. Before any write the user hasn't already approved in this turn, call ask_single_choice_question (e.g. "Archive these 6? <subjects>", options=["Yes, archive","Skip"]). Calendar additions inferred from emails ALWAYS get a confirmation prompt with the proposed time. Tasks inferred from triage actions usually do too.
+DRAFT EMAIL RULE — if the user asks you to draft/compose/write/prepare an email or reply, do it in Gmail with draft_email; do not merely paste suggested copy in chat unless they explicitly ask for copy only. If recipient, subject, or body intent is missing, ask a short clarifying question before drafting. Never send email.
+
+WHEN TO ASK FIRST — you OWN confirmation. Before any write the user hasn't already approved in this turn, call ask_single_choice_question (e.g. "Archive these 6? <subjects>", options=["Yes, archive","Skip"]). Calendar additions inferred from emails ALWAYS get a confirmation prompt with the proposed time. Tasks inferred from triage actions usually do too. Creating a Gmail draft with draft_email does not send mail, so it can run when the user directly asks for a draft; ask first only if the requested draft is ambiguous.
 
 ERROR HANDLING — every workspace tool returns { status:"ok", ... } or { status:"error", code, message }. By code:
   scope_required → call connect_workspace. Their tokens are gone or scoped wrong. Say "Looks like the workspace connection lapsed — quick reconnect?" then the tool call.

@@ -1,0 +1,41 @@
+{
+  "eval_set_id": "draft_email_uses_gmail_draft",
+  "name": "Email draft uses Gmail draft tool",
+  "description": "Workspace-connected user asks the assistant to draft an email. The agent must create a Gmail draft with draft_email, not merely paste suggested copy into chat and not send email.",
+  "eval_cases": [
+    {
+      "eval_id": "case_01_draft_email_to_alex",
+      "session_input": {
+        "app_name": "lifecoach",
+        "user_id": "test-user-draft-email",
+        "state": {
+          "_lifecoach_user_state": "workspace_connected",
+          "_lifecoach_now": "2026-05-12T11:30:00+01:00"
+        }
+      },
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [
+              {
+                "text": "Draft an email to Alex saying I'm running 10 minutes late for our coffee and I'll be there soon."
+              }
+            ],
+            "role": "user"
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "draft_email",
+                "args": {
+                  "to": "Alex",
+                  "subject": "Running 10 minutes late"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
