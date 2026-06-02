@@ -20,6 +20,7 @@ from lifecoach_agent.workspace_agent.tools import (
     create_add_calendar_event_tool,
     create_add_task_tool,
     create_archive_messages_tool,
+    create_bulk_fetch_email_tool,
     create_complete_task_tool,
     create_get_message_tool,
     create_list_events_tool,
@@ -30,10 +31,11 @@ from lifecoach_agent.workspace_agent.tools import (
 from lifecoach_agent.workspace_agent.tools._deps import WorkspaceToolDeps
 
 WORKSPACE_AGENT_NAME = "workspace_agent"
-# Same model as the parent coach. Flash is fast enough for triage and
-# already on Vertex location=global. Re-evaluate vs Flash Lite after
-# dogfood telemetry lands.
+# Default Workspace model for general read/write helper agents. Triage
+# overrides this with Flash Lite because inbox classification is latency-
+# sensitive and uses lightweight structured output.
 WORKSPACE_AGENT_MODEL = "gemini-3-flash-preview"
+TRIAGE_INBOX_AGENT_MODEL = "gemini-flash-lite-latest"
 
 WORKSPACE_AGENT_INSTRUCTION = (
     "You are a sub-agent for Google Workspace (Gmail, Calendar, Google Tasks).\n\n"
@@ -95,6 +97,7 @@ def _build_read_tools(deps: WorkspaceToolDeps) -> list[Any]:
     return [
         create_list_inbox_tool(deps),
         create_get_message_tool(deps),
+        create_bulk_fetch_email_tool(deps),
         create_search_messages_tool(deps),
         create_list_events_tool(deps),
         create_list_tasks_tool(deps),

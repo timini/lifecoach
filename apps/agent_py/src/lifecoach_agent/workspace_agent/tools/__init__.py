@@ -12,6 +12,10 @@ from lifecoach_agent.workspace_agent.tools.archive_messages import (
     ARCHIVE_MESSAGES_TOOL_NAME,
     create_archive_messages_tool,
 )
+from lifecoach_agent.workspace_agent.tools.bulk_fetch_email import (
+    BULK_FETCH_EMAIL_TOOL_NAME,
+    create_bulk_fetch_email_tool,
+)
 from lifecoach_agent.workspace_agent.tools.complete_task import (
     COMPLETE_TASK_TOOL_NAME,
     create_complete_task_tool,
@@ -41,6 +45,7 @@ __all__ = [
     "ADD_CALENDAR_EVENT_TOOL_NAME",
     "ADD_TASK_TOOL_NAME",
     "ARCHIVE_MESSAGES_TOOL_NAME",
+    "BULK_FETCH_EMAIL_TOOL_NAME",
     "COMPLETE_TASK_TOOL_NAME",
     "GET_MESSAGE_TOOL_NAME",
     "LIST_EVENTS_TOOL_NAME",
@@ -50,6 +55,7 @@ __all__ = [
     "create_add_calendar_event_tool",
     "create_add_task_tool",
     "create_archive_messages_tool",
+    "create_bulk_fetch_email_tool",
     "create_complete_task_tool",
     "create_get_message_tool",
     "create_list_events_tool",

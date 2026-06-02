@@ -16,7 +16,7 @@ from google.adk.tools.agent_tool import AgentTool
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from lifecoach_agent.contracts.models import TriageReport
-from lifecoach_agent.workspace_agent.agent import create_workspace_agent
+from lifecoach_agent.workspace_agent.agent import TRIAGE_INBOX_AGENT_MODEL, create_workspace_agent
 from lifecoach_agent.workspace_agent.bridged_agent_tool import BridgedAgentTool
 from lifecoach_agent.workspace_agent.tools._deps import WorkspaceToolDeps
 
@@ -36,7 +36,7 @@ The parent will hand you a JSON message with an optional `since` key (Gmail-styl
 
 Procedure:
 1. Call list_inbox with the since value (e.g. since="1d") to get message ids + snippets.
-2. For each message, call get_message with the id (e.g. id=<the id from step 1>) to read the decoded body and headers. Parallel calls are fine.
+2. Call bulk_fetch_email once with all message ids from step 1 to read decoded bodies and headers in bulk. Use get_message only if you need to refetch one specific message.
 3. Classify EVERY message into exactly one bucket:
    - noise: newsletters, automated reports, marketing — no action
    - actions: the user must do something — distil into a 1-line task
@@ -89,6 +89,7 @@ def create_triage_inbox_tool(
         description=_TRIAGE_DESCRIPTION,
         instruction=TRIAGE_INBOX_INSTRUCTION,
         input_schema=TriageInboxInput,
+        model=TRIAGE_INBOX_AGENT_MODEL,
     )
     return BridgedAgentTool(agent=agent, event_queue=event_queue, skip_summarization=False)
 
