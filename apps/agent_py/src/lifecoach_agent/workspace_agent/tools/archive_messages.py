@@ -72,7 +72,7 @@ def create_archive_messages_tool(deps: WorkspaceToolDeps) -> Any:
             }
         return {"status": "ok", "archived": archived, "failed": failed}
 
-    from google.adk.tools import FunctionTool
+    from google.adk.tools.function_tool import FunctionTool
 
     archive_messages.__name__ = ARCHIVE_MESSAGES_TOOL_NAME
     return FunctionTool(archive_messages)

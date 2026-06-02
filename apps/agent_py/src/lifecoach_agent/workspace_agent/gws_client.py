@@ -145,11 +145,11 @@ def _build_client(service: str, access_token: str) -> Any:
     """Imports kept lazy so this module is callable without
     google-api-python-client on the path (handy for typecheck / unit tests
     that monkeypatch this function)."""
-    from google.oauth2.credentials import Credentials  # type: ignore[import-untyped]
-    from googleapiclient.discovery import build  # type: ignore[import-untyped]
+    from google.oauth2.credentials import Credentials
+    from googleapiclient.discovery import build
 
     api_name, version = _API_VERSIONS[service]
-    creds = Credentials(token=access_token)
+    creds = Credentials(token=access_token)  # type: ignore[no-untyped-call]
     return build(api_name, version, credentials=creds, cache_discovery=False)
 
 

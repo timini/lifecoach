@@ -42,7 +42,7 @@ src/lifecoach_agent/
   state/                # UserState/UsageState/DailyFlow machines
   context/              # weather, places, holidays, calendar density, memory, summaries
   tools/                # main-agent tools
-  workspace_agent/      # workspace sub-agent + 9 internal tools + 2 AgentTool wrappers
+  workspace_agent/      # workspace sub-agent + 10 internal tools + 2 AgentTool wrappers
   storage/              # Firestore session, profile, history, goal updates, etc.
   oauth/                # workspace OAuth client
   auth.py               # Firebase ID token verification

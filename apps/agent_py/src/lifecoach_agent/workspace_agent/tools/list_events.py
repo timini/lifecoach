@@ -57,7 +57,7 @@ def create_list_events_tool(deps: WorkspaceToolDeps) -> Any:
             out["truncated"] = True
         return out
 
-    from google.adk.tools import FunctionTool
+    from google.adk.tools.function_tool import FunctionTool
 
     list_events.__name__ = LIST_EVENTS_TOOL_NAME
     return FunctionTool(list_events)

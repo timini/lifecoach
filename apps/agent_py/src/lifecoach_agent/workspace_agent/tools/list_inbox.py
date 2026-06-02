@@ -1,6 +1,5 @@
 """`list_inbox` — sub-agent read tool. Returns id+threadId+snippet
-summaries (no body). The sub-agent calls `get_message` per id when it
-wants full content.
+summaries (no body). The sub-agent calls `get_messages` for bulk full-content reads.
 """
 
 from __future__ import annotations
@@ -19,7 +18,7 @@ def create_list_inbox_tool(deps: WorkspaceToolDeps) -> Any:
         unread_only: bool = False, since: str = "1d", limit: int = 15
     ) -> dict[str, Any]:
         """List recent inbox messages as id+threadId+snippet summaries
-        (no body). Use get_message per id to read full content. Read-only.
+        (no body). Use get_messages to read full content in bulk. Read-only.
 
         Args:
             unread_only: When true, restrict to unread messages only.
@@ -90,7 +89,7 @@ def create_list_inbox_tool(deps: WorkspaceToolDeps) -> Any:
             out["truncated"] = True
         return out
 
-    from google.adk.tools import FunctionTool
+    from google.adk.tools.function_tool import FunctionTool
 
     list_inbox.__name__ = LIST_INBOX_TOOL_NAME
     return FunctionTool(list_inbox)

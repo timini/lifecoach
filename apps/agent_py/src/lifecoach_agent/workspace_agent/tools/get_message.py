@@ -41,7 +41,7 @@ def create_get_message_tool(deps: WorkspaceToolDeps) -> Any:
         projection = project_gmail_message(raw)
         return {"status": "ok", "message": projection.model_dump(by_alias=True, exclude_none=True)}
 
-    from google.adk.tools import FunctionTool
+    from google.adk.tools.function_tool import FunctionTool
 
     get_message.__name__ = GET_MESSAGE_TOOL_NAME
     return FunctionTool(get_message)

@@ -51,7 +51,7 @@ Tracks per-module status of the rebuild. Update as we go.
 | `apps/agent/src/tools/upgradeToPro.ts`                 | `lifecoach_agent/tools/upgrade_to_pro.py`           | 6     | done |
 | `apps/agent/src/tools/callWorkspace.ts` (gws CLI)      | `lifecoach_agent/workspace_agent/gws_client.py`     | 7     | done (google-api-python-client; gws CLI dropped entirely) |
 | —                                                      | `lifecoach_agent/workspace_agent/call_workspace.py` | 7     | done (ADK FunctionTool wrapper) |
-| The full sub-agent redesign (separate ADK Agent + 9 internal tools + 2 AgentTool wrappers) lands as a follow-up issue — see plan §"Phase 7 — Workspace sub-agent". | | 7+ | follow-up |
+| The full sub-agent redesign (separate ADK Agent + 10 internal tools + 2 AgentTool wrappers) lands as a follow-up issue — see plan §"Phase 7 — Workspace sub-agent". | | 7+ | follow-up |
 
 Status legend: `—` (todo), `wip` (in progress on a branch), `done` (merged
 to main / migration branch).

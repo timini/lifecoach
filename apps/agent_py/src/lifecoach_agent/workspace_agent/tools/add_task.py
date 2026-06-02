@@ -53,7 +53,7 @@ def create_add_task_tool(deps: WorkspaceToolDeps) -> Any:
         projection = project_task(raw, taskListId)
         return {"status": "ok", "task": projection.model_dump(by_alias=True, exclude_none=True)}
 
-    from google.adk.tools import FunctionTool
+    from google.adk.tools.function_tool import FunctionTool
 
     add_task.__name__ = ADD_TASK_TOOL_NAME
     return FunctionTool(add_task)

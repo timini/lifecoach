@@ -79,7 +79,7 @@ def create_add_calendar_event_tool(deps: WorkspaceToolDeps) -> Any:
         projection = project_calendar_event(raw, calendarId)
         return {"status": "ok", "event": projection.model_dump(by_alias=True, exclude_none=True)}
 
-    from google.adk.tools import FunctionTool
+    from google.adk.tools.function_tool import FunctionTool
 
     add_calendar_event.__name__ = ADD_CALENDAR_EVENT_TOOL_NAME
     return FunctionTool(add_calendar_event)

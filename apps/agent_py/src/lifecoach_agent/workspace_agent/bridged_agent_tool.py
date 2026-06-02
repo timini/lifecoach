@@ -21,7 +21,7 @@ while consuming inner events it also forwards any ``functionCall`` /
 
 That last point closes a real footgun: the main agent only registers
 ``triage_inbox`` / ``find_workspace`` plus the writes; the inner Gmail
-reads (``list_inbox`` / ``get_message`` / ...) are NOT in its tool
+reads (``list_inbox`` / ``get_message`` / ``get_messages`` / ...) are NOT in its tool
 surface. If the bridged events were authored as ``"lifecoach"`` they
 would be loaded by ADK on subsequent turns as if the main agent had
 called those tools, and Gemini would either reject the history or hunt
@@ -67,8 +67,8 @@ WORKSPACE_INNER_TOOL_KEY = "__workspaceInner"
 # renders the bridged badges under their parent.
 WORKSPACE_BRIDGE_AUTHOR = "lifecoach-workspace-bridge"
 
-# Inner workspace tools (e.g. `get_message`) return up to ~4 KB of
-# decoded email body + allow-listed headers under the `message` key.
+# Inner workspace tools (e.g. `get_message` / `get_messages`) return decoded
+# email bodies + allow-listed headers under `message` / `messages` keys.
 # That payload is meaningful to the sub-agent's reasoning but is
 # private user data we do not want to ship over SSE or persist as a
 # tool-badge `response` on the parent chat. The badge only needs the

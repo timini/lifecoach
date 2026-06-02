@@ -1,6 +1,6 @@
 """`search_messages` — Gmail search across the whole mailbox, not just
 the inbox. Returns id+threadId+snippet summaries; the sub-agent calls
-get_message for full bodies on the matches it cares about.
+get_messages for bulk full-body reads on matches it cares about.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ def create_search_messages_tool(deps: WorkspaceToolDeps) -> Any:
     async def search_messages(query: str, limit: int = 10) -> dict[str, Any]:
         """Search Gmail across all labels/folders using Gmail query syntax.
         Returns id+threadId+snippet summaries — call get_message for full
-        body. Read-only.
+        body; use get_messages for bulk reads. Read-only.
 
         Args:
             query: Gmail search syntax — e.g. "from:sarah newer_than:7d",
@@ -84,7 +84,7 @@ def create_search_messages_tool(deps: WorkspaceToolDeps) -> Any:
             )
         return {"status": "ok", "messages": messages}
 
-    from google.adk.tools import FunctionTool
+    from google.adk.tools.function_tool import FunctionTool
 
     search_messages.__name__ = SEARCH_MESSAGES_TOOL_NAME
     return FunctionTool(search_messages)

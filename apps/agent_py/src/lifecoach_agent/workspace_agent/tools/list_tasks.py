@@ -46,7 +46,7 @@ def create_list_tasks_tool(deps: WorkspaceToolDeps) -> Any:
             out["truncated"] = True
         return out
 
-    from google.adk.tools import FunctionTool
+    from google.adk.tools.function_tool import FunctionTool
 
     list_tasks.__name__ = LIST_TASKS_TOOL_NAME
     return FunctionTool(list_tasks)
