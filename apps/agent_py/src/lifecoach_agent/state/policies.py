@@ -46,7 +46,7 @@ _STATE_ADDITIONAL_TOOLS: dict[UserState, tuple[ToolName, ...]] = {
     "google_linked": ("connect_workspace",),
     # workspace_connected users get the full Google Workspace surface
     # exported by `workspace_agent` (2 AgentTools wrapping the workspace
-    # sub-agent + 4 narrow write FunctionTools). The canonical list is
+    # sub-agent + 5 narrow write FunctionTools). The canonical list is
     # `lifecoach_agent.workspace_agent.WORKSPACE_TOOL_NAMES`; this tuple
     # must match it 1:1 + `connect_workspace`. A drift test in
     # `tests/unit/state/test_policies_workspace_drift.py` keeps them in
@@ -60,6 +60,7 @@ _STATE_ADDITIONAL_TOOLS: dict[UserState, tuple[ToolName, ...]] = {
         "add_calendar_event",
         "add_task",
         "complete_task",
+        "create_draft_email",
         "connect_workspace",
     ),
 }
@@ -67,9 +68,9 @@ _STATE_ADDITIONAL_TOOLS: dict[UserState, tuple[ToolName, ...]] = {
 
 _WORKSPACE_ASK_TRIGGER_ANON = (
     "WORKSPACE-ASK TRIGGER (CRITICAL — turn-ending behaviour): if the user "
-    "asks for ANYTHING that requires Google Workspace access — reading or "
-    "triaging email, checking calendar, listing or completing tasks, adding "
-    'events — your FIRST reply must call `auth_user` with `mode="google"`. '
+    "asks for ANYTHING that requires Google Workspace access — reading, "
+    "drafting, or triaging email, checking calendar, listing or completing "
+    'tasks, adding events — your FIRST reply must call `auth_user` with `mode="google"`. '
     "Do not ask clarifying questions, do not propose strategies, do not "
     "explore intent. Say nothing before the tool call; the auth widget IS "
     "the turn. Workspace access requires signing in with Google first, then "
@@ -78,9 +79,9 @@ _WORKSPACE_ASK_TRIGGER_ANON = (
 
 _WORKSPACE_ASK_TRIGGER_GOOGLE_LINKED = (
     "WORKSPACE-ASK TRIGGER (CRITICAL — turn-ending behaviour): if the user "
-    "asks for ANYTHING that requires Google Workspace access — reading or "
-    "triaging email, checking calendar, listing or completing tasks, adding "
-    "events — your FIRST reply must call `connect_workspace`. Do not ask "
+    "asks for ANYTHING that requires Google Workspace access — reading, "
+    "drafting, or triaging email, checking calendar, listing or completing "
+    "tasks, adding events — your FIRST reply must call `connect_workspace`. Do not ask "
     "clarifying questions, do not propose strategies, do not explore intent. "
     "Say nothing before the tool call; the connect widget IS the turn. The "
     "user is already signed in with Google; they just need to grant "
@@ -111,11 +112,11 @@ _STATE_DIRECTIVE: dict[UserState, str] = {
         "the conversation.\n\n" + _WORKSPACE_ASK_TRIGGER_GOOGLE_LINKED
     ),
     "workspace_connected": (
-        "User granted Google Workspace access. Use the six workspace tools "
+        "User granted Google Workspace access. Use the seven workspace tools "
         "(triage_inbox, find_workspace, archive_messages, add_calendar_event, "
-        "add_task, complete_task) when the user asks something that requires "
-        "their workspace. Never speculate about their workspace contents — "
-        "call the tool."
+        "add_task, complete_task, create_draft_email) when the user asks "
+        "something that requires their workspace. Never speculate about their "
+        "workspace contents — call the tool."
     ),
 }
 

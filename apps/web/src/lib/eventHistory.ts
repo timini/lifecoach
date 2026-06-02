@@ -128,6 +128,7 @@ const REPLAYABLE_TOOLS = new Set<string>([
   'add_calendar_event',
   'add_task',
   'complete_task',
+  'create_draft_email',
   'update_user_profile',
   'log_goal_update',
   'memory_save',

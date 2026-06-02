@@ -31,7 +31,7 @@ const STATE_ADDITIONAL_TOOLS: Record<UserState, readonly ToolName[]> = {
   // browser's GIS popup.
   google_linked: ['connect_workspace'],
   // workspace_connected users get the full Google Workspace surface:
-  // 2 AgentTools wrapping the workspace sub-agent (read flows) + 4
+  // 2 AgentTools wrapping the workspace sub-agent (read flows) + 5
   // narrow write FunctionTools. `connect_workspace` stays available so
   // reconnects work if the user narrows scopes or the token gets revoked.
   workspace_connected: [
@@ -41,6 +41,7 @@ const STATE_ADDITIONAL_TOOLS: Record<UserState, readonly ToolName[]> = {
     'add_calendar_event',
     'add_task',
     'complete_task',
+    'create_draft_email',
     'connect_workspace',
   ],
 };
@@ -55,7 +56,7 @@ const STATE_DIRECTIVE: Record<UserState, string> = {
   google_linked:
     'User is signed in with Google but has not granted Workspace access. Offer Workspace connection only when the conversation would genuinely benefit (calendar context, checking email, finding a file).',
   workspace_connected:
-    'User granted Google Workspace access. You may call run_gws when the user asks something that requires it. Never speculate about their workspace contents — call the tool.',
+    'User granted Google Workspace access. Use the workspace tools when the user asks something that requires it. Never speculate about their workspace contents — call the tool.',
 };
 
 const STATE_UI: Record<UserState, readonly UIAffordance[]> = {
