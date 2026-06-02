@@ -55,10 +55,12 @@ from lifecoach_agent.workspace_agent.tools import (
     ADD_TASK_TOOL_NAME,
     ARCHIVE_MESSAGES_TOOL_NAME,
     COMPLETE_TASK_TOOL_NAME,
+    GET_MESSAGES_TOOL_NAME,
     create_add_calendar_event_tool,
     create_add_task_tool,
     create_archive_messages_tool,
     create_complete_task_tool,
+    create_get_messages_tool,
 )
 from lifecoach_agent.workspace_agent.tools._deps import WorkspaceToolDeps
 
@@ -119,6 +121,7 @@ __all__ = [
     "ARCHIVE_MESSAGES_TOOL_NAME",
     "COMPLETE_TASK_TOOL_NAME",
     "FIND_WORKSPACE_TOOL_NAME",
+    "GET_MESSAGES_TOOL_NAME",
     "MAX_RESPONSE_BYTES",
     "TRIAGE_INBOX_TOOL_NAME",
     "WORKSPACE_AGENT_INSTRUCTION",
@@ -144,6 +147,7 @@ __all__ = [
     "create_archive_messages_tool",
     "create_complete_task_tool",
     "create_find_workspace_tool",
+    "create_get_messages_tool",
     "create_triage_inbox_tool",
     "create_workspace_agent",
     "create_workspace_tools",

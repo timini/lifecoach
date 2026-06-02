@@ -4,7 +4,7 @@ Where `tests.evals.eval_agent` registers the main coach agent, this
 module registers the workspace sub-agent that the `triage_inbox`
 AgentTool wraps. Tier-1 evals point at it via `agent_module=` so the
 sub-agent's classification logic runs end-to-end against real Gemini,
-with `list_inbox` + `get_message` short-circuited by canned responses.
+with `list_inbox` + `get_messages` short-circuited by canned responses.
 
 Mocked inbox covers all four buckets the sub-agent classifies into:
 
@@ -15,7 +15,7 @@ Mocked inbox covers all four buckets the sub-agent classifies into:
 
 The sub-agent's `before_tool_callback` inspects args and routes to the
 right canned response, so the model genuinely walks through one
-`list_inbox` + four `get_message` calls before emitting the
+`list_inbox` + one bulk `get_messages` call before emitting the
 <TRIAGE_REPORT>{json}</TRIAGE_REPORT> blob the eval asserts on.
 """
 
@@ -100,7 +100,7 @@ def _list_inbox_response() -> dict[str, Any]:
     }
 
 
-def _get_message_response(message_id: str) -> dict[str, Any]:
+def _message_projection(message_id: str) -> dict[str, Any] | None:
     for m in _INBOX:
         if m["id"] != message_id:
             continue
@@ -116,11 +116,20 @@ def _get_message_response(message_id: str) -> dict[str, Any]:
                 "truncated": False,
             }
         )
-        return {
-            "status": "ok",
-            "message": proj.model_dump(by_alias=True, exclude_none=True),
-        }
-    return {"status": "error", "code": "not_found", "message": f"unknown id {message_id}"}
+        return proj.model_dump(by_alias=True, exclude_none=True)
+    return None
+
+
+def _get_message_response(message_id: str) -> dict[str, Any]:
+    message = _message_projection(message_id)
+    if message is None:
+        return {"status": "error", "code": "not_found", "message": f"unknown id {message_id}"}
+    return {"status": "ok", "message": message}
+
+
+def _get_messages_response(ids: list[str]) -> dict[str, Any]:
+    messages = [_message_projection(mid) for mid in ids]
+    return {"status": "ok", "messages": [m for m in messages if m is not None]}
 
 
 def _stub_before_tool(
@@ -130,6 +139,11 @@ def _stub_before_tool(
     name = getattr(tool, "name", None) or tool.__class__.__name__
     if name == "list_inbox":
         return _list_inbox_response()
+    if name == "get_messages":
+        ids = args.get("ids") if isinstance(args, dict) else None
+        if isinstance(ids, list) and all(isinstance(mid, str) for mid in ids):
+            return _get_messages_response(ids)
+        return {"status": "error", "code": "bad_request", "message": "missing ids"}
     if name == "get_message":
         mid = args.get("id") if isinstance(args, dict) else None
         if isinstance(mid, str):
