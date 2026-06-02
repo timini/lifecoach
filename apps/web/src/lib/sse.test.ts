@@ -456,6 +456,11 @@ describe('labelForToolCall', () => {
       }),
     ).toContain('Maya parent-teacher');
     expect(labelForToolCall('add_calendar_event', {})).toContain('calendar event');
+    expect(labelForToolCall('edit_calendar_event', { summary: 'Sink Repair' })).toContain(
+      'Sink Repair',
+    );
+    expect(labelForToolCall('edit_calendar_event', {})).toContain('calendar event');
+    expect(labelForToolCall('delete_calendar_event', { eventId: 'ev1' })).toContain('deleting');
 
     expect(labelForToolCall('add_task', { title: 'Reply to Sarah' })).toContain('Reply to Sarah');
     expect(labelForToolCall('add_task', {})).toContain('task');
