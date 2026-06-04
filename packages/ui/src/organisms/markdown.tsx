@@ -8,7 +8,15 @@ export interface MarkdownProps {
   /** The raw markdown source. */
   children: string;
   className?: string;
+  /** Render only phrasing markdown, suitable for labels and inline text. */
+  inline?: boolean;
 }
+
+// Phrasing-only elements allowed in `inline` mode (choice-prompt labels,
+// etc.). Deliberately excludes `a`: a clickable link inside a radio/checkbox
+// label is a confusing, mis-targeted affordance — and remark-gfm would turn
+// a bare URL into one — so links render as their plain text instead.
+const INLINE_MARKDOWN_ELEMENTS = ['p', 'strong', 'em', 'code', 'br', 'del'] as const;
 
 /**
  * Inline markdown renderer for assistant chat bubbles. Supports GFM
@@ -22,15 +30,22 @@ export interface MarkdownProps {
  * texting, not writing an article). HTML in markdown is sanitised by
  * react-markdown's default skipHtml.
  */
-export function Markdown({ children, className }: MarkdownProps) {
+export function Markdown({ children, className, inline = false }: MarkdownProps) {
+  const Root = inline ? 'span' : 'div';
   return (
-    <div className={cn('whitespace-normal', className)}>
+    <Root className={cn('whitespace-normal', className)}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
+        // In inline mode, restrict to phrasing elements and unwrap anything
+        // else (a stray heading/list marker becomes its text, not dropped).
+        allowedElements={inline ? [...INLINE_MARKDOWN_ELEMENTS] : undefined}
+        unwrapDisallowed={inline}
         components={{
-          p: ({ children: c }) => <p className="my-2 first:mt-0 last:mb-0">{c}</p>,
+          p: ({ children: c }) =>
+            inline ? <>{c}</> : <p className="my-2 first:mt-0 last:mb-0">{c}</p>,
           strong: ({ children: c }) => <strong className="font-semibold">{c}</strong>,
           em: ({ children: c }) => <em className="italic">{c}</em>,
+          del: ({ children: c }) => <del className="line-through">{c}</del>,
           a: ({ href, children: c }) => (
             <a
               href={href}
@@ -70,6 +85,6 @@ export function Markdown({ children, className }: MarkdownProps) {
       >
         {children}
       </ReactMarkdown>
-    </div>
+    </Root>
   );
 }
