@@ -427,6 +427,7 @@ def build_app() -> Any:
         ctx = params.ctx
         uid = params.uid
         usage_policy = params.usage_policy
+        event_queue = params.event_queue
 
         tools: list[Any] = [
             create_update_user_profile_tool(
@@ -458,7 +459,11 @@ def build_app() -> Any:
             and ctx.user_state == "workspace_connected"
         ):
             tools.extend(
-                create_workspace_tools(WorkspaceModuleDeps(store=workspace_tokens_store, uid=uid))
+                create_workspace_tools(
+                    WorkspaceModuleDeps(
+                        store=workspace_tokens_store, uid=uid, event_queue=event_queue
+                    )
+                )
             )
         # Notion — orthogonal capability flag. Tools register when the
         # user is signed-in-enough AND has connected. connect_notion +

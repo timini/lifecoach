@@ -50,6 +50,31 @@ dev_output() {
   (cd "${DEV_DIR}" && terraform output -raw "${key}")
 }
 
+ensure_dev_next_server_actions_encryption_key() {
+  # Previews reuse dev's stable Server Actions key (preview env doesn't own
+  # any secrets — see infra/envs/preview/main.tf). The targeted apply on
+  # dev's state covers two cases:
+  #   1. First preview after this resource was introduced — the secret
+  #      doesn't exist yet and has to be materialised here.
+  #   2. Intentional rotation on dev (`terraform taint random_id.next_server_actions_encryption_key`)
+  #      — the secret already exists, but its `latest` value needs to roll
+  #      BEFORE the preview web build reads it, or the just-built preview
+  #      image bakes in the old key while dev's running revisions use the
+  #      new one (Action IDs diverge between preview and dev).
+  #
+  # An existence-check short-circuit would silently skip case 2. The
+  # targeted apply is idempotent — no-op when nothing has changed.
+  log "Reconciling NEXT_SERVER_ACTIONS_ENCRYPTION_KEY secret before preview web build"
+  (
+    cd "${DEV_DIR}"
+    terraform apply -auto-approve -input=false -var-file=terraform.tfvars \
+      -target=random_id.next_server_actions_encryption_key \
+      -target=google_secret_manager_secret.next_server_actions_encryption_key \
+      -target=google_secret_manager_secret_version.next_server_actions_encryption_key \
+      -target=google_secret_manager_secret_iam_member.next_server_actions_encryption_key_accessors >&2
+  )
+}
+
 ensure_dev_init
 
 PROJECT_ID="$(dev_output project_id)"
@@ -80,6 +105,21 @@ dev_tfvar() {
 GA_MEASUREMENT_ID="$(dev_tfvar google_analytics_measurement_id)"
 SENTRY_DSN_VALUE="$(dev_tfvar sentry_dsn)"
 
+# firebase_auth_domain_override: same staleness concern as infra/deploy.sh —
+# `dev_output firebase_auth_domain` above reflects dev's LAST APPLIED state.
+# If dev's tfvars was changed to flip the override but dev hasn't been
+# re-applied yet, a preview build would bake the old firebaseapp.com domain
+# into the image. Read directly from dev's tfvars and let it take precedence.
+FIREBASE_AUTH_DOMAIN_OVERRIDE="$(dev_tfvar firebase_auth_domain_override)"
+if [[ -n "${FIREBASE_AUTH_DOMAIN_OVERRIDE}" ]]; then
+  FIREBASE_AUTH_DOMAIN="${FIREBASE_AUTH_DOMAIN_OVERRIDE}"
+fi
+
+ensure_dev_next_server_actions_encryption_key
+NEXT_SERVER_ACTIONS_ENCRYPTION_KEY="$(gcloud secrets versions access latest \
+  --secret=NEXT_SERVER_ACTIONS_ENCRYPTION_KEY \
+  --project="${PROJECT_ID}")"
+
 # Custom-domain wiring — output may not exist yet on first deploy after
 # this feature lands (dev apply hasn't run with the domain module). The
 # `|| true` keeps the script working in both states; preview TF's
@@ -104,9 +144,8 @@ build_and_push() {
   fi
   local image="${REPO_URL}/lifecoach-${name}:${TAG}"
   log "Building ${image}"
-  local -a build_args=()
   if [[ "${name}" == "web" ]]; then
-    build_args+=(
+    local -a build_args=(
       --build-arg "NEXT_PUBLIC_FIREBASE_API_KEY=${FIREBASE_API_KEY}"
       --build-arg "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${FIREBASE_AUTH_DOMAIN}"
       --build-arg "NEXT_PUBLIC_FIREBASE_PROJECT_ID=${PROJECT_ID}"
@@ -117,13 +156,23 @@ build_and_push() {
       --build-arg "NEXT_PUBLIC_SENTRY_DSN=${SENTRY_DSN_VALUE}"
       --build-arg "NEXT_PUBLIC_SENTRY_ENVIRONMENT=preview-pr-${PR_NUMBER}"
     )
+    # BuildKit secret mount (NOT --build-arg) so the stable Server Actions
+    # encryption key isn't persisted in image metadata / provenance /
+    # `docker history`. See apps/web/Dockerfile.
+    NEXT_SERVER_ACTIONS_ENCRYPTION_KEY="${NEXT_SERVER_ACTIONS_ENCRYPTION_KEY}" DOCKER_BUILDKIT=1 docker build \
+      --platform=linux/amd64 \
+      --secret id=next_server_actions_encryption_key,env=NEXT_SERVER_ACTIONS_ENCRYPTION_KEY \
+      "${build_args[@]}" \
+      -f "${dockerfile_dir}/Dockerfile" \
+      -t "${image}" \
+      "${REPO_ROOT}" >&2
+  else
+    docker build \
+      --platform=linux/amd64 \
+      -f "${dockerfile_dir}/Dockerfile" \
+      -t "${image}" \
+      "${REPO_ROOT}" >&2
   fi
-  docker build \
-    --platform=linux/amd64 \
-    "${build_args[@]}" \
-    -f "${dockerfile_dir}/Dockerfile" \
-    -t "${image}" \
-    "${REPO_ROOT}" >&2
   log "Pushing ${image}"
   docker push "${image}" >&2
 }

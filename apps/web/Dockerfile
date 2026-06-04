@@ -1,5 +1,11 @@
+# syntax=docker/dockerfile:1
 # Multi-stage build for the Lifecoach Next.js frontend.
 # Build context must be the monorepo root.
+#
+# BuildKit is required: the `next build` step below consumes the stable
+# Server Actions encryption key via `RUN --mount=type=secret,...` so the
+# value never lands in image layers / metadata / provenance. Deploy scripts
+# (infra/deploy.sh, infra/preview-deploy.sh) run with DOCKER_BUILDKIT=1.
 
 # ----- deps -----
 FROM node:22-slim AS deps
@@ -47,7 +53,27 @@ ENV NEXT_PUBLIC_FIREBASE_API_KEY=${NEXT_PUBLIC_FIREBASE_API_KEY} \
     NEXT_PUBLIC_SENTRY_DSN=${NEXT_PUBLIC_SENTRY_DSN} \
     NEXT_PUBLIC_SENTRY_ENVIRONMENT=${NEXT_PUBLIC_SENTRY_ENVIRONMENT}
 
-RUN pnpm --filter @lifecoach/web... build
+# NEXT_SERVER_ACTIONS_ENCRYPTION_KEY must be present during `next build` so
+# Server Action IDs stay stable across redeploys (otherwise clients with a
+# cached pre-redeploy bundle post action IDs that the new revision doesn't
+# recognise → "Failed to find Server Action" 500s). It's a base64-encoded
+# 32-byte AES key, generated once by Terraform and stored in Secret Manager.
+#
+# Supplied as a BuildKit secret rather than an `ARG`/`--build-arg`: build
+# args persist in image metadata / provenance / `docker history`, so anyone
+# with image-pull access could recover the long-lived key shared across
+# revisions. `--mount=type=secret` exposes the value only for the duration
+# of this RUN and intentionally is not written into the final runtime
+# image — Cloud Run mounts the same secret at runtime via `secret_env`.
+#
+# Local `docker build` without `--secret` still works (the if-guard skips
+# the export); Next then generates an ephemeral key, which is fine for
+# local smoke tests but unsafe for any image that gets deployed.
+RUN --mount=type=secret,id=next_server_actions_encryption_key \
+    if [ -f /run/secrets/next_server_actions_encryption_key ]; then \
+      export NEXT_SERVER_ACTIONS_ENCRYPTION_KEY="$(cat /run/secrets/next_server_actions_encryption_key)"; \
+    fi; \
+    pnpm --filter @lifecoach/web... build
 
 # ----- runtime -----
 # Uses the standalone Next.js output to keep the image small.

@@ -75,6 +75,40 @@ tfvar() {
   printf '%s' "${line}" | sed -E 's/.*=[[:space:]]*"([^"]*)".*/\1/'
 }
 
+ensure_next_server_actions_encryption_key() {
+  # The stable Server Actions encryption key has to exist in Secret Manager
+  # before the web Docker build, because Next embeds it into the compiled
+  # action manifest during `next build`. The full apply at the end of this
+  # script is non-targeted and authoritative; this targeted prereq covers
+  # two cases:
+  #   1. First deploy after this resource is introduced (or a fresh env) —
+  #      the secret doesn't exist yet and has to be materialised here.
+  #   2. Intentional rotation (`terraform taint random_id.next_server_actions_encryption_key`)
+  #      — the secret already exists, but its `latest` value needs to roll
+  #      BEFORE the web build reads it, or the just-built image bakes in the
+  #      old key while the full apply at the end installs the new one on the
+  #      running revision (Action IDs diverge across the rolling deploy).
+  #
+  # An existence-check short-circuit would silently skip case 2 and reopen
+  # the action-id mismatch bug. The targeted apply is idempotent — no-op
+  # when nothing has changed — so it's safe to always run.
+  log "Reconciling NEXT_SERVER_ACTIONS_ENCRYPTION_KEY secret before web build"
+  (
+    cd "${ENV_DIR}"
+    terraform apply -auto-approve -input=false -var-file=terraform.tfvars \
+      -target=random_id.next_server_actions_encryption_key \
+      -target=google_secret_manager_secret.next_server_actions_encryption_key \
+      -target=google_secret_manager_secret_version.next_server_actions_encryption_key \
+      -target=google_secret_manager_secret_iam_member.next_server_actions_encryption_key_accessors
+  )
+}
+
+next_server_actions_encryption_key() {
+  gcloud secrets versions access latest \
+    --secret=NEXT_SERVER_ACTIONS_ENCRYPTION_KEY \
+    --project="${PROJECT_ID}"
+}
+
 firebase_build_args() {
   cd "${ENV_DIR}"
   local api_key auth_domain fb_project_id app_id gws_client_id notion_client_id
@@ -90,6 +124,18 @@ firebase_build_args() {
   # the env isn't configured for Notion; the web lib throws at that point.
   notion_client_id="$(terraform output -raw notion_client_id 2>/dev/null || true)"
   cd - >/dev/null
+  # firebase_auth_domain_override: when set in tfvars, takes precedence over
+  # the (stale-until-apply) terraform output. The output reflects the LAST
+  # APPLIED state, so on the deploy that introduces a new override value
+  # we'd otherwise bake the old firebaseapp.com domain into the web image
+  # while terraform apply later updates the output — and the image would
+  # never get rebuilt against the new value. tfvar() reads the working
+  # tree, so the override is visible build-time-immediately.
+  local auth_domain_override
+  auth_domain_override="$(tfvar firebase_auth_domain_override)"
+  if [[ -n "${auth_domain_override}" ]]; then
+    auth_domain="${auth_domain_override}"
+  fi
   # Sentry — resolved from tfvars rather than terraform output so the
   # value is correct on the first deploy after introducing the variable.
   # Empty DSN = SDK no-ops; that's intentional, not a silent failure.
@@ -127,17 +173,28 @@ build_and_push() {
   log "Building ${image}"
   # Only the web image needs Firebase build-args (NEXT_PUBLIC_* are inlined
   # at build time). The agent reads Firebase config at runtime via ADC.
-  local extra_args=""
   if [[ "${name}" == "web" ]]; then
+    local extra_args
     extra_args="$(firebase_build_args)"
+    local action_key
+    action_key="$(next_server_actions_encryption_key)"
+    # BuildKit secret mount (NOT --build-arg) so the key isn't persisted in
+    # image metadata / provenance / `docker history`. See apps/web/Dockerfile.
+    # shellcheck disable=SC2086
+    NEXT_SERVER_ACTIONS_ENCRYPTION_KEY="${action_key}" DOCKER_BUILDKIT=1 docker build \
+      --platform=linux/amd64 \
+      --secret id=next_server_actions_encryption_key,env=NEXT_SERVER_ACTIONS_ENCRYPTION_KEY \
+      ${extra_args} \
+      -f "${context_dockerfile}" \
+      -t "${image}" \
+      "${REPO_ROOT}"
+  else
+    docker build \
+      --platform=linux/amd64 \
+      -f "${context_dockerfile}" \
+      -t "${image}" \
+      "${REPO_ROOT}"
   fi
-  # shellcheck disable=SC2086
-  docker build \
-    --platform=linux/amd64 \
-    ${extra_args} \
-    -f "${context_dockerfile}" \
-    -t "${image}" \
-    "${REPO_ROOT}"
   log "Pushing ${image}"
   docker push "${image}"
 }
@@ -154,17 +211,20 @@ apply_terraform() {
 }
 
 main() {
-  # No targeted prereq apply — for ongoing deploys, dev's terraform state
-  # already holds the Firebase outputs the web build reads, and a targeted
-  # apply that included the cloud-run-service module's `moved` block kept
-  # pulling Cloud Run into the plan with image_tag=bootstrap (var default),
-  # failing because that image doesn't exist in Artifact Registry.
+  # Keep the normal Cloud Run / image rollout in the full apply at the end so
+  # pending `moved` blocks are consumed cleanly with the just-pushed image_tag
+  # (a broader targeted apply tried to pull Cloud Run into the plan with
+  # image_tag=bootstrap, which doesn't exist in Artifact Registry).
   #
-  # The full `apply_terraform` at the end of this script is non-targeted, so
-  # it consumes any pending `moved` blocks cleanly and updates Cloud Run with
-  # the just-pushed image_tag. First-time bootstrap of a new env is handled
-  # by infra/bootstrap/bootstrap.sh, not this script.
+  # The only targeted prereq here is the stable Server Actions encryption key,
+  # because Next needs that secret to be readable during `next build` — and
+  # the secret doesn't exist on the first deploy after this resource is
+  # introduced. First-time bootstrap of a new env is still handled by
+  # infra/bootstrap/bootstrap.sh.
   ensure_terraform_init
+  if [[ "${WHICH}" == "web" || "${WHICH}" == "both" ]]; then
+    ensure_next_server_actions_encryption_key
+  fi
   docker_auth
   if [[ "${WHICH}" == "agent" || "${WHICH}" == "both" ]]; then
     build_and_push agent

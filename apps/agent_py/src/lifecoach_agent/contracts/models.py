@@ -277,6 +277,17 @@ class MessageProjection(BaseModel):
     headers: dict[str, str] | None = None
 
 
+class CalendarListEntryProjection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    summary: str
+    primary: bool = False
+    accessRole: str  # noqa: N815 — wire camelCase preserved for parity
+    timeZone: str  # noqa: N815
+    description: str | None = None
+
+
 class EventTime(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -315,44 +326,61 @@ class TaskProjection(BaseModel):
 # --- triage report -------------------------------------------------------
 
 
+# Every triage item carries per-message context (issue #141): the parent
+# coach renders `receivedAt` + `snippet` verbatim in the archive / event /
+# task confirmation prompt, so the user can decide without opening Gmail.
+# These two fields are min_length=1 to match the Zod `.min(1)` in
+# packages/shared-types/src/triageReport.ts — a blank context would defeat
+# the prompt requirement and drift from the TS contract.
+
+
 class TriageNoise(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    id: str
-    threadId: str | None = None  # noqa: N815
-    from_: str = Field(alias="from")
-    subject: str
+    id: str = Field(min_length=1)
+    threadId: str | None = Field(default=None, min_length=1)  # noqa: N815
+    from_: str = Field(alias="from", min_length=1)
+    subject: str = Field(min_length=1)
+    receivedAt: str = Field(min_length=1)  # noqa: N815
+    snippet: str = Field(min_length=1)
 
 
 class TriageAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    id: str
-    threadId: str | None = None  # noqa: N815
-    from_: str = Field(alias="from")
-    subject: str
-    task: str
+    id: str = Field(min_length=1)
+    threadId: str | None = Field(default=None, min_length=1)  # noqa: N815
+    from_: str = Field(alias="from", min_length=1)
+    subject: str = Field(min_length=1)
+    receivedAt: str = Field(min_length=1)  # noqa: N815
+    snippet: str = Field(min_length=1)
+    task: str = Field(min_length=1)
 
 
 class TriageEvent(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    id: str
-    threadId: str | None = None  # noqa: N815
-    subject: str
-    proposedStart: str  # noqa: N815
-    proposedEnd: str | None = None  # noqa: N815
-    location: str | None = None
+    id: str = Field(min_length=1)
+    threadId: str | None = Field(default=None, min_length=1)  # noqa: N815
+    from_: str = Field(alias="from", min_length=1)
+    subject: str = Field(min_length=1)
+    receivedAt: str = Field(min_length=1)  # noqa: N815
+    snippet: str = Field(min_length=1)
+    proposedStart: str = Field(min_length=1)  # noqa: N815
+    proposedEnd: str | None = Field(default=None, min_length=1)  # noqa: N815
+    location: str | None = Field(default=None, min_length=1)
 
 
 class TriageInfo(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    id: str
-    threadId: str | None = None  # noqa: N815
-    from_: str = Field(alias="from")
-    subject: str
-    note: str
+    id: str = Field(min_length=1)
+    threadId: str | None = Field(default=None, min_length=1)  # noqa: N815
+    from_: str = Field(alias="from", min_length=1)
+    subject: str = Field(min_length=1)
+    receivedAt: str = Field(min_length=1)  # noqa: N815
+    snippet: str = Field(min_length=1)
+    note: str = Field(min_length=1)
 
 
 class TriageReport(BaseModel):

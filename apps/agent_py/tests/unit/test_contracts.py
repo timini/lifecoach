@@ -17,6 +17,7 @@ from lifecoach_agent.contracts import (
     AuthUserArgs,
     ChoiceQuestion,
     GoalUpdate,
+    TriageReport,
     UserProfile,  # noqa: F401 — type alias, imported for parity with TS index
     WorkspaceStatus,
     empty_user_profile,
@@ -219,3 +220,244 @@ def test_practice_metadata_canonical_set() -> None:
 def test_practice_enabled_path() -> None:
     assert practice_enabled_path("day_planning") == "practices.day_planning.enabled"
     assert practice_enabled_path("evening_gratitude") == "practices.evening_gratitude.enabled"
+
+
+# --- TriageReport (mirror of triageReport.test.ts) ------------------------
+
+
+def test_triage_report_requires_per_message_context() -> None:
+    parsed = TriageReport.model_validate(
+        {
+            "noise": [
+                {
+                    "id": "m1",
+                    "threadId": "t1",
+                    "from": "news@example.com",
+                    "subject": "Digest",
+                    "receivedAt": "Mon, 11 May 2026 09:00:00 +0100",
+                    "snippet": "Top stories this week...",
+                }
+            ],
+            "actions": [
+                {
+                    "id": "m2",
+                    "from": "alex@example.com",
+                    "subject": "Sign-off",
+                    "receivedAt": "Mon, 11 May 2026 09:05:00 +0100",
+                    "snippet": "Please sign by Friday...",
+                    "task": "sign contract by Friday",
+                }
+            ],
+            "events": [
+                {
+                    "id": "m3",
+                    "from": "sarah@example.com",
+                    "subject": "Lunch",
+                    "receivedAt": "Mon, 11 May 2026 09:10:00 +0100",
+                    "snippet": "Lunch Tuesday 12:30?",
+                    "proposedStart": "2026-05-12T12:30:00+01:00",
+                }
+            ],
+            "info": [
+                {
+                    "id": "m4",
+                    "from": "school@example.com",
+                    "subject": "Photo day",
+                    "receivedAt": "Mon, 11 May 2026 09:15:00 +0100",
+                    "snippet": "Photo day Friday...",
+                    "note": "Friday, uniform",
+                }
+            ],
+        }
+    )
+    assert parsed.noise[0].snippet == "Top stories this week..."
+    assert parsed.events[0].from_ == "sarah@example.com"
+
+
+def test_triage_report_rejects_noise_without_snippet() -> None:
+    with pytest.raises(ValidationError):
+        TriageReport.model_validate(
+            {
+                "noise": [
+                    {
+                        "id": "m1",
+                        "from": "news@example.com",
+                        "subject": "Digest",
+                        "receivedAt": "Mon, 11 May 2026 09:00:00 +0100",
+                    }
+                ],
+                "actions": [],
+                "events": [],
+                "info": [],
+            }
+        )
+
+
+def test_triage_report_rejects_blank_snippet() -> None:
+    # Matches the Zod `.min(1)` — a whitespace-free empty context is invalid
+    # so the parent never builds a context-free archive prompt.
+    with pytest.raises(ValidationError):
+        TriageReport.model_validate(
+            {
+                "noise": [
+                    {
+                        "id": "m1",
+                        "from": "news@example.com",
+                        "subject": "Digest",
+                        "receivedAt": "Mon, 11 May 2026 09:00:00 +0100",
+                        "snippet": "",
+                    }
+                ],
+                "actions": [],
+                "events": [],
+                "info": [],
+            }
+        )
+
+
+def test_triage_report_rejects_blank_id() -> None:
+    with pytest.raises(ValidationError):
+        TriageReport.model_validate(
+            {
+                "noise": [
+                    {
+                        "id": "",
+                        "from": "news@example.com",
+                        "subject": "Digest",
+                        "receivedAt": "Mon, 11 May 2026 09:00:00 +0100",
+                        "snippet": "Top stories",
+                    }
+                ],
+                "actions": [],
+                "events": [],
+                "info": [],
+            }
+        )
+
+
+def test_triage_report_rejects_blank_thread_id() -> None:
+    with pytest.raises(ValidationError):
+        TriageReport.model_validate(
+            {
+                "noise": [
+                    {
+                        "id": "m1",
+                        "threadId": "",
+                        "from": "news@example.com",
+                        "subject": "Digest",
+                        "receivedAt": "Mon, 11 May 2026 09:00:00 +0100",
+                        "snippet": "Top stories",
+                    }
+                ],
+                "actions": [],
+                "events": [],
+                "info": [],
+            }
+        )
+
+
+def test_triage_report_rejects_blank_task() -> None:
+    with pytest.raises(ValidationError):
+        TriageReport.model_validate(
+            {
+                "noise": [],
+                "actions": [
+                    {
+                        "id": "m2",
+                        "from": "a@x",
+                        "subject": "Sign-off",
+                        "receivedAt": "Mon, 11 May 2026 09:05:00 +0100",
+                        "snippet": "Please sign",
+                        "task": "",
+                    }
+                ],
+                "events": [],
+                "info": [],
+            }
+        )
+
+
+def test_triage_report_rejects_blank_proposed_start() -> None:
+    with pytest.raises(ValidationError):
+        TriageReport.model_validate(
+            {
+                "noise": [],
+                "actions": [],
+                "events": [
+                    {
+                        "id": "m3",
+                        "from": "sarah@x",
+                        "subject": "Lunch",
+                        "receivedAt": "Mon, 11 May 2026 09:10:00 +0100",
+                        "snippet": "Lunch Tuesday",
+                        "proposedStart": "",
+                    }
+                ],
+                "info": [],
+            }
+        )
+
+
+def test_triage_report_rejects_blank_proposed_end() -> None:
+    with pytest.raises(ValidationError):
+        TriageReport.model_validate(
+            {
+                "noise": [],
+                "actions": [],
+                "events": [
+                    {
+                        "id": "m3",
+                        "from": "sarah@x",
+                        "subject": "Lunch",
+                        "receivedAt": "Mon, 11 May 2026 09:10:00 +0100",
+                        "snippet": "Lunch Tuesday",
+                        "proposedStart": "2026-05-12T12:30:00+01:00",
+                        "proposedEnd": "",
+                    }
+                ],
+                "info": [],
+            }
+        )
+
+
+def test_triage_report_rejects_blank_location() -> None:
+    with pytest.raises(ValidationError):
+        TriageReport.model_validate(
+            {
+                "noise": [],
+                "actions": [],
+                "events": [
+                    {
+                        "id": "m3",
+                        "from": "sarah@x",
+                        "subject": "Lunch",
+                        "receivedAt": "Mon, 11 May 2026 09:10:00 +0100",
+                        "snippet": "Lunch Tuesday",
+                        "proposedStart": "2026-05-12T12:30:00+01:00",
+                        "location": "",
+                    }
+                ],
+                "info": [],
+            }
+        )
+
+
+def test_triage_report_rejects_blank_note() -> None:
+    with pytest.raises(ValidationError):
+        TriageReport.model_validate(
+            {
+                "noise": [],
+                "actions": [],
+                "events": [],
+                "info": [
+                    {
+                        "id": "m4",
+                        "from": "school@x",
+                        "subject": "Photo day",
+                        "receivedAt": "Mon, 11 May 2026 09:15:00 +0100",
+                        "snippet": "Photo day Friday",
+                        "note": "",
+                    }
+                ],
+            }
+        )

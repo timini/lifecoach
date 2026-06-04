@@ -6,16 +6,19 @@ to the triage flow). Main agent invokes it and gets back a
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from dataclasses import dataclass
 from typing import Any
 
 from google.adk.tools.agent_tool import AgentTool
+from google.adk.tools.tool_context import ToolContext
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from lifecoach_agent.contracts.models import TriageReport
-from lifecoach_agent.workspace_agent.agent import create_workspace_agent
+from lifecoach_agent.workspace_agent.agent import TRIAGE_INBOX_AGENT_MODEL, create_workspace_agent
+from lifecoach_agent.workspace_agent.bridged_agent_tool import BridgedAgentTool
 from lifecoach_agent.workspace_agent.tools._deps import WorkspaceToolDeps
 
 TRIAGE_INBOX_TOOL_NAME = "triage_inbox"
@@ -33,9 +36,9 @@ TRIAGE_INBOX_INSTRUCTION = """You are the inbox-triage sub-agent for a coaching 
 The parent will hand you a JSON message with an optional `since` key (Gmail-style window like "1d" / "12h"; default "1d").
 
 Procedure:
-1. Call list_inbox with the since value (e.g. since="1d") to get message ids + snippets.
-2. For each message, call get_message with the id (e.g. id=<the id from step 1>) to read the decoded body and headers. Parallel calls are fine.
-3. Classify EVERY message into exactly one bucket:
+1. Call list_inbox with the since value (e.g. since="1d") to get inbox-only message ids + snippets. list_inbox is already scoped to the visible Gmail inbox and de-duplicates ids for you.
+2. Call get_messages once with ALL the distinct ids from step 1 (e.g. ids=[<id1>, <id2>, ...]) to read every decoded body + headers in a single bulk call. Do NOT loop get_message per id — that wastes round-trips. Use get_message only to refetch one specific id that get_messages reported in its `errors`.
+3. Classify EVERY distinct message into exactly one bucket:
    - noise: newsletters, automated reports, marketing — no action
    - actions: the user must do something — distil into a 1-line task
    - events: a meeting/appointment with date+time — propose start/end
@@ -48,10 +51,12 @@ DO NOT call any write tools. The parent agent owns confirmations and writes.
 Final answer: emit ONLY a single line of the form
 <TRIAGE_REPORT>...minified JSON object with keys noise, actions, events, info, each an array...</TRIAGE_REPORT>
 matching this schema:
-- noise:   id, threadId?, from, subject
-- actions: id, threadId?, from, subject, task
-- events:  id, threadId?, subject, proposedStart, proposedEnd?, location?
-- info:    id, threadId?, from, subject, note
+- noise:   id, threadId?, from, subject, receivedAt, snippet
+- actions: id, threadId?, from, subject, receivedAt, snippet, task
+- events:  id, threadId?, from, subject, receivedAt, snippet, proposedStart, proposedEnd?, location?
+- info:    id, threadId?, from, subject, receivedAt, snippet, note
+
+For EVERY bucket entry, copy `from`, `subject`, `receivedAt` (the message Date header from get_messages), and a short `snippet` from the projected message. These are required and must be non-empty — the parent uses them verbatim in user-facing confirmation prompts (especially the archive prompt) so the user can decide without opening Gmail. If a header is genuinely empty, use a short placeholder like "(no subject)" rather than an empty string.
 
 Be terse. The parent agent will paraphrase."""
 
@@ -76,15 +81,36 @@ class TriageInboxToolResult:
     report: TriageReport | None = None
 
 
-def create_triage_inbox_tool(deps: WorkspaceToolDeps) -> AgentTool:
+class TriageInboxBridgedAgentTool(BridgedAgentTool):
+    """BridgedAgentTool variant for triage_inbox that parses and validates
+    the sub-agent's raw output via parse_triage_report before returning it.
+    """
+
+    async def run_async(self, *, args: dict[str, Any], tool_context: ToolContext) -> Any:
+        raw_text = await super().run_async(args=args, tool_context=tool_context)
+        result = parse_triage_report(raw_text)
+        if result.status == "ok" and result.report is not None:
+            return json.dumps({"status": "ok", "report": result.report.model_dump(by_alias=True)})
+        else:
+            return json.dumps({"status": "parse_error", "raw": result.raw})
+
+
+def create_triage_inbox_tool(
+    deps: WorkspaceToolDeps,
+    *,
+    event_queue: asyncio.Queue[bytes | None] | None = None,
+) -> AgentTool:
     agent = create_workspace_agent(
         deps=deps,
         name=TRIAGE_INBOX_TOOL_NAME,
         description=_TRIAGE_DESCRIPTION,
         instruction=TRIAGE_INBOX_INSTRUCTION,
         input_schema=TriageInboxInput,
+        model=TRIAGE_INBOX_AGENT_MODEL,
     )
-    return AgentTool(agent=agent, skip_summarization=False)
+    return TriageInboxBridgedAgentTool(
+        agent=agent, event_queue=event_queue, skip_summarization=False
+    )
 
 
 _MARKER_RE = re.compile(r"<TRIAGE_REPORT>([\s\S]*?)</TRIAGE_REPORT>")

@@ -8,12 +8,16 @@ Returned tools, in order:
   2. find_workspace(query)    — AgentTool wrapping the search sub-agent
   3. archive_messages(ids)    — FunctionTool — direct, no LLM hop
   4. add_calendar_event(...)  — FunctionTool — direct, no LLM hop
-  5. add_task(...)            — FunctionTool — direct, no LLM hop
-  6. complete_task(id)        — FunctionTool — direct, no LLM hop
+  5. edit_calendar_event(...) — FunctionTool — direct, no LLM hop
+  6. delete_calendar_event(...) — FunctionTool — direct, no LLM hop
+  7. add_task(...)            — FunctionTool — direct, no LLM hop
+  8. complete_task(id)        — FunctionTool — direct, no LLM hop
+  9. draft_email(...)         — FunctionTool — direct, no LLM hop
 """
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -54,10 +58,16 @@ from lifecoach_agent.workspace_agent.tools import (
     ADD_TASK_TOOL_NAME,
     ARCHIVE_MESSAGES_TOOL_NAME,
     COMPLETE_TASK_TOOL_NAME,
+    DELETE_CALENDAR_EVENT_TOOL_NAME,
+    DRAFT_EMAIL_TOOL_NAME,
+    EDIT_CALENDAR_EVENT_TOOL_NAME,
     create_add_calendar_event_tool,
     create_add_task_tool,
     create_archive_messages_tool,
     create_complete_task_tool,
+    create_delete_calendar_event_tool,
+    create_draft_email_tool,
+    create_edit_calendar_event_tool,
 )
 from lifecoach_agent.workspace_agent.tools._deps import WorkspaceToolDeps
 
@@ -66,17 +76,24 @@ from lifecoach_agent.workspace_agent.tools._deps import WorkspaceToolDeps
 class WorkspaceModuleDeps:
     """Inputs to `create_workspace_tools`. `sub_agent_log` is kept
     distinct from `log` so Cloud Logging filters can split main-agent
-    workspace calls from sub-agent internal calls."""
+    workspace calls from sub-agent internal calls.
+
+    `event_queue` is the per-request SSE queue threaded by
+    `server.py`. When set, `BridgedAgentTool` will mirror inner
+    workspace sub-agent tool calls to it so the live UI shows nested
+    badges under `triage_inbox` / `find_workspace`.
+    """
 
     store: WorkspaceTokensStore
     uid: str
     build_client: Any | None = None
     log: LogEmitter | None = None
     sub_agent_log: LogEmitter | None = None
+    event_queue: asyncio.Queue[bytes | None] | None = None
 
 
 def create_workspace_tools(deps: WorkspaceModuleDeps) -> list[Any]:
-    """Build the 6 workspace-facing tools (2 AgentTools + 4 narrow writes)
+    """Build the 9 workspace-facing tools (2 AgentTools + 7 narrow writes)
     for the main agent. Closes over `deps.uid` + `deps.store` so the LLM
     never sees auth values."""
     main_tool_deps = WorkspaceToolDeps(
@@ -84,24 +101,30 @@ def create_workspace_tools(deps: WorkspaceModuleDeps) -> list[Any]:
     )
     sub_agent_deps = replace(main_tool_deps, log=deps.sub_agent_log)
     return [
-        create_triage_inbox_tool(sub_agent_deps),
-        create_find_workspace_tool(sub_agent_deps),
+        create_triage_inbox_tool(sub_agent_deps, event_queue=deps.event_queue),
+        create_find_workspace_tool(sub_agent_deps, event_queue=deps.event_queue),
         create_archive_messages_tool(main_tool_deps),
         create_add_calendar_event_tool(main_tool_deps),
+        create_edit_calendar_event_tool(main_tool_deps),
+        create_delete_calendar_event_tool(main_tool_deps),
         create_add_task_tool(main_tool_deps),
         create_complete_task_tool(main_tool_deps),
+        create_draft_email_tool(main_tool_deps),
     ]
 
 
-# Names of the 6 tools the factory returns, in order. Importable for the
+# Names of the 9 tools the factory returns, in order. Importable for the
 # state policy + tests.
 WORKSPACE_TOOL_NAMES: tuple[str, ...] = (
     TRIAGE_INBOX_TOOL_NAME,
     FIND_WORKSPACE_TOOL_NAME,
     ARCHIVE_MESSAGES_TOOL_NAME,
     ADD_CALENDAR_EVENT_TOOL_NAME,
+    EDIT_CALENDAR_EVENT_TOOL_NAME,
+    DELETE_CALENDAR_EVENT_TOOL_NAME,
     ADD_TASK_TOOL_NAME,
     COMPLETE_TASK_TOOL_NAME,
+    DRAFT_EMAIL_TOOL_NAME,
 )
 
 
@@ -110,6 +133,9 @@ __all__ = [
     "ADD_TASK_TOOL_NAME",
     "ARCHIVE_MESSAGES_TOOL_NAME",
     "COMPLETE_TASK_TOOL_NAME",
+    "DELETE_CALENDAR_EVENT_TOOL_NAME",
+    "DRAFT_EMAIL_TOOL_NAME",
+    "EDIT_CALENDAR_EVENT_TOOL_NAME",
     "FIND_WORKSPACE_TOOL_NAME",
     "MAX_RESPONSE_BYTES",
     "TRIAGE_INBOX_TOOL_NAME",
@@ -135,6 +161,9 @@ __all__ = [
     "create_add_task_tool",
     "create_archive_messages_tool",
     "create_complete_task_tool",
+    "create_delete_calendar_event_tool",
+    "create_draft_email_tool",
+    "create_edit_calendar_event_tool",
     "create_find_workspace_tool",
     "create_triage_inbox_tool",
     "create_workspace_agent",

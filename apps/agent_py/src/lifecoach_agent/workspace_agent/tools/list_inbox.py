@@ -14,6 +14,41 @@ from lifecoach_agent.workspace_agent.tools._deps import WorkspaceToolDeps
 LIST_INBOX_TOOL_NAME = "list_inbox"
 
 
+def _build_inbox_query(*, unread_only: bool, since: str) -> str:
+    """Assemble the Gmail search query for triage.
+
+    `in:inbox` intentionally excludes archived / moved mail (the old
+    `label:INBOX` form leaked messages that had been archived). The
+    `newer_than` term preserves the requested recency window, and
+    `is:unread` narrows further when the caller asks for it.
+    """
+    terms = ["in:inbox"]
+    if unread_only:
+        terms.append("is:unread")
+    terms.append(f"newer_than:{since}")
+    return " ".join(terms)
+
+
+def _dedupe_message_ids(messages: Any) -> list[str]:
+    """Return the distinct message ids in first-seen order.
+
+    Gmail's `users.messages.list` can surface the same id more than once
+    (paging / query overlap); de-duping here means triage reads each
+    message at most once instead of issuing a redundant `get` per copy.
+    """
+    seen: set[str] = set()
+    ids: list[str] = []
+    for message in messages or []:
+        if not isinstance(message, dict):
+            continue
+        mid = message.get("id")
+        if not isinstance(mid, str) or not mid or mid in seen:
+            continue
+        seen.add(mid)
+        ids.append(mid)
+    return ids
+
+
 def create_list_inbox_tool(deps: WorkspaceToolDeps) -> Any:
     async def list_inbox(
         unread_only: bool = False, since: str = "1d", limit: int = 15
@@ -27,7 +62,7 @@ def create_list_inbox_tool(deps: WorkspaceToolDeps) -> Any:
                 Default "1d" — last 24 hours.
             limit: Maximum number of messages to return (1–50). Default 15.
         """
-        q = f"{'is:unread ' if unread_only else ''}label:INBOX newer_than:{since}".strip()
+        q = _build_inbox_query(unread_only=unread_only, since=since)
         max_results = max(1, min(int(limit), 50))
 
         list_result = await run_gws(
@@ -45,12 +80,7 @@ def create_list_inbox_tool(deps: WorkspaceToolDeps) -> Any:
             return {"status": "error", "code": list_result.code, "message": list_result.message}
 
         body = list_result.body if isinstance(list_result.body, dict) else {}
-        ids = [
-            m.get("id")
-            for m in (body.get("messages") or [])
-            if isinstance(m, dict) and isinstance(m.get("id"), str)
-        ]
-        ids = [i for i in ids if i]
+        ids = _dedupe_message_ids(body.get("messages"))
         if not ids:
             return {"status": "ok", "messages": []}
 
@@ -71,13 +101,15 @@ def create_list_inbox_tool(deps: WorkspaceToolDeps) -> Any:
             ]
         )
         messages: list[dict[str, Any]] = []
+        seen_detail_ids: set[str] = set()
         for detail in details:
             if not isinstance(detail, RunGwsOk):
                 continue
             m = detail.body if isinstance(detail.body, dict) else {}
             mid = m.get("id")
-            if not isinstance(mid, str):
+            if not isinstance(mid, str) or mid in seen_detail_ids:
                 continue
+            seen_detail_ids.add(mid)
             messages.append(
                 {
                     "id": mid,

@@ -425,6 +425,100 @@ describe('parseSseBlock (streaming reducer)', () => {
     expect(parseSseBlock('event: wall\ndata: {"reason":"free_limit","cta":"nope"}')).toEqual([]);
     expect(parseSseBlock('event: wall\ndata: {}')).toEqual([]);
   });
+
+  describe('bridged workspace sub-agent events', () => {
+    it('marks bridged functionCall with parentId and strips bridge metadata from args', () => {
+      const ops = parseSseBlock(
+        blockFor({
+          author: 'lifecoach-workspace-bridge',
+          partial: true,
+          customMetadata: { parentToolCallId: 'outer-1' },
+          content: {
+            parts: [
+              {
+                functionCall: {
+                  id: 'inner-1',
+                  name: 'list_inbox',
+                  args: { since: '1d', __parentToolCallId: 'outer-1', __workspaceInner: true },
+                },
+              },
+            ],
+          },
+        }),
+      );
+      // Streamed parentId comes from customMetadata; args are
+      // surfaced cleaned-up so the debug pane doesn't show the
+      // bridge tags.
+      expect(ops[0]).toMatchObject({
+        op: 'push',
+        element: {
+          kind: 'tool-call',
+          id: 'inner-1',
+          name: 'list_inbox',
+          parentId: 'outer-1',
+          args: { since: '1d' },
+        },
+      });
+    });
+
+    it('falls back to parentToolCallId stamped into args when customMetadata is absent', () => {
+      // Defence-in-depth: even if customMetadata is dropped by an
+      // intermediate writer, the bridge stamps the same id into args
+      // so the FE still nests.
+      const ops = parseSseBlock(
+        blockFor({
+          author: 'lifecoach-workspace-bridge',
+          partial: true,
+          content: {
+            parts: [
+              {
+                functionCall: {
+                  id: 'inner-1',
+                  name: 'list_inbox',
+                  args: { __parentToolCallId: 'outer-1' },
+                },
+              },
+            ],
+          },
+        }),
+      );
+      expect(ops[0]).toMatchObject({
+        op: 'push',
+        element: { kind: 'tool-call', parentId: 'outer-1' },
+      });
+    });
+
+    it('marks bridged functionResponse with parentId and strips bridge metadata from response', () => {
+      const ops = parseSseBlock(
+        blockFor({
+          author: 'lifecoach-workspace-bridge',
+          customMetadata: { parentToolCallId: 'outer-1' },
+          content: {
+            parts: [
+              {
+                functionResponse: {
+                  id: 'inner-1',
+                  name: 'list_inbox',
+                  response: {
+                    status: 'ok',
+                    count: 2,
+                    __parentToolCallId: 'outer-1',
+                    __workspaceInner: true,
+                  },
+                },
+              },
+            ],
+          },
+        }),
+      );
+      expect(ops[0]).toMatchObject({
+        op: 'finish-tool-call',
+        id: 'inner-1',
+        parentId: 'outer-1',
+        response: { status: 'ok', count: 2 },
+      });
+    });
+  });
 });
 
 describe('labelForToolCall', () => {
@@ -460,6 +554,19 @@ describe('labelForToolCall', () => {
     expect(labelForToolCall('upgrade_to_pro', {})).toBe('offering pro upgrade');
   });
 
+  it('describes bridged workspace sub-agent inner tools', () => {
+    expect(labelForToolCall('list_inbox', { since: '1d' })).toBe('checking inbox since 1d');
+    expect(labelForToolCall('list_inbox', {})).toBe('checking inbox');
+    expect(labelForToolCall('get_message', { id: 'message-12345' })).toContain('message-1234');
+    expect(labelForToolCall('get_message', {})).toBe('reading message');
+    expect(labelForToolCall('search_messages', { query: 'from:sarah newer_than:7d' })).toContain(
+      'from:sarah',
+    );
+    expect(labelForToolCall('search_messages', {})).toBe('searching mail');
+    expect(labelForToolCall('list_events', {})).toBe('checking calendar');
+    expect(labelForToolCall('list_tasks', {})).toBe('checking tasks');
+  });
+
   it('covers update_user_profile + log_goal_update fallbacks when args are missing', () => {
     expect(labelForToolCall('update_user_profile', {})).toBe('remembering that');
     expect(labelForToolCall('log_goal_update', {})).toBe('logging goal');
@@ -480,9 +587,17 @@ describe('labelForToolCall', () => {
       }),
     ).toContain('Maya parent-teacher');
     expect(labelForToolCall('add_calendar_event', {})).toContain('calendar event');
+    expect(labelForToolCall('edit_calendar_event', { summary: 'Sink Repair' })).toContain(
+      'Sink Repair',
+    );
+    expect(labelForToolCall('edit_calendar_event', {})).toContain('calendar event');
+    expect(labelForToolCall('delete_calendar_event', { eventId: 'ev1' })).toContain('deleting');
 
     expect(labelForToolCall('add_task', { title: 'Reply to Sarah' })).toContain('Reply to Sarah');
     expect(labelForToolCall('add_task', {})).toContain('task');
+
+    expect(labelForToolCall('draft_email', { subject: 'Project sync' })).toContain('Project sync');
+    expect(labelForToolCall('draft_email', {})).toContain('drafting');
 
     expect(labelForToolCall('complete_task', { id: 't1' })).toContain('done');
   });

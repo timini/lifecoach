@@ -17,7 +17,13 @@
  * matching call's status and don't render their own bubble.
  */
 
-import { labelForToolCall } from './sse';
+import { labelForToolCall, stripWorkspaceBridgeMetadata, workspaceParentIdFromArgs } from './sse';
+
+/** Author tag stamped onto bridged workspace sub-agent events by
+ * `BridgedAgentTool`. Different from `lifecoach` so ADK's contents
+ * builder treats them as foreign — kept in sync with
+ * `WORKSPACE_BRIDGE_AUTHOR` in `bridged_agent_tool.py`. */
+const WORKSPACE_BRIDGE_AUTHOR = 'lifecoach-workspace-bridge';
 
 export interface HistoryUserMessage {
   id: string;
@@ -43,6 +49,12 @@ export type HistoryAssistantElement =
       args?: unknown;
       /** Original response from functionResponse — same surface as args. */
       response?: unknown;
+      /** Set when this is a bridged workspace sub-agent call. Used by
+       * the renderer to nest the badge under its parent. */
+      parentId?: string;
+      /** Nested bridged sub-agent calls. Populated during rehydration
+       * when this badge is an outer AgentTool with bridged children. */
+      children?: HistoryAssistantElement[];
     };
 
 export interface HistoryAssistantMessage {
@@ -84,6 +96,10 @@ interface EventLike {
    */
   timestamp?: number;
   content?: { role?: string; parts?: PartLike[] };
+  /** Set by `BridgedAgentTool` so bridged sub-agent events carry their
+   * outer AgentTool's function_call_id. The FE keys on this to nest
+   * inner badges under the parent in /history rehydration. */
+  customMetadata?: { parentToolCallId?: string };
 }
 
 /**
@@ -110,13 +126,23 @@ const REPLAYABLE_TOOLS = new Set<string>([
   'find_workspace',
   'archive_messages',
   'add_calendar_event',
+  'edit_calendar_event',
+  'delete_calendar_event',
   'add_task',
   'complete_task',
+  'draft_email',
   'update_user_profile',
   'log_goal_update',
   'memory_save',
   'memory_search',
   'google_search',
+  // Bridged workspace sub-agent inner tools. Rendered as nested
+  // badges under their parent AgentTool when replayed.
+  'list_inbox',
+  'get_message',
+  'search_messages',
+  'list_events',
+  'list_tasks',
 ]);
 
 function isErrored(fr: FunctionResponseLike | undefined): boolean {
@@ -142,6 +168,10 @@ export function eventsToMessages(events: readonly EventLike[]): HistoryMessage[]
   }
 
   const out: HistoryMessage[] = [];
+  // Bridged child tool-calls that arrived before their parent
+  // AgentTool's badge was emitted. The parent is appended later in the
+  // event stream; we attach pending children when we see it.
+  const pendingChildrenByParent = new Map<string, HistoryAssistantElement[]>();
 
   for (const event of events) {
     const parts = event.content?.parts ?? [];
@@ -151,6 +181,17 @@ export function eventsToMessages(events: readonly EventLike[]): HistoryMessage[]
     const hasAnyText = parts.some((p) => typeof p.text === 'string' && p.text.length > 0);
     const hasAnyCall = parts.some((p) => p.functionCall !== undefined);
     if (!hasAnyText && !hasAnyCall) continue;
+
+    // Bridged workspace events: persisted under the bridge author so
+    // ADK doesn't replay them as main-agent tool calls (see
+    // `WORKSPACE_BRIDGE_AUTHOR` in bridged_agent_tool.py). They carry a
+    // `customMetadata.parentToolCallId` pointing at their outer
+    // AgentTool's function_call_id. Render them as nested children of
+    // that parent rather than as flat messages.
+    const eventParentId =
+      event.author === WORKSPACE_BRIDGE_AUTHOR
+        ? (event.customMetadata?.parentToolCallId ?? undefined)
+        : undefined;
 
     const elements: HistoryAssistantElement[] = [];
     for (const part of parts) {
@@ -167,20 +208,49 @@ export function eventsToMessages(events: readonly EventLike[]): HistoryMessage[]
       if (fc?.name && REPLAYABLE_TOOLS.has(fc.name)) {
         const id = fc.id ?? fc.name;
         const matched = responsesByKey.get(id);
-        elements.push({
+        // Parent linkage may live on the event (customMetadata, set by
+        // BridgedAgentTool) or inside the args (the bridge also stamps
+        // `__parentToolCallId` into args so the link survives even if
+        // customMetadata is ever dropped by an intermediate writer).
+        const parentId = eventParentId ?? workspaceParentIdFromArgs(fc.args);
+        const element: HistoryAssistantElement = {
           kind: 'tool-call',
           id,
           name: fc.name,
           label: labelForToolCall(fc.name, fc.args),
           done: true,
           ok: !isErrored(matched),
-          args: fc.args,
-          response: matched?.response,
-        });
+          args: stripWorkspaceBridgeMetadata(fc.args),
+          response: stripWorkspaceBridgeMetadata(matched?.response),
+          ...(parentId ? { parentId } : {}),
+        };
+        if (parentId) {
+          // Child — attach under the parent if we've already emitted
+          // it, otherwise stash it until the parent shows up.
+          if (!attachHistoryChild(out, elements, parentId, element)) {
+            const queue = pendingChildrenByParent.get(parentId) ?? [];
+            queue.push(element);
+            pendingChildrenByParent.set(parentId, queue);
+          }
+        } else {
+          // Parent (or non-bridged). Pull in any orphans we've stashed
+          // waiting for this id.
+          const pendingChildren = pendingChildrenByParent.get(id);
+          if (pendingChildren) {
+            elements.push({ ...element, children: pendingChildren });
+            pendingChildrenByParent.delete(id);
+          } else {
+            elements.push(element);
+          }
+        }
       }
     }
 
     if (elements.length === 0) continue;
+
+    // Bridged events have already been attached under their parents
+    // (or stashed). Don't emit them as standalone messages.
+    if (event.author === WORKSPACE_BRIDGE_AUTHOR) continue;
 
     const id = event.id ?? randomId();
     const timestamp = normaliseEventTimestamp(event.timestamp);
@@ -200,6 +270,34 @@ export function eventsToMessages(events: readonly EventLike[]): HistoryMessage[]
   }
 
   return out;
+}
+
+/** Walk current + emitted assistant messages and attach a bridged child
+ * tool-call under its parent (`parentId`). Returns true when the parent
+ * was found and the child was attached. */
+function attachHistoryChild(
+  messages: HistoryMessage[],
+  currentElements: HistoryAssistantElement[],
+  parentId: string,
+  child: HistoryAssistantElement,
+): boolean {
+  const attach = (elements: HistoryAssistantElement[]): boolean => {
+    for (const el of elements) {
+      if (el.kind !== 'tool-call') continue;
+      if (el.id === parentId) {
+        el.children = [...(el.children ?? []), child];
+        return true;
+      }
+      if (el.children && attach(el.children)) return true;
+    }
+    return false;
+  };
+  if (attach(currentElements)) return true;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg?.role === 'assistant' && attach(msg.elements)) return true;
+  }
+  return false;
 }
 
 function randomId(): string {

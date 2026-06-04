@@ -162,11 +162,19 @@ def _session_has_user_interaction(session: Any) -> bool:
 class RunnerForParams:
     """One-turn factory input. The agent factory builds an `Agent` with
     the right tool list + materialised instruction; the runner is a
-    `google.adk.runners.Runner` (or a fake in tests)."""
+    `google.adk.runners.Runner` (or a fake in tests).
+
+    `event_queue`, when set, is a per-request SSE queue threaded down
+    into workspace AgentTools. The bridged sub-agent tool calls land
+    there so the live stream can render nested badges before the outer
+    AgentTool returns. Optional / unset for non-streaming callers
+    (tests, /history rehydration).
+    """
 
     ctx: InstructionContext
     uid: str
     usage_policy: UsagePolicy
+    event_queue: asyncio.Queue[bytes | None] | None = None
 
 
 class SessionReader(Protocol):
@@ -1063,8 +1071,21 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
         except Exception as err:  # noqa: BLE001
             logger.exception("chat.prompt log build failed: %s", err)
 
+        # Per-request SSE queue, shared between the server driver and any
+        # BridgedAgentTool the workspace module hands the agent. The
+        # bridge writes child function-call / response events here while
+        # the parent `triage_inbox` / `find_workspace` call is still
+        # executing, so the live UI sees nested badges immediately
+        # instead of waiting for the AgentTool to return.
+        sse_queue: asyncio.Queue[bytes | None] = asyncio.Queue()
+
         runner = deps.runner_for(
-            RunnerForParams(ctx=instruction_ctx, uid=effective_user_id, usage_policy=usage_policy)
+            RunnerForParams(
+                ctx=instruction_ctx,
+                uid=effective_user_id,
+                usage_policy=usage_policy,
+                event_queue=sse_queue,
+            )
         )
 
         # SSE stream ----------------------------------------------------
@@ -1177,8 +1198,11 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
 
                 # We can't `yield` from inside `_drive` (it's a coroutine,
                 # not a generator). Use a queue + a background task so the
-                # outer generator stays the only yielder.
-                _outer_queue: asyncio.Queue[bytes | None] = asyncio.Queue()
+                # outer generator stays the only yielder. The same queue
+                # is handed to workspace AgentTools above so bridged
+                # sub-agent calls land here while the parent AgentTool
+                # is still running.
+                _outer_queue = sse_queue
 
                 async def _drive_then_signal(msg: Any) -> bool:
                     try:

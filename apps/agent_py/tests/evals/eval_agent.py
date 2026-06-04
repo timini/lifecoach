@@ -72,7 +72,15 @@ def _tool_stubs() -> dict[str, Any]:
         "triage_inbox": {
             "status": "ok",
             "report": {
-                "noise": [{"id": "m1", "from": "n@x", "subject": "Newsletter"}],
+                "noise": [
+                    {
+                        "id": "m1",
+                        "from": "n@x",
+                        "subject": "Newsletter",
+                        "receivedAt": "Mon, 11 May 2026 09:00:00 +0100",
+                        "snippet": "Weekly digest and offers.",
+                    }
+                ],
                 "actions": [],
                 "events": [],
                 "info": [],
@@ -105,6 +113,11 @@ def _tool_stubs() -> dict[str, Any]:
                 "title": "(stub)",
                 "status": "completed",
             },
+        },
+        "draft_email": {
+            "status": "ok",
+            "draftId": "draft-1",
+            "messageId": "msg-1",
         },
         # ---- choice tools (turn-ending) ----
         "ask_single_choice_question": {
@@ -186,7 +199,7 @@ def _make_stub_tools_for_state(state: UserState) -> list[Any]:
       - anonymous / email_pending / email_verified: + auth_user
       - google_linked / workspace_connected: + connect_workspace
         (reconnect path stays available)
-      - workspace_connected: + the six workspace tools
+      - workspace_connected: + the nine workspace tools
     """
     from google.adk.tools import FunctionTool
 
@@ -234,7 +247,7 @@ def _make_stub_tools_for_state(state: UserState) -> list[Any]:
 
         tools.append(FunctionTool(connect_workspace))
 
-    # --- workspace_connected gets the six workspace tools ----------
+    # --- workspace_connected gets the nine workspace tools --------
     if state == "workspace_connected":
 
         async def triage_inbox(since: str | None = None) -> dict[str, Any]:
@@ -260,6 +273,26 @@ def _make_stub_tools_for_state(state: UserState) -> list[Any]:
             """Calendar insert — eval stub."""
             return {"status": "stubbed"}
 
+        async def edit_calendar_event(
+            eventId: str,  # noqa: N803
+            summary: str | None = None,
+            start: str | None = None,
+            end: str | None = None,
+            location: str | None = None,
+            description: str | None = None,
+            addAttendees: list[str] | None = None,  # noqa: N803
+            calendarId: str = "primary",  # noqa: N803
+        ) -> dict[str, Any]:
+            """Calendar patch — eval stub."""
+            return {"status": "stubbed"}
+
+        async def delete_calendar_event(
+            eventId: str,  # noqa: N803
+            calendarId: str = "primary",  # noqa: N803
+        ) -> dict[str, Any]:
+            """Calendar delete — eval stub."""
+            return {"status": "stubbed"}
+
         async def add_task(
             title: str,
             due: str | None = None,
@@ -276,14 +309,31 @@ def _make_stub_tools_for_state(state: UserState) -> list[Any]:
             """Tasks patch — eval stub."""
             return {"status": "stubbed"}
 
+        async def draft_email(
+            to: list[str],
+            subject: str,
+            body: str,
+            cc: list[str] | None = None,
+            bcc: list[str] | None = None,
+            threadId: str | None = None,  # noqa: N803
+            replyTo: str | None = None,  # noqa: N803
+            inReplyTo: str | None = None,  # noqa: N803
+            references: str | None = None,
+        ) -> dict[str, Any]:
+            """Gmail draft create — eval stub."""
+            return {"status": "stubbed"}
+
         tools.extend(
             [
                 FunctionTool(triage_inbox),
                 FunctionTool(find_workspace),
                 FunctionTool(archive_messages),
                 FunctionTool(add_calendar_event),
+                FunctionTool(edit_calendar_event),
+                FunctionTool(delete_calendar_event),
                 FunctionTool(add_task),
                 FunctionTool(complete_task),
+                FunctionTool(draft_email),
             ]
         )
 

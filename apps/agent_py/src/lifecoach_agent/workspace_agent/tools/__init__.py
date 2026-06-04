@@ -1,4 +1,4 @@
-"""Internal sub-agent tools (5 reads) + main-facing writes (4)."""
+"""Internal sub-agent tools (7 reads) + main-facing writes (7)."""
 
 from lifecoach_agent.workspace_agent.tools.add_calendar_event import (
     ADD_CALENDAR_EVENT_TOOL_NAME,
@@ -16,9 +16,29 @@ from lifecoach_agent.workspace_agent.tools.complete_task import (
     COMPLETE_TASK_TOOL_NAME,
     create_complete_task_tool,
 )
+from lifecoach_agent.workspace_agent.tools.delete_calendar_event import (
+    DELETE_CALENDAR_EVENT_TOOL_NAME,
+    create_delete_calendar_event_tool,
+)
+from lifecoach_agent.workspace_agent.tools.draft_email import (
+    DRAFT_EMAIL_TOOL_NAME,
+    create_draft_email_tool,
+)
+from lifecoach_agent.workspace_agent.tools.edit_calendar_event import (
+    EDIT_CALENDAR_EVENT_TOOL_NAME,
+    create_edit_calendar_event_tool,
+)
 from lifecoach_agent.workspace_agent.tools.get_message import (
     GET_MESSAGE_TOOL_NAME,
     create_get_message_tool,
+)
+from lifecoach_agent.workspace_agent.tools.get_messages import (
+    GET_MESSAGES_TOOL_NAME,
+    create_get_messages_tool,
+)
+from lifecoach_agent.workspace_agent.tools.list_calendars import (
+    LIST_CALENDARS_TOOL_NAME,
+    create_list_calendars_tool,
 )
 from lifecoach_agent.workspace_agent.tools.list_events import (
     LIST_EVENTS_TOOL_NAME,
@@ -42,7 +62,12 @@ __all__ = [
     "ADD_TASK_TOOL_NAME",
     "ARCHIVE_MESSAGES_TOOL_NAME",
     "COMPLETE_TASK_TOOL_NAME",
+    "DELETE_CALENDAR_EVENT_TOOL_NAME",
+    "DRAFT_EMAIL_TOOL_NAME",
+    "EDIT_CALENDAR_EVENT_TOOL_NAME",
     "GET_MESSAGE_TOOL_NAME",
+    "GET_MESSAGES_TOOL_NAME",
+    "LIST_CALENDARS_TOOL_NAME",
     "LIST_EVENTS_TOOL_NAME",
     "LIST_INBOX_TOOL_NAME",
     "LIST_TASKS_TOOL_NAME",
@@ -51,7 +76,12 @@ __all__ = [
     "create_add_task_tool",
     "create_archive_messages_tool",
     "create_complete_task_tool",
+    "create_delete_calendar_event_tool",
+    "create_draft_email_tool",
+    "create_edit_calendar_event_tool",
     "create_get_message_tool",
+    "create_get_messages_tool",
+    "create_list_calendars_tool",
     "create_list_events_tool",
     "create_list_inbox_tool",
     "create_list_tasks_tool",

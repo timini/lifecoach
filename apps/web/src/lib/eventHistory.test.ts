@@ -373,4 +373,123 @@ describe('eventsToMessages', () => {
     ]);
     expect(msgs.map((m) => m.role)).toEqual(['user', 'assistant', 'user']);
   });
+
+  describe('bridged workspace sub-agent calls', () => {
+    it('nests bridged inner calls under the parent triage_inbox AgentTool', () => {
+      const msgs = eventsToMessages([
+        {
+          id: 'outer-call',
+          author: 'lifecoach',
+          content: {
+            role: 'model',
+            parts: [{ functionCall: { id: 'outer-1', name: 'triage_inbox', args: {} } }],
+          },
+        },
+        {
+          id: 'inner-call',
+          author: 'lifecoach-workspace-bridge',
+          customMetadata: { parentToolCallId: 'outer-1' },
+          content: {
+            role: 'model',
+            parts: [
+              {
+                functionCall: {
+                  id: 'outer-1:list_inbox',
+                  name: 'list_inbox',
+                  args: { since: '1d', __parentToolCallId: 'outer-1' },
+                },
+              },
+            ],
+          },
+        },
+        {
+          id: 'inner-response',
+          author: 'lifecoach-workspace-bridge',
+          customMetadata: { parentToolCallId: 'outer-1' },
+          content: {
+            role: 'user',
+            parts: [
+              {
+                functionResponse: {
+                  id: 'outer-1:list_inbox',
+                  name: 'list_inbox',
+                  response: { status: 'ok', count: 2, __parentToolCallId: 'outer-1' },
+                },
+              },
+            ],
+          },
+        },
+        {
+          id: 'outer-response',
+          author: 'lifecoach',
+          content: {
+            role: 'user',
+            parts: [{ functionResponse: { id: 'outer-1', name: 'triage_inbox', response: {} } }],
+          },
+        },
+      ]);
+
+      // Only one assistant message (the parent). The bridged events
+      // are NOT emitted as standalone messages — they live inside the
+      // parent's `children`.
+      expect(msgs.filter((m) => m.role === 'assistant')).toHaveLength(1);
+      const parent = msgs[0];
+      if (parent?.role !== 'assistant') throw new Error();
+      expect(parent.elements[0]).toMatchObject({
+        kind: 'tool-call',
+        id: 'outer-1',
+        name: 'triage_inbox',
+        children: [
+          {
+            kind: 'tool-call',
+            id: 'outer-1:list_inbox',
+            name: 'list_inbox',
+            parentId: 'outer-1',
+            args: { since: '1d' },
+            response: { status: 'ok', count: 2 },
+          },
+        ],
+      });
+    });
+
+    it('handles child-before-parent ordering in the persisted event stream', () => {
+      // If the bridge persists a child event before ADK has committed
+      // the outer AgentTool's function_call, we should still nest the
+      // child under the parent once the parent shows up.
+      const msgs = eventsToMessages([
+        {
+          id: 'inner-call',
+          author: 'lifecoach-workspace-bridge',
+          customMetadata: { parentToolCallId: 'outer-1' },
+          content: {
+            role: 'model',
+            parts: [
+              {
+                functionCall: {
+                  id: 'outer-1:list_inbox',
+                  name: 'list_inbox',
+                  args: { __parentToolCallId: 'outer-1' },
+                },
+              },
+            ],
+          },
+        },
+        {
+          id: 'outer-call',
+          author: 'lifecoach',
+          content: {
+            role: 'model',
+            parts: [{ functionCall: { id: 'outer-1', name: 'triage_inbox', args: {} } }],
+          },
+        },
+      ]);
+      const parent = msgs[0];
+      if (parent?.role !== 'assistant') throw new Error();
+      expect(parent.elements[0]).toMatchObject({
+        kind: 'tool-call',
+        id: 'outer-1',
+        children: [{ kind: 'tool-call', id: 'outer-1:list_inbox', parentId: 'outer-1' }],
+      });
+    });
+  });
 });

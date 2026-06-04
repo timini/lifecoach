@@ -2,8 +2,9 @@
 read-only internal tools. Wrapped by AgentTool entry points
 (triage_inbox, find_workspace) the main coach agent sees.
 
-The four write tools (archive_messages, add_calendar_event, add_task,
-complete_task) live in the sub-agent's toolset too, so a future
+The seven write tools (archive_messages, add_calendar_event,
+edit_calendar_event, delete_calendar_event, add_task, complete_task,
+draft_email) live in the sub-agent's toolset too, so a future
 "act inline" prompt can run end-to-end inside the sub-agent — but for
 now they're exposed on the main agent directly to keep single-step
 writes off the sub-agent's LLM hop.
@@ -21,7 +22,12 @@ from lifecoach_agent.workspace_agent.tools import (
     create_add_task_tool,
     create_archive_messages_tool,
     create_complete_task_tool,
+    create_delete_calendar_event_tool,
+    create_draft_email_tool,
+    create_edit_calendar_event_tool,
     create_get_message_tool,
+    create_get_messages_tool,
+    create_list_calendars_tool,
     create_list_events_tool,
     create_list_inbox_tool,
     create_list_tasks_tool,
@@ -30,10 +36,16 @@ from lifecoach_agent.workspace_agent.tools import (
 from lifecoach_agent.workspace_agent.tools._deps import WorkspaceToolDeps
 
 WORKSPACE_AGENT_NAME = "workspace_agent"
-# Same model as the parent coach. Flash is fast enough for triage and
-# already on Vertex location=global. Re-evaluate vs Flash Lite after
-# dogfood telemetry lands.
+# Same model as the parent coach. Flash is fast enough for find_workspace
+# lookups and already on Vertex location=global.
 WORKSPACE_AGENT_MODEL = "gemini-3-flash-preview"
+# Inbox triage is a high-volume, bulk-classification path (one list_inbox +
+# one get_messages, then classify N emails into four buckets), so it runs on
+# the cheaper / lower-latency Flash Lite tier — the same id the usage-state
+# policy already routes the cheap tier to (see state/usage_state.py). Named
+# separately from WORKSPACE_AGENT_MODEL so it can be flipped in isolation;
+# find_workspace stays on the stronger WORKSPACE_AGENT_MODEL.
+TRIAGE_INBOX_AGENT_MODEL = "gemini-flash-lite-latest"
 
 WORKSPACE_AGENT_INSTRUCTION = (
     "You are a sub-agent for Google Workspace (Gmail, Calendar, Google Tasks).\n\n"
@@ -94,8 +106,10 @@ def create_workspace_agent(
 def _build_read_tools(deps: WorkspaceToolDeps) -> list[Any]:
     return [
         create_list_inbox_tool(deps),
+        create_get_messages_tool(deps),
         create_get_message_tool(deps),
         create_search_messages_tool(deps),
+        create_list_calendars_tool(deps),
         create_list_events_tool(deps),
         create_list_tasks_tool(deps),
     ]
@@ -105,6 +119,9 @@ def _build_write_tools(deps: WorkspaceToolDeps) -> list[Any]:
     return [
         create_archive_messages_tool(deps),
         create_add_calendar_event_tool(deps),
+        create_edit_calendar_event_tool(deps),
+        create_delete_calendar_event_tool(deps),
         create_add_task_tool(deps),
         create_complete_task_tool(deps),
+        create_draft_email_tool(deps),
     ]

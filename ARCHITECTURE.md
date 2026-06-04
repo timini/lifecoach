@@ -230,13 +230,13 @@ stateDiagram-v2
 | `email_pending` | choice / profile / goals / memory | "Check your inbox" |
 | `email_verified` | choice / profile / goals / memory | "Link Google" |
 | `google_linked` | choice / profile / goals / memory, **`connect_workspace`** | "Connect Workspace" |
-| `workspace_connected` | choice / profile / goals / memory, **`triage_inbox`**, **`find_workspace`**, **`archive_messages`**, **`add_calendar_event`**, **`add_task`**, **`complete_task`**, **`connect_workspace`** (reconnect path) | "Workspace connected" badge |
+| `workspace_connected` | choice / profile / goals / memory, **`triage_inbox`**, **`find_workspace`**, **`archive_messages`**, **`add_calendar_event`**, **`edit_calendar_event`**, **`delete_calendar_event`**, **`add_task`**, **`complete_task`**, **`draft_email`**, **`connect_workspace`** (reconnect path) | "Workspace connected" badge |
 
 **WORKSPACE-ASK TRIGGER (immediate auth/connect rule, all states except `workspace_connected`).** When the user asks for anything that requires Workspace access — read inbox, triage, calendar today, list/add tasks — the agent's FIRST reply must be the auth or connect tool call, with no clarifying questions. The tool call IS the turn (turn-ending UI directive). Routing:
 
 - `anonymous` / `email_pending` / `email_verified` → call `auth_user({mode: "google"})`. The user has to sign in with Google first; granting Workspace scopes happens after, via `connect_workspace`, once the state machine reaches `google_linked`.
 - `google_linked` → call `connect_workspace`. The user is already signed in; this is the OAuth-scopes step.
-- `workspace_connected` → use the six workspace tools directly; no auth handshake needed.
+- `workspace_connected` → use the nine workspace tools directly; no auth handshake needed.
 
 This rule was added in response to issue #62 — a regression where a `google_linked` user asked to triage emails and got four turns of clarification before the agent admitted it couldn't access the inbox. The directive lives in `_WORKSPACE_ASK_TRIGGER_*` blocks in `state/policies.py` and is appended to every non-`workspace_connected` `STATE_DIRECTIVE`. The negative-case evals (`workspace_no_trigger_for_unrelated_ask_*`) guard against over-firing on unrelated wellbeing questions.
 
@@ -334,7 +334,7 @@ Every `/chat` turn builds a fresh `Runner` from `RunnerForParams(ctx, uid, usage
    - `auth_user` — when `user_state == "anonymous"`.
    - `memory_save` — when memory service is configured.
    - `connect_workspace` — when workspace is enabled and user is `google_linked` *or* `workspace_connected` (the reconnect path stays available after grant).
-   - The **six workspace tools** (`triage_inbox`, `find_workspace`, `archive_messages`, `add_calendar_event`, `add_task`, `complete_task`) — when user is `workspace_connected`. Built by `workspace_agent.create_workspace_tools(deps)`; `WORKSPACE_TOOL_NAMES` is the canonical list. The generic `call_workspace` dispatcher was retired at this point.
+   - The **nine workspace tools** (`triage_inbox`, `find_workspace`, `archive_messages`, `add_calendar_event`, `edit_calendar_event`, `delete_calendar_event`, `add_task`, `complete_task`, `draft_email`) — when user is `workspace_connected`. Built by `workspace_agent.create_workspace_tools(deps)`; `WORKSPACE_TOOL_NAMES` is the canonical list. The generic `call_workspace` dispatcher was retired at this point.
    - `upgrade_to_pro` — when `usage_policy.upgrade_tool_available`.
    - Per enabled practice: zero-or-more tools from `practice.tools(deps, uid)`.
 2. **Agent factory:** `agent = build_root_agent_for(ctx, tools, model=usage_policy.model)` — `name="lifecoach"`, system instruction = `build_instruction(ctx)` materialised string.
@@ -397,12 +397,15 @@ Every tool lives in `src/lifecoach_agent/tools/` (one file, one tool factory). B
 | `connect_workspace` | none | Renders Connect-Workspace card | **yes (turn-ending)** |
 | `memory_save` | `{text}` | Writes to Vertex Memory Bank | no |
 | `upgrade_to_pro` | none | Renders Pro upgrade card | **yes (turn-ending)** |
-| `triage_inbox` | `{since?: "1d" \| "12h" \| ...}` | AgentTool wrapping a workspace sub-agent. Returns a structured `TriageReport` with noise / actions / events / info buckets (read-only). | no |
-| `find_workspace` | `{query: string}` | AgentTool wrapping a workspace sub-agent. Natural-language lookup across Gmail / Calendar / Tasks; cites with `m:` / `ev:` / `t:` id prefixes (read-only). | no |
+| `triage_inbox` | `{since?: "1d" \| "12h" \| ...}` | AgentTool wrapping a workspace sub-agent. Returns a structured `TriageReport` with noise / actions / events / info buckets (read-only). Every item carries per-message context (`from`, `subject`, `receivedAt`, `snippet`, all non-empty) so the parent's archive/event/task confirmation prompt can list each candidate inline. | no |
+| `find_workspace` | `{query: string}` | AgentTool wrapping a workspace sub-agent. Natural-language lookup across Gmail / Calendar / Tasks — including calendar-list / calendar-ID requests, which route to the internal `list_calendars` read (not Gmail search). Cites with `cal:` / `m:` / `ev:` / `t:` id prefixes (read-only). | no |
 | `archive_messages` | `{ids: string[]}` | Batched modify-remove-INBOX. Returns `archived[]` + `failed[]`. Any per-id `scope_required` surfaces as a top-level error so the LLM can call `connect_workspace`. | no |
 | `add_calendar_event` | `{summary, start, end?, location?, description?, calendarId?}` | `calendar.events.insert`. `end` defaults to start + 30 min for timed events, start + 1 day for all-day. | no |
+| `edit_calendar_event` | `{eventId, summary?, start?, end?, location?, description?, addAttendees?, calendarId?}` | `calendar.events.patch` (partial). `start` requires `end` (no zero-duration moves). `addAttendees` fetches the event first and merges, preserving existing guests' RSVP metadata. `sendUpdates=all` notifies guests. | no |
+| `delete_calendar_event` | `{eventId, calendarId?}` | `calendar.events.delete` with `sendUpdates=all` so attendees get the cancellation. | no |
 | `add_task` | `{title, due?, notes?, taskListId?}` | `tasks.tasks.insert`. Default `taskListId="@default"`. | no |
 | `complete_task` | `{id, taskListId?}` | `tasks.tasks.patch({status: "completed"})` — NEVER delete. | no |
+| `draft_email` | `{to, subject, body, cc?, bcc?, threadId?, replyTo?, inReplyTo?, references?}` | `gmail.users.drafts.create` — creates a draft, NEVER sends. Header values are rejected if they contain newlines (no header injection). | no |
 | `connect_notion` | none | Renders a single-tile Notion connect card (capability picker, one tile) | **yes (turn-ending)** |
 | `show_capabilities` | none | Renders the full capability picker (Workspace, Notion, Career coaching). Tile `status` is computed per request from `ctx.workspace_connected` + `ctx.notion_connected`. Called proactively on the first signed-in turn when no integrations are connected, or on demand when the user asks "what can you do". | **yes (turn-ending)** |
 | `notion_review_tasks` | `{filter?}` | AgentTool wrapping the Notion sub-agent. Returns a project-bucketed tree of OPEN tasks (everything not Done) with sub-tasks nested. `filter` is natural language. Read-only. | no |
@@ -456,16 +459,16 @@ workspace_agent/
   agent.py                 create_workspace_agent(...)  — the inner LlmAgent
   gws_client.py            low-level call_workspace(service, resource, method, params) → result | err
   run_gws.py               auth + dispatch + classify + log helper every tool routes through
-  projections/             gmail_message / calendar_event / task — drop API bloat, base64-decode bodies, 4 KB cap
-  tools/                   5 internal sub-agent reads (list_inbox, get_message, search_messages, list_events, list_tasks)
-                          + 4 narrow writes (archive_messages, add_calendar_event, add_task, complete_task)
+  projections/             gmail_message / calendar_event / calendar_list / task — drop API bloat, base64-decode bodies, 4 KB cap
+  tools/                   7 internal sub-agent reads (list_inbox, get_messages, get_message, search_messages, list_calendars, list_events, list_tasks)
+                          + 7 narrow writes (archive_messages, add_calendar_event, edit_calendar_event, delete_calendar_event, add_task, complete_task, draft_email)
   agent_tools/             2 AgentTool wrappers (triage_inbox, find_workspace) exposed to the main agent
 ```
 
-**The main-facing surface (six tools):**
+**The main-facing surface (nine tools):**
 
-- **`triage_inbox()`** and **`find_workspace(query)`** are `AgentTool`s. Each wraps a dedicated `LlmAgent` instance with a scoped instruction and the same five internal read tools — the sub-agent classifies an inbox or answers a natural-language lookup, the wrapper returns the result to the parent. `triage_inbox` emits `<TRIAGE_REPORT>{json}</TRIAGE_REPORT>`; `parse_triage_report` validates against `TriageReportSchema` and returns `{status:"ok", report}` or `{status:"parse_error", raw}`.
-- **`archive_messages`**, **`add_calendar_event`**, **`add_task`**, **`complete_task`** are narrow `FunctionTool`s — direct, no LLM hop. The main agent owns confirmation via `ask_single_choice_question`; writes only fire after explicit user approval.
+- **`triage_inbox()`** and **`find_workspace(query)`** are `AgentTool`s. Each wraps a dedicated `LlmAgent` instance with a scoped instruction and the same seven internal read tools — the sub-agent classifies an inbox or answers a natural-language lookup, the wrapper returns the result to the parent. Triage reads every body in one bulk `get_messages` call (not a `get_message` per id) and runs on the cheaper `TRIAGE_INBOX_AGENT_MODEL` (Flash Lite) while `find_workspace` keeps `WORKSPACE_AGENT_MODEL`. `triage_inbox` emits `<TRIAGE_REPORT>{json}</TRIAGE_REPORT>`; `parse_triage_report` validates against `TriageReportSchema` and returns `{status:"ok", report}` or `{status:"parse_error", raw}`.
+- **`archive_messages`**, **`add_calendar_event`**, **`edit_calendar_event`**, **`delete_calendar_event`**, **`add_task`**, **`complete_task`**, **`draft_email`** are narrow `FunctionTool`s — direct, no LLM hop. The main agent owns confirmation via `ask_single_choice_question`; writes only fire after explicit user approval.
 
 `gws_client.call_workspace` is the bottom-layer dispatcher. It walks the Discovery API tree (`gmail.users.messages.list(...)` etc.) via `google-api-python-client`, classifying errors into `scope_required`, `forbidden`, `network`, `rate_limited`, `not_found`, `bad_request`, `timeout`, `upstream`, `invalid_args`. Every workspace tool routes through `run_gws.py`, which (a) resolves the access token via `WorkspaceTokensStore`, (b) calls the dispatcher, (c) deletes the user's token doc on `scope_required` so the next turn demotes back to `google_linked` and the LLM invites reconnect.
 
@@ -507,7 +510,7 @@ A "practice" is an opt-in coaching ritual that contributes a prompt directive (w
 
 | Practice | When ON | Time gate | Idempotency key | Adds tools |
 |---|---|---|---|---|
-| `day_planning` | profile flag `practices.day_planning.enabled` | 05:00–10:59 local | `practices.day_planning.last_planned_date` | none — uses main-agent + the six workspace tools (when `workspace_connected`) |
+| `day_planning` | profile flag `practices.day_planning.enabled` | 05:00–10:59 local | `practices.day_planning.last_planned_date` | none — uses main-agent + the nine workspace tools (when `workspace_connected`) |
 | `evening_gratitude` | profile flag | 18:00–22:59 local | `practices.evening_gratitude.last_logged` | reserved (`log_gratitude`, not yet wired) |
 | `journaling` | profile flag | always | none | reserved (`journal_entry`, not yet wired) |
 
@@ -564,7 +567,7 @@ Notable client files:
 
 | Package | Type | Purpose |
 |---|---|---|
-| `@lifecoach/shared-types` | TS Zod | Source of truth for all data crossing the web↔agent boundary: `UserProfileSchema`, `GoalUpdateSchema`, `ChoiceQuestionSchema`, `AuthUserArgsSchema`, `WorkspaceStatusSchema`. Python mirror at `apps/agent_py/src/lifecoach_agent/contracts/`, parity tested in `tests/unit/test_contracts.py`. |
+| `@lifecoach/shared-types` | TS Zod | Source of truth for all data crossing the web↔agent boundary: `UserProfileSchema`, `GoalUpdateSchema`, `ChoiceQuestionSchema`, `AuthUserArgsSchema`, `WorkspaceStatusSchema`, `TriageReportSchema` (per-message context fields are `.min(1)`). Python mirror at `apps/agent_py/src/lifecoach_agent/contracts/`, parity tested in `tests/unit/test_contracts.py`. |
 | `@lifecoach/user-state` | TS pure | `UserStateMachine` + `UsageStateMachine` for `apps/web`. Mirrored in Python at `lifecoach_agent/state/`. |
 | `@lifecoach/ui` | TS React | Tailwind 4 design system: atoms / molecules / organisms / templates. Consumed as source by `apps/web`. Stories in `*.stories.tsx` are the test surface (vitest browser mode via `@storybook/addon-vitest`). |
 | `@lifecoach/testing` | TS | Test helpers + fakes for `apps/web` and `packages/*`. |
@@ -728,7 +731,8 @@ Five distinct test surfaces. CI gates the lot at **90% line + branch coverage** 
 | `workspace_no_trigger_for_unrelated_ask_google_linked` | Negative guardrail. `google_linked` user asking unrelated wellbeing / coaching questions → no tool calls. Prevents the trigger from over-firing. |
 | `workspace_no_trigger_for_unrelated_ask_anonymous` | Same negative guard for `anonymous` — over-fire of `auth_user` on general questions would also be a regression. |
 | `silent_turn_simple_greeting` | One-word "hi" must produce a substantive reply — guards the 2026-05-11 silent-turn class where stale Firestore events / `{name}` placeholder leaks crashed the prompt. |
-| **`subagent_triage_basic_classification`** | Targets the **triage sub-agent directly** (not via the AgentTool). Mocks `list_inbox` + `get_message` via `before_tool_callback` with a 4-message inbox; asserts the sub-agent walks the right tool sequence and emits `<TRIAGE_REPORT>` in its final response. See `tests/evals/eval_triage_inbox_agent.py` for the stubs. |
+| **`subagent_triage_basic_classification`** | Targets the **triage sub-agent directly** (not via the AgentTool). Mocks `list_inbox` + `get_messages` via `before_tool_callback` with a 4-message inbox; asserts the sub-agent lists once, bulk-fetches with one `get_messages`, and emits `<TRIAGE_REPORT>` in its final response. See `tests/evals/eval_triage_inbox_agent.py` for the stubs. |
+| **`find_workspace_calendar_list`** | Targets the **find_workspace sub-agent directly** (issue #130). Mocks `list_calendars` via `before_tool_callback`; a "list my Google calendars and find the family calendar ID" request must call `list_calendars` (not Gmail search) and return the Family calendar ID. See `tests/evals/eval_find_workspace_agent.py`. |
 
 **Usage-funnel fixtures (issue #64).** Each pins one position in the 10-state cost-ceiling funnel. The matching `eval_*_agent.py` modules thread the right `(user_state, usage_state, chat_turn_count)` into `build_eval_root_agent` so the prompt the model sees actually reflects the funnel position (the `SIGNUP_HARD` directive, USAGE credit-count block, etc.). Tier-1 fixtures here cover trajectory behaviour; model-name and wall short-circuit behaviour are covered by unit / integration tests in `tests/unit/state/test_usage_state.py` and `tests/unit/test_server.py` respectively.
 

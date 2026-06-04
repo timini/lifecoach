@@ -118,10 +118,17 @@ module "web" {
     NODE_ENV  = "production"
   }
 
-  # Forwarded to the per-PR agent on every proxied request.
+  # Forwarded to the per-PR agent on every proxied request. The stable
+  # Server Actions encryption key is the same secret dev's web service
+  # mounts (owned by infra/envs/dev) — keeps preview action IDs aligned
+  # with the value baked in at `next build`.
   secret_env = {
     AGENT_INTERNAL_BEARER = {
       secret_id = "AGENT_INTERNAL_BEARER"
+      version   = "latest"
+    }
+    NEXT_SERVER_ACTIONS_ENCRYPTION_KEY = {
+      secret_id = "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY"
       version   = "latest"
     }
   }

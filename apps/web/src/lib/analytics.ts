@@ -16,6 +16,46 @@ export function googleAnalyticsMeasurementId(): string | null {
   return process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID?.trim() || null;
 }
 
+/**
+ * True when the current session is automated (Playwright / WebDriver / most
+ * headless browser harnesses). Used to tag GA traffic as `internal` so e2e
+ * runs against per-PR previews and dev don't inflate active-user counts.
+ *
+ * `navigator.webdriver` is set by the WebDriver spec; Playwright leaves it
+ * `true` by default. Real-user browsers always report `false` (or absent),
+ * so this is safe to use as a "is-bot" signal for our own analytics.
+ */
+export function isInternalTraffic(): boolean {
+  if (typeof navigator === 'undefined' || navigator === null) return false;
+  return navigator.webdriver === true;
+}
+
+/**
+ * Returns the inline JS injected by `<GoogleAnalytics />` to bootstrap gtag.
+ *
+ * When `navigator.webdriver === true` (Playwright/WebDriver), the script
+ * issues `gtag('set', 'traffic_type', 'internal')` before the first config
+ * call — GA4 then attaches `traffic_type=internal` to every subsequent
+ * event in the session, so the GA admin "Internal Traffic" data filter can
+ * exclude e2e runs without modifying any test code.
+ *
+ * `send_page_view: false` keeps the auto-pageview off; the React layer
+ * fires path-change page_views via `trackPageView` so we can strip magic-
+ * link tokens from `page_location`.
+ */
+export function buildAnalyticsBootstrapScript(measurementId: string): string {
+  return `
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    window.gtag = gtag;
+    gtag('js', new Date());
+    if (typeof navigator !== 'undefined' && navigator.webdriver === true) {
+      gtag('set', 'traffic_type', 'internal');
+    }
+    gtag('config', '${measurementId}', { send_page_view: false });
+  `;
+}
+
 export function sanitizeAnalyticsEventName(name: string): string {
   const sanitized = name
     .trim()
