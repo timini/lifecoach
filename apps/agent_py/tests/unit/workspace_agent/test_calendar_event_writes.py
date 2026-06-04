@@ -170,6 +170,25 @@ async def test_delete_calendar_event_calls_calendar_delete() -> None:
 
 
 @pytest.mark.asyncio
+async def test_edit_calendar_event_noops_when_all_guests_already_present() -> None:
+    calls: list[tuple[str, dict[str, Any]]] = []
+    deps = WorkspaceToolDeps(
+        store=_FakeStore(),  # type: ignore[arg-type]
+        uid="u1",
+        build_client=_build_calendar_client_factory(calls),
+    )
+    tool = create_edit_calendar_event_tool(deps)
+
+    # The only requested guest is already on the event (owner@example.com).
+    out = await _call_tool(tool, eventId="ev1", addAttendees=["Owner@Example.com"])
+
+    # No genuine change → don't patch (which would re-notify everyone).
+    assert out["status"] == "error"
+    assert out["code"] == "invalid_args"
+    assert [name for name, _ in calls] == ["get"]
+
+
+@pytest.mark.asyncio
 async def test_edit_calendar_event_rejects_start_without_end() -> None:
     calls: list[tuple[str, dict[str, Any]]] = []
     deps = WorkspaceToolDeps(

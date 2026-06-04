@@ -89,7 +89,18 @@ def create_edit_calendar_event_tool(deps: WorkspaceToolDeps) -> Any:
                     "message": get_result.message,
                 }
             raw = get_result.body if isinstance(get_result.body, dict) else {}
-            request_body["attendees"] = _merge_attendees(raw.get("attendees"), attendees)
+            existing_emails = _existing_attendee_emails(raw.get("attendees"))
+            new_emails = [e for e in attendees if e.lower() not in existing_emails]
+            # Only touch attendees when there's actually a new guest — otherwise
+            # the patch would re-notify everyone (sendUpdates=all) for no change.
+            if new_emails:
+                request_body["attendees"] = _merge_attendees(raw.get("attendees"), attendees)
+            elif not request_body:
+                return {
+                    "status": "error",
+                    "code": "invalid_args",
+                    "message": "Those guests are already on the event; nothing to change.",
+                }
 
         if not request_body:
             return {
@@ -140,6 +151,17 @@ def _normalise_emails(emails: list[str] | None) -> list[str]:
             out.append(clean)
             seen.add(key)
     return out
+
+
+def _existing_attendee_emails(existing: Any) -> set[str]:
+    """Lower-cased emails already on the event, for new-guest detection."""
+    emails: set[str] = set()
+    for attendee in existing or []:
+        if isinstance(attendee, dict):
+            email = attendee.get("email")
+            if isinstance(email, str) and email:
+                emails.add(email.lower())
+    return emails
 
 
 def _merge_attendees(existing: Any, add_emails: list[str]) -> list[dict[str, Any]]:
