@@ -31,7 +31,7 @@ const STATE_ADDITIONAL_TOOLS: Record<UserState, readonly ToolName[]> = {
   // browser's GIS popup.
   google_linked: ['connect_workspace'],
   // workspace_connected users get the full Google Workspace surface:
-  // 2 AgentTools wrapping the workspace sub-agent (read flows) + 4
+  // 2 AgentTools wrapping the workspace sub-agent (read flows) + 6
   // narrow write FunctionTools. `connect_workspace` stays available so
   // reconnects work if the user narrows scopes or the token gets revoked.
   workspace_connected: [
@@ -39,6 +39,8 @@ const STATE_ADDITIONAL_TOOLS: Record<UserState, readonly ToolName[]> = {
     'find_workspace',
     'archive_messages',
     'add_calendar_event',
+    'edit_calendar_event',
+    'delete_calendar_event',
     'add_task',
     'complete_task',
     'connect_workspace',

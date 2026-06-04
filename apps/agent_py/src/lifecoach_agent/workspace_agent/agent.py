@@ -2,8 +2,9 @@
 read-only internal tools. Wrapped by AgentTool entry points
 (triage_inbox, find_workspace) the main coach agent sees.
 
-The four write tools (archive_messages, add_calendar_event, add_task,
-complete_task) live in the sub-agent's toolset too, so a future
+The six write tools (archive_messages, add_calendar_event,
+edit_calendar_event, delete_calendar_event, add_task, complete_task)
+live in the sub-agent's toolset too, so a future
 "act inline" prompt can run end-to-end inside the sub-agent — but for
 now they're exposed on the main agent directly to keep single-step
 writes off the sub-agent's LLM hop.
@@ -21,6 +22,8 @@ from lifecoach_agent.workspace_agent.tools import (
     create_add_task_tool,
     create_archive_messages_tool,
     create_complete_task_tool,
+    create_delete_calendar_event_tool,
+    create_edit_calendar_event_tool,
     create_get_message_tool,
     create_get_messages_tool,
     create_list_calendars_tool,
@@ -115,6 +118,8 @@ def _build_write_tools(deps: WorkspaceToolDeps) -> list[Any]:
     return [
         create_archive_messages_tool(deps),
         create_add_calendar_event_tool(deps),
+        create_edit_calendar_event_tool(deps),
+        create_delete_calendar_event_tool(deps),
         create_add_task_tool(deps),
         create_complete_task_tool(deps),
     ]
