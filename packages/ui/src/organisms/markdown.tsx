@@ -8,6 +8,11 @@ export interface MarkdownProps {
   /** The raw markdown source. */
   children: string;
   className?: string;
+  /**
+   * Render paragraph-level markdown as inline text. Useful when markdown is
+   * nested in labels or other compact controls.
+   */
+  inline?: boolean;
 }
 
 /**
@@ -22,13 +27,16 @@ export interface MarkdownProps {
  * texting, not writing an article). HTML in markdown is sanitised by
  * react-markdown's default skipHtml.
  */
-export function Markdown({ children, className }: MarkdownProps) {
+export function Markdown({ children, className, inline = false }: MarkdownProps) {
+  const Wrapper = inline ? 'span' : 'div';
+
   return (
-    <div className={cn('whitespace-normal', className)}>
+    <Wrapper className={cn('whitespace-normal', inline && 'inline', className)}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          p: ({ children: c }) => <p className="my-2 first:mt-0 last:mb-0">{c}</p>,
+          p: ({ children: c }) =>
+            inline ? <>{c}</> : <p className="my-2 first:mt-0 last:mb-0">{c}</p>,
           strong: ({ children: c }) => <strong className="font-semibold">{c}</strong>,
           em: ({ children: c }) => <em className="italic">{c}</em>,
           a: ({ href, children: c }) => (
@@ -70,6 +78,6 @@ export function Markdown({ children, className }: MarkdownProps) {
       >
         {children}
       </ReactMarkdown>
-    </div>
+    </Wrapper>
   );
 }

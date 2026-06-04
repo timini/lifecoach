@@ -42,3 +42,19 @@ export const Multi: Story = {
 export const Disabled: Story = {
   args: { single: true, disabled: true },
 };
+
+export const MarkdownContent: Story = {
+  args: {
+    single: false,
+    question: 'Which **care tasks** feel realistic _today_?',
+    options: ['**Hydrate** now', '_Stretch_ for 2 minutes', 'Send the `check-in` text'],
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText('care tasks').tagName).toBe('STRONG');
+    await expect(canvas.getByText('today').tagName).toBe('EM');
+    await expect(canvas.getByText('Hydrate').tagName).toBe('STRONG');
+    await expect(canvas.getByText('Stretch').tagName).toBe('EM');
+    await expect(canvas.getByText('check-in').tagName).toBe('CODE');
+  },
+};

@@ -5,6 +5,7 @@ import { Button } from '../atoms/button';
 import { Checkbox } from '../atoms/checkbox';
 import { RadioGroup, RadioGroupItem } from '../atoms/radio-group';
 import { cn } from '../lib/utils';
+import { Markdown } from '../organisms/markdown';
 
 export interface ChoicePromptProps {
   question: string;
@@ -49,7 +50,7 @@ export function ChoicePrompt({
         className,
       )}
     >
-      <div className="text-sm font-semibold">{question}</div>
+      <Markdown className="text-sm font-semibold">{question}</Markdown>
       {single ? (
         <RadioGroup
           value={Array.from(chosen)[0] ?? ''}
@@ -68,7 +69,7 @@ export function ChoicePrompt({
                 )}
               >
                 <RadioGroupItem id={id} value={opt} disabled={disabled} />
-                {opt}
+                <Markdown inline>{opt}</Markdown>
               </label>
             );
           })}
@@ -93,7 +94,7 @@ export function ChoicePrompt({
                   onCheckedChange={() => toggle(opt)}
                   disabled={disabled}
                 />
-                {opt}
+                <Markdown inline>{opt}</Markdown>
               </label>
             );
           })}
