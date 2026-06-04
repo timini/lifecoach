@@ -16,6 +16,17 @@ export interface ChoicePromptProps {
   className?: string;
 }
 
+/**
+ * Markdown collapses a single newline into a space, so a multi-line prompt
+ * (e.g. the triage archive digest the agent sends as "Archive 7?\n• a\n• b…")
+ * would otherwise render as one run-on blob. Convert each newline into a
+ * Markdown hard break so the lines actually stack. `<br>` is in the inline
+ * allow-list, so this works in the compact label renderer.
+ */
+function withLineBreaks(markdown: string): string {
+  return markdown.replace(/\n/g, '  \n');
+}
+
 export function ChoicePrompt({
   question,
   options,
@@ -52,7 +63,7 @@ export function ChoicePrompt({
       )}
     >
       <Markdown inline className="text-sm font-semibold">
-        {question}
+        {withLineBreaks(question)}
       </Markdown>
       {single ? (
         <RadioGroup

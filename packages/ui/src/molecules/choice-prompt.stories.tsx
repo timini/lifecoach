@@ -74,6 +74,23 @@ export const MarkdownDoesNotRenderLinks: Story = {
   },
 };
 
+export const MultilineQuestionStacks: Story = {
+  args: {
+    single: true,
+    // The triage archive digest arrives as newline-separated bullet lines.
+    question:
+      'Archive 3 calendar notifications?\n• Antler — Interview confirmed\n• Yonder yoga\n• Run Club 10k',
+    options: ['Yes, archive all 3', 'Let me pick', 'Skip'],
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    // Each bullet must land on its own line (a <br>), not run together.
+    const root = canvas.getByTestId('choice-prompt');
+    await expect(root.querySelectorAll('br').length).toBeGreaterThanOrEqual(3);
+    await expect(canvas.getByText(/Run Club 10k/)).toBeTruthy();
+  },
+};
+
 export const Disabled: Story = {
   args: { single: true, disabled: true },
 };
