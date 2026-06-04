@@ -17,7 +17,7 @@ from google.adk.tools.tool_context import ToolContext
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from lifecoach_agent.contracts.models import TriageReport
-from lifecoach_agent.workspace_agent.agent import create_workspace_agent
+from lifecoach_agent.workspace_agent.agent import TRIAGE_INBOX_AGENT_MODEL, create_workspace_agent
 from lifecoach_agent.workspace_agent.bridged_agent_tool import BridgedAgentTool
 from lifecoach_agent.workspace_agent.tools._deps import WorkspaceToolDeps
 
@@ -37,7 +37,7 @@ The parent will hand you a JSON message with an optional `since` key (Gmail-styl
 
 Procedure:
 1. Call list_inbox with the since value (e.g. since="1d") to get inbox-only message ids + snippets. list_inbox is already scoped to the visible Gmail inbox and de-duplicates ids for you.
-2. Build a seen_message_ids set from that result. For each distinct id, call get_message exactly once (e.g. id=<the id from step 1>) to read the decoded body and headers. Parallel calls are fine, but duplicate get_message calls for the same id in one triage run are forbidden.
+2. Call get_messages once with ALL the distinct ids from step 1 (e.g. ids=[<id1>, <id2>, ...]) to read every decoded body + headers in a single bulk call. Do NOT loop get_message per id — that wastes round-trips. Use get_message only to refetch one specific id that get_messages reported in its `errors`.
 3. Classify EVERY distinct message into exactly one bucket:
    - noise: newsletters, automated reports, marketing — no action
    - actions: the user must do something — distil into a 1-line task
@@ -56,7 +56,7 @@ matching this schema:
 - events:  id, threadId?, from, subject, receivedAt, snippet, proposedStart, proposedEnd?, location?
 - info:    id, threadId?, from, subject, receivedAt, snippet, note
 
-For EVERY bucket entry, copy `from`, `subject`, `receivedAt` (the message Date header from get_message), and a short `snippet` from the projected message. These are required and must be non-empty — the parent uses them verbatim in user-facing confirmation prompts (especially the archive prompt) so the user can decide without opening Gmail. If a header is genuinely empty, use a short placeholder like "(no subject)" rather than an empty string.
+For EVERY bucket entry, copy `from`, `subject`, `receivedAt` (the message Date header from get_messages), and a short `snippet` from the projected message. These are required and must be non-empty — the parent uses them verbatim in user-facing confirmation prompts (especially the archive prompt) so the user can decide without opening Gmail. If a header is genuinely empty, use a short placeholder like "(no subject)" rather than an empty string.
 
 Be terse. The parent agent will paraphrase."""
 
@@ -106,6 +106,7 @@ def create_triage_inbox_tool(
         description=_TRIAGE_DESCRIPTION,
         instruction=TRIAGE_INBOX_INSTRUCTION,
         input_schema=TriageInboxInput,
+        model=TRIAGE_INBOX_AGENT_MODEL,
     )
     return TriageInboxBridgedAgentTool(
         agent=agent, event_queue=event_queue, skip_summarization=False

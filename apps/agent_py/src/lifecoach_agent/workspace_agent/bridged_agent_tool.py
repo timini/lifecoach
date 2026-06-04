@@ -28,10 +28,10 @@ called those tools, and Gemini would either reject the history or hunt
 for tools the main agent does not have.
 
 Inner ``functionResponse`` payloads are also redacted before persistence
-(see :func:`_redact_inner_response`): ``get_message`` returns up to ~4
-KB of decoded email body that we do not want copied into the parent
-chat session. The badge only needs status/error; the body is private to
-the sub-agent's reasoning loop.
+(see :func:`_redact_inner_response`): ``get_message`` / ``get_messages``
+return decoded email bodies that we do not want copied into the parent
+chat session. The badge only needs status/error/count; the bodies are
+private to the sub-agent's reasoning loop.
 """
 
 from __future__ import annotations

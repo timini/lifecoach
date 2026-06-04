@@ -1,4 +1,4 @@
-"""Internal sub-agent tools (5 reads) + main-facing writes (4)."""
+"""Internal sub-agent tools (7 reads) + main-facing writes (4)."""
 
 from lifecoach_agent.workspace_agent.tools.add_calendar_event import (
     ADD_CALENDAR_EVENT_TOOL_NAME,
@@ -19,6 +19,10 @@ from lifecoach_agent.workspace_agent.tools.complete_task import (
 from lifecoach_agent.workspace_agent.tools.get_message import (
     GET_MESSAGE_TOOL_NAME,
     create_get_message_tool,
+)
+from lifecoach_agent.workspace_agent.tools.get_messages import (
+    GET_MESSAGES_TOOL_NAME,
+    create_get_messages_tool,
 )
 from lifecoach_agent.workspace_agent.tools.list_calendars import (
     LIST_CALENDARS_TOOL_NAME,
@@ -47,6 +51,7 @@ __all__ = [
     "ARCHIVE_MESSAGES_TOOL_NAME",
     "COMPLETE_TASK_TOOL_NAME",
     "GET_MESSAGE_TOOL_NAME",
+    "GET_MESSAGES_TOOL_NAME",
     "LIST_CALENDARS_TOOL_NAME",
     "LIST_EVENTS_TOOL_NAME",
     "LIST_INBOX_TOOL_NAME",
@@ -57,6 +62,7 @@ __all__ = [
     "create_archive_messages_tool",
     "create_complete_task_tool",
     "create_get_message_tool",
+    "create_get_messages_tool",
     "create_list_calendars_tool",
     "create_list_events_tool",
     "create_list_inbox_tool",
