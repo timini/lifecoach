@@ -129,7 +129,7 @@ def test_notion_cheatsheet_only_when_notion_connected_flag() -> None:
 def test_notion_and_workspace_cheatsheets_coexist() -> None:
     """A user with both integrations gets both cheatsheets."""
     out = build_instruction(_base_ctx(user_state="workspace_connected", notion_connected=True))
-    assert "WORKSPACE — six narrow tools" in out
+    assert "WORKSPACE — nine user-facing tools" in out
     assert "NOTION — your TODO source of truth" in out
 
 
