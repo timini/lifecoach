@@ -2,7 +2,7 @@
 
 User is signed in with Google but has NOT granted Workspace scopes.
 Tool list per `state/policies.py`: `connect_workspace` is available
-(it's the OAuth-scope-grant flow), but the eight workspace tools are
+(it's the OAuth-scope-grant flow), but the nine workspace tools are
 NOT — they only exist for `workspace_connected`. This is the state
 the WORKSPACE-ASK TRIGGER routes to `connect_workspace` on workspace
 asks.

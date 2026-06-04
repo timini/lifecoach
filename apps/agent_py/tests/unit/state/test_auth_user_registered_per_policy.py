@@ -48,7 +48,7 @@ def test_pre_google_states_have_auth_user_in_policy(state: UserState) -> None:
 def test_post_google_states_do_not_have_auth_user(state: UserState) -> None:
     """Already-signed-in users should not see auth_user offered — firing
     it would just show the account picker again. They have
-    connect_workspace / the eight workspace tools instead."""
+    connect_workspace / the nine workspace tools instead."""
     tools = UserStateMachine(state).policy().tools
     assert "auth_user" not in tools, f"{state} must not expose auth_user"
 

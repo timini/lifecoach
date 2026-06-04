@@ -406,6 +406,10 @@ export function labelForToolCall(name: string, args: unknown): string {
     }
     case 'complete_task':
       return 'marking task done';
+    case 'draft_email': {
+      const subject = typeof a.subject === 'string' ? a.subject : '';
+      return subject ? `drafting email: ${subject.slice(0, 60)}` : 'drafting an email';
+    }
     case 'update_user_profile': {
       const path = typeof a.path === 'string' ? a.path : '';
       return path ? `remembering ${path}` : 'remembering that';

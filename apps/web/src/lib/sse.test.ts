@@ -465,6 +465,9 @@ describe('labelForToolCall', () => {
     expect(labelForToolCall('add_task', { title: 'Reply to Sarah' })).toContain('Reply to Sarah');
     expect(labelForToolCall('add_task', {})).toContain('task');
 
+    expect(labelForToolCall('draft_email', { subject: 'Project sync' })).toContain('Project sync');
+    expect(labelForToolCall('draft_email', {})).toContain('drafting');
+
     expect(labelForToolCall('complete_task', { id: 't1' })).toContain('done');
   });
 });
