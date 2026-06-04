@@ -158,6 +158,39 @@ async def test_draft_email_rejects_threadid_without_reply_headers() -> None:
 
 
 @pytest.mark.asyncio
+async def test_draft_email_synthesises_references_from_in_reply_to() -> None:
+    drafts = _Drafts()
+
+    def build_client(service: str, access_token: str) -> Any:
+        return _Gmail(drafts)
+
+    tool = create_draft_email_tool(
+        WorkspaceToolDeps(
+            store=_FakeStore(),  # type: ignore[arg-type]
+            uid="u1",
+            build_client=build_client,
+        )
+    )
+
+    # Caller passes only the Message-ID; References must be synthesised so
+    # Gmail gets both threading headers, not just one.
+    out = await _call_tool(
+        tool,
+        to=["friend@example.com"],
+        subject="Re: Hi",
+        body="reply",
+        threadId="thr-1",
+        inReplyTo="<orig@example.com>",
+    )
+
+    assert out["status"] == "ok"
+    assert drafts.last_kwargs is not None
+    parsed = _decode_raw(drafts.last_kwargs["body"]["message"]["raw"])
+    assert parsed["In-Reply-To"] == "<orig@example.com>"
+    assert parsed["References"] == "<orig@example.com>"
+
+
+@pytest.mark.asyncio
 async def test_draft_email_rejects_header_injection() -> None:
     drafts = _Drafts()
 

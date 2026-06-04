@@ -117,19 +117,22 @@ def create_draft_email_tool(deps: WorkspaceToolDeps) -> Any:
             references: Optional References header when drafting a reply.
         """
         # Gmail only threads a draft onto an existing conversation when the
-        # raw message carries In-Reply-To / References headers (a bare
-        # threadId is orphaned or rejected). Triage hands the model a
-        # threadId but not the source Message-ID, so require the reply
-        # headers rather than silently producing a non-threading draft.
-        if threadId and not (inReplyTo or references):
+        # raw message carries BOTH In-Reply-To and References headers (a bare
+        # threadId, or only one header, is orphaned or rejected). Require the
+        # source Message-ID via inReplyTo, and synthesise References from it
+        # when the caller didn't pass an explicit chain — for a first reply
+        # References is just the message being replied to.
+        if threadId and not inReplyTo:
             return {
                 "status": "error",
                 "code": "invalid_args",
                 "message": (
-                    "To thread a reply draft, pass inReplyTo (and references) from the "
-                    "original message — get_message exposes them — not just threadId."
+                    "To thread a reply draft, pass inReplyTo (the original message's "
+                    "Message-ID — get_message exposes it), not just threadId."
                 ),
             }
+        if threadId and not references:
+            references = inReplyTo
 
         try:
             raw = _encode_rfc2822_message(
