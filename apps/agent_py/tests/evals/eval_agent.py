@@ -114,6 +114,11 @@ def _tool_stubs() -> dict[str, Any]:
                 "status": "completed",
             },
         },
+        "draft_email": {
+            "status": "ok",
+            "draftId": "draft-1",
+            "messageId": "msg-1",
+        },
         # ---- choice tools (turn-ending) ----
         "ask_single_choice_question": {
             "status": "shown",
@@ -194,7 +199,7 @@ def _make_stub_tools_for_state(state: UserState) -> list[Any]:
       - anonymous / email_pending / email_verified: + auth_user
       - google_linked / workspace_connected: + connect_workspace
         (reconnect path stays available)
-      - workspace_connected: + the eight workspace tools
+      - workspace_connected: + the nine workspace tools
     """
     from google.adk.tools import FunctionTool
 
@@ -242,7 +247,7 @@ def _make_stub_tools_for_state(state: UserState) -> list[Any]:
 
         tools.append(FunctionTool(connect_workspace))
 
-    # --- workspace_connected gets the eight workspace tools --------
+    # --- workspace_connected gets the nine workspace tools --------
     if state == "workspace_connected":
 
         async def triage_inbox(since: str | None = None) -> dict[str, Any]:
@@ -304,6 +309,20 @@ def _make_stub_tools_for_state(state: UserState) -> list[Any]:
             """Tasks patch — eval stub."""
             return {"status": "stubbed"}
 
+        async def draft_email(
+            to: list[str],
+            subject: str,
+            body: str,
+            cc: list[str] | None = None,
+            bcc: list[str] | None = None,
+            threadId: str | None = None,  # noqa: N803
+            replyTo: str | None = None,  # noqa: N803
+            inReplyTo: str | None = None,  # noqa: N803
+            references: str | None = None,
+        ) -> dict[str, Any]:
+            """Gmail draft create — eval stub."""
+            return {"status": "stubbed"}
+
         tools.extend(
             [
                 FunctionTool(triage_inbox),
@@ -314,6 +333,7 @@ def _make_stub_tools_for_state(state: UserState) -> list[Any]:
                 FunctionTool(delete_calendar_event),
                 FunctionTool(add_task),
                 FunctionTool(complete_task),
+                FunctionTool(draft_email),
             ]
         )
 

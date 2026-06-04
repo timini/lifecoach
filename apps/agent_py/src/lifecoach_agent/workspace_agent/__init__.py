@@ -12,6 +12,7 @@ Returned tools, in order:
   6. delete_calendar_event(...) — FunctionTool — direct, no LLM hop
   7. add_task(...)            — FunctionTool — direct, no LLM hop
   8. complete_task(id)        — FunctionTool — direct, no LLM hop
+  9. draft_email(...)         — FunctionTool — direct, no LLM hop
 """
 
 from __future__ import annotations
@@ -58,12 +59,14 @@ from lifecoach_agent.workspace_agent.tools import (
     ARCHIVE_MESSAGES_TOOL_NAME,
     COMPLETE_TASK_TOOL_NAME,
     DELETE_CALENDAR_EVENT_TOOL_NAME,
+    DRAFT_EMAIL_TOOL_NAME,
     EDIT_CALENDAR_EVENT_TOOL_NAME,
     create_add_calendar_event_tool,
     create_add_task_tool,
     create_archive_messages_tool,
     create_complete_task_tool,
     create_delete_calendar_event_tool,
+    create_draft_email_tool,
     create_edit_calendar_event_tool,
 )
 from lifecoach_agent.workspace_agent.tools._deps import WorkspaceToolDeps
@@ -90,7 +93,7 @@ class WorkspaceModuleDeps:
 
 
 def create_workspace_tools(deps: WorkspaceModuleDeps) -> list[Any]:
-    """Build the 8 workspace-facing tools (2 AgentTools + 6 narrow writes)
+    """Build the 9 workspace-facing tools (2 AgentTools + 7 narrow writes)
     for the main agent. Closes over `deps.uid` + `deps.store` so the LLM
     never sees auth values."""
     main_tool_deps = WorkspaceToolDeps(
@@ -106,10 +109,11 @@ def create_workspace_tools(deps: WorkspaceModuleDeps) -> list[Any]:
         create_delete_calendar_event_tool(main_tool_deps),
         create_add_task_tool(main_tool_deps),
         create_complete_task_tool(main_tool_deps),
+        create_draft_email_tool(main_tool_deps),
     ]
 
 
-# Names of the 8 tools the factory returns, in order. Importable for the
+# Names of the 9 tools the factory returns, in order. Importable for the
 # state policy + tests.
 WORKSPACE_TOOL_NAMES: tuple[str, ...] = (
     TRIAGE_INBOX_TOOL_NAME,
@@ -120,6 +124,7 @@ WORKSPACE_TOOL_NAMES: tuple[str, ...] = (
     DELETE_CALENDAR_EVENT_TOOL_NAME,
     ADD_TASK_TOOL_NAME,
     COMPLETE_TASK_TOOL_NAME,
+    DRAFT_EMAIL_TOOL_NAME,
 )
 
 
@@ -129,6 +134,7 @@ __all__ = [
     "ARCHIVE_MESSAGES_TOOL_NAME",
     "COMPLETE_TASK_TOOL_NAME",
     "DELETE_CALENDAR_EVENT_TOOL_NAME",
+    "DRAFT_EMAIL_TOOL_NAME",
     "EDIT_CALENDAR_EVENT_TOOL_NAME",
     "FIND_WORKSPACE_TOOL_NAME",
     "MAX_RESPONSE_BYTES",
@@ -156,6 +162,7 @@ __all__ = [
     "create_archive_messages_tool",
     "create_complete_task_tool",
     "create_delete_calendar_event_tool",
+    "create_draft_email_tool",
     "create_edit_calendar_event_tool",
     "create_find_workspace_tool",
     "create_triage_inbox_tool",

@@ -45,7 +45,7 @@ ToolName = Literal[
     "memory_save",
     "connect_workspace",
     # Workspace surface (workspace_connected only). 2 AgentTools wrapping
-    # the workspace sub-agent + 6 narrow write FunctionTools.
+    # the workspace sub-agent + 7 narrow write FunctionTools.
     "triage_inbox",
     "find_workspace",
     "archive_messages",
@@ -54,6 +54,7 @@ ToolName = Literal[
     "delete_calendar_event",
     "add_task",
     "complete_task",
+    "draft_email",
     "upgrade_to_pro",
 ]
 

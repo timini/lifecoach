@@ -1,0 +1,47 @@
+{
+  "eval_set_id": "draft_email_creates_gmail_draft",
+  "description": "User explicitly asks to draft an email. Agent must create a Gmail draft with draft_email, not send mail and not ask for Workspace lookup first.",
+  "eval_cases": [
+    {
+      "eval_id": "draft_email_creates_gmail_draft",
+      "conversation": [
+        {
+          "invocation_id": "draft_email_creates_gmail_draft-1",
+          "user_content": {
+            "parts": [
+              {
+                "text": "Draft an email to alex@example.com saying I can make the project sync tomorrow at 2pm and I'll bring the notes."
+              }
+            ],
+            "role": "user"
+          },
+          "final_response": {
+            "parts": [{ "text": "I've drafted that email for Alex." }],
+            "role": "model"
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "id": "adk-tool-use-id",
+                "args": {
+                  "to": ["alex@example.com"],
+                  "subject": "Project sync",
+                  "body": "Hi Alex,\n\nI can make the project sync tomorrow at 2pm, and I'll bring the notes.\n\nBest"
+                },
+                "name": "draft_email"
+              }
+            ],
+            "intermediate_responses": []
+          }
+        }
+      ],
+      "session_input": {
+        "app_name": "lifecoach_eval",
+        "user_id": "eval-user",
+        "state": {
+          "_lifecoach_user_state": "workspace_connected"
+        }
+      }
+    }
+  ]
+}
