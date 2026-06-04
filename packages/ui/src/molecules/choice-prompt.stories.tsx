@@ -42,3 +42,15 @@ export const Multi: Story = {
 export const Disabled: Story = {
   args: { single: true, disabled: true },
 };
+
+export const MultiWithMarkdown: Story = {
+  args: {
+    single: false,
+    question: 'Which **focus supports** should we try today?',
+    options: [
+      '**Pomodoro**: 25 minutes on, 5 minutes off',
+      'Write a short `next action` before starting',
+      '[Take a walk](https://example.com) after the first block',
+    ],
+  },
+};
