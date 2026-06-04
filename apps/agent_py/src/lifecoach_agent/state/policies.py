@@ -71,7 +71,8 @@ _STATE_ADDITIONAL_TOOLS: dict[UserState, tuple[ToolName, ...]] = {
 _WORKSPACE_ASK_TRIGGER_ANON = (
     "WORKSPACE-ASK TRIGGER (CRITICAL — turn-ending behaviour): if the user "
     "asks for ANYTHING that requires Google Workspace access — reading or "
-    "triaging email, checking calendar, listing or completing tasks, adding "
+    "triaging email, drafting an email, checking calendar, listing or "
+    "completing tasks, adding "
     'events — your FIRST reply must call `auth_user` with `mode="google"`. '
     "Do not ask clarifying questions, do not propose strategies, do not "
     "explore intent. Say nothing before the tool call; the auth widget IS "

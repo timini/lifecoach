@@ -116,6 +116,21 @@ def create_draft_email_tool(deps: WorkspaceToolDeps) -> Any:
             inReplyTo: Optional RFC 2822 Message-ID when drafting a reply.
             references: Optional References header when drafting a reply.
         """
+        # Gmail only threads a draft onto an existing conversation when the
+        # raw message carries In-Reply-To / References headers (a bare
+        # threadId is orphaned or rejected). Triage hands the model a
+        # threadId but not the source Message-ID, so require the reply
+        # headers rather than silently producing a non-threading draft.
+        if threadId and not (inReplyTo or references):
+            return {
+                "status": "error",
+                "code": "invalid_args",
+                "message": (
+                    "To thread a reply draft, pass inReplyTo (and references) from the "
+                    "original message — get_message exposes them — not just threadId."
+                ),
+            }
+
         try:
             raw = _encode_rfc2822_message(
                 to=to,

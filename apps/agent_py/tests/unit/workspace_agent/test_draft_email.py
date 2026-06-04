@@ -111,6 +111,8 @@ async def test_draft_email_calls_gmail_drafts_create_with_encoded_message() -> N
         subject="Hello",
         body="Draft body",
         threadId="thr-1",
+        inReplyTo="<orig@example.com>",
+        references="<orig@example.com>",
     )
 
     assert out == {
@@ -126,7 +128,33 @@ async def test_draft_email_calls_gmail_drafts_create_with_encoded_message() -> N
     parsed = _decode_raw(request_body["message"]["raw"])
     assert parsed["To"] == "friend@example.com"
     assert parsed["Subject"] == "Hello"
+    assert parsed["In-Reply-To"] == "<orig@example.com>"
     assert parsed.get_content().replace("\r\n", "\n") == "Draft body\n"
+
+
+@pytest.mark.asyncio
+async def test_draft_email_rejects_threadid_without_reply_headers() -> None:
+    drafts = _Drafts()
+
+    def build_client(service: str, access_token: str) -> Any:
+        return _Gmail(drafts)
+
+    tool = create_draft_email_tool(
+        WorkspaceToolDeps(
+            store=_FakeStore(),  # type: ignore[arg-type]
+            uid="u1",
+            build_client=build_client,
+        )
+    )
+
+    # threadId alone can't thread the draft → reject, don't create an orphan.
+    out = await _call_tool(
+        tool, to=["friend@example.com"], subject="Re: Hi", body="reply", threadId="thr-1"
+    )
+
+    assert out["status"] == "error"
+    assert out["code"] == "invalid_args"
+    assert drafts.last_kwargs is None
 
 
 @pytest.mark.asyncio
