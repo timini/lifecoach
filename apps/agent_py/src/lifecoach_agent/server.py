@@ -1099,6 +1099,8 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                 "ask_multiple_choice_question",
                 "auth_user",
                 "connect_workspace",
+                "connect_notion",
+                "show_capabilities",
                 "upgrade_to_pro",
             }
 

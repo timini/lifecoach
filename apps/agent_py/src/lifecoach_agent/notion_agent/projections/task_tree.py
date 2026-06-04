@@ -55,7 +55,10 @@ def build_task_tree(
     top_level: dict[str, list[NotionTaskNode]] = {}
     for node in nodes.values():
         parent_id = node.task.parentId
-        if parent_id and parent_id in nodes:
+        # `parent_id != node.task.id` guards a self-pointing parent (a Notion
+        # data glitch / manual API write) — attaching a node to itself would
+        # make model_dump recurse forever.
+        if parent_id and parent_id != node.task.id and parent_id in nodes:
             nodes[parent_id].children.append(node)
             continue
         bucket = node.task.project or ORPHAN_PROJECT_KEY

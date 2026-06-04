@@ -62,7 +62,7 @@ def create_update_notion_task_tool(deps: NotionToolDeps) -> Any:
         if not id or not isinstance(id, str):
             return {"status": "error", "code": "bad_request", "message": "id required"}
 
-        if status is not None and status not in _STATUS_WHITELIST:
+        if status and status not in _STATUS_WHITELIST:
             return {
                 "status": "error",
                 "code": "bad_request",
@@ -72,17 +72,19 @@ def create_update_notion_task_tool(deps: NotionToolDeps) -> Any:
                 ),
             }
 
+        # Empty string is a no-op for every field (consistent with title) —
+        # the model passing "" must not silently wipe an existing value.
         properties: dict[str, Any] = {}
-        if status is not None:
+        if status:
             properties[PROP_STATUS] = select_property(status)
-        if priority is not None:
-            properties[PROP_PRIORITY] = select_property(priority or None)
-        if due is not None:
-            properties[PROP_DUE] = date_property(due or None)
-        if title is not None and title:
+        if priority:
+            properties[PROP_PRIORITY] = select_property(priority)
+        if due:
+            properties[PROP_DUE] = date_property(due)
+        if title:
             properties[PROP_TITLE] = title_property(title)
-        if project is not None:
-            properties[PROP_PROJECT] = select_property(project or None)
+        if project:
+            properties[PROP_PROJECT] = select_property(project)
 
         if notes is not None:
             text: str

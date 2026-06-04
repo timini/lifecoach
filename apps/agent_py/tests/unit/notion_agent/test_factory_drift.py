@@ -35,6 +35,16 @@ def test_factory_returns_expected_tool_count() -> None:
         deps = make_deps(fs, http)
         tools = create_notion_tools(deps)
         assert len(tools) == 5
+        # The factory's *runtime* tool names (what the LLM actually calls)
+        # must match NOTION_TOOL_NAMES in order — a dropped `__name__ =`
+        # assignment or wrong agent name would slip past the constants-only
+        # check below.
+        from google.adk.tools.agent_tool import AgentTool
+
+        actual_names = tuple(
+            tool.agent.name if isinstance(tool, AgentTool) else tool.name for tool in tools
+        )
+        assert actual_names == NOTION_TOOL_NAMES
     finally:
         # Best-effort cleanup; never actually used so no awaits needed.
         del http

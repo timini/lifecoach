@@ -206,3 +206,105 @@ async def test_search_tasks_rejects_empty_query() -> None:
         tool = create_search_tasks_tool(deps)
         out = await _invoke(tool, query="")
     assert out == {"status": "error", "code": "bad_request", "message": "query required"}
+
+
+@pytest.mark.asyncio
+async def test_list_tasks_paginates_across_pages() -> None:
+    """A workspace with >1 page of open tasks is fully collected via
+    next_cursor — not silently truncated at the first page."""
+    fs = FakeFirestore()
+    seed_token(fs)
+    seed_config(fs, database_id="db-1")
+
+    cursors_seen: list[str | None] = []
+
+    async with httpx.AsyncClient() as http:
+        with respx.mock(assert_all_called=False) as mock:
+
+            def _handler(request: httpx.Request) -> httpx.Response:
+                import json as _json
+
+                body = _json.loads(request.content)
+                cursors_seen.append(body.get("start_cursor"))
+                if body.get("start_cursor") is None:
+                    return httpx.Response(
+                        200,
+                        json={
+                            "results": [page_obj(id="p1", title="first")],
+                            "has_more": True,
+                            "next_cursor": "cur-2",
+                        },
+                    )
+                return httpx.Response(
+                    200,
+                    json={"results": [page_obj(id="p2", title="second")], "has_more": False},
+                )
+
+            mock.post(f"{NOTION_API_BASE}/v1/databases/db-1/query").mock(side_effect=_handler)
+            deps = make_deps(fs, http)
+            out = await _invoke(create_list_tasks_tool(deps))
+
+    assert out["status"] == "ok"
+    assert [t["id"] for t in out["tasks"]] == ["p1", "p2"]
+    assert out["hasMore"] is False
+    assert cursors_seen == [None, "cur-2"]
+
+
+@pytest.mark.asyncio
+async def test_list_tasks_stops_at_limit_and_reports_has_more() -> None:
+    """When the caller's limit is reached but Notion still has rows, we
+    stop and report hasMore=true rather than fetching forever."""
+    fs = FakeFirestore()
+    seed_token(fs)
+    seed_config(fs, database_id="db-1")
+
+    async with httpx.AsyncClient() as http:
+        with respx.mock(assert_all_called=False) as mock:
+            mock.post(f"{NOTION_API_BASE}/v1/databases/db-1/query").respond(
+                200,
+                json={
+                    "results": [page_obj(id="p1", title="a"), page_obj(id="p2", title="b")],
+                    "has_more": True,
+                    "next_cursor": "cur-2",
+                },
+            )
+            deps = make_deps(fs, http)
+            out = await _invoke(create_list_tasks_tool(deps), limit=2)
+
+    assert [t["id"] for t in out["tasks"]] == ["p1", "p2"]
+    assert out["hasMore"] is True
+
+
+@pytest.mark.asyncio
+async def test_search_tasks_paginates_across_pages() -> None:
+    fs = FakeFirestore()
+    seed_token(fs)
+    seed_config(fs, database_id="db-1")
+
+    async with httpx.AsyncClient() as http:
+        with respx.mock(assert_all_called=False) as mock:
+
+            def _handler(request: httpx.Request) -> httpx.Response:
+                import json as _json
+
+                body = _json.loads(request.content)
+                if body.get("start_cursor") is None:
+                    return httpx.Response(
+                        200,
+                        json={
+                            "results": [page_obj(id="s1", title="auth one")],
+                            "has_more": True,
+                            "next_cursor": "cur-2",
+                        },
+                    )
+                return httpx.Response(
+                    200,
+                    json={"results": [page_obj(id="s2", title="auth two")], "has_more": False},
+                )
+
+            mock.post(f"{NOTION_API_BASE}/v1/databases/db-1/query").mock(side_effect=_handler)
+            deps = make_deps(fs, http)
+            out = await _invoke(create_search_tasks_tool(deps), query="auth")
+
+    assert [t["id"] for t in out["tasks"]] == ["s1", "s2"]
+    assert out["hasMore"] is False

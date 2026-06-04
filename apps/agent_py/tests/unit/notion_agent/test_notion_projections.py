@@ -190,6 +190,20 @@ def test_tree_child_pointing_at_done_parent_surfaces_top_level() -> None:
     assert apollo[0].children == []
 
 
+def test_tree_self_parent_does_not_recurse() -> None:
+    """A task whose parentId points at itself (a Notion data glitch) must
+    NOT be attached to its own children list — that would make model_dump
+    recurse forever. It surfaces as a normal top-level task instead."""
+    pages = [_proj(id="loop", project="Apollo", parent_id="loop")]
+    tree = build_task_tree(pages, now_iso="2026-05-14T00:00:00Z")
+    apollo = tree.projects["Apollo"]
+    assert len(apollo) == 1
+    assert apollo[0].task.id == "loop"
+    assert apollo[0].children == []
+    # Serialisation must complete without a RecursionError.
+    assert tree.model_dump_json()
+
+
 def test_tree_deep_three_level_nesting() -> None:
     """Notion relations allow arbitrary depth. The tree must recurse."""
     pages = [

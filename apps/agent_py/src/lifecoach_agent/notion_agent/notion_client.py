@@ -90,7 +90,9 @@ def _truncate_body(body: Any) -> tuple[Any, bool]:
     import json as _json
 
     try:
-        size = len(_json.dumps(body))
+        # Measure actual UTF-8 bytes — a char count under-reports multi-byte
+        # (non-ASCII) payloads by up to 4×, defeating the MAX_RESPONSE_BYTES cap.
+        size = len(_json.dumps(body).encode("utf-8"))
     except (TypeError, ValueError):
         return body, False
     return body, size > MAX_RESPONSE_BYTES

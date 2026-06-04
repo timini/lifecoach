@@ -43,6 +43,17 @@ export type ToolName =
   | 'add_task'
   | 'complete_task'
   | 'draft_email'
+  // Notion surface. Orthogonal capability — registered when the user has
+  // connected Notion, regardless of UserState. 1 AgentTool wrapping the
+  // Notion sub-agent + 4 narrow write FunctionTools + a connect directive.
+  | 'connect_notion'
+  | 'notion_review_tasks'
+  | 'add_notion_task'
+  | 'update_notion_task'
+  | 'set_notion_task_parent'
+  | 'complete_notion_task'
+  // Capability picker (chat-rendered) — pure UI directive.
+  | 'show_capabilities'
   | 'upgrade_to_pro';
 
 /**
@@ -55,7 +66,10 @@ export type UIAffordance =
   | { kind: 'resend_verification_button' }
   | { kind: 'sign_in_with_google_button' }
   | { kind: 'connect_workspace_button' }
-  | { kind: 'workspace_connected_indicator' };
+  | { kind: 'workspace_connected_indicator' }
+  | { kind: 'connect_notion_button' }
+  | { kind: 'notion_connected_indicator' }
+  | { kind: 'capability_picker' };
 
 export interface StatePolicy {
   state: UserState;

@@ -147,9 +147,7 @@ async def test_discovers_granted_parent_pages_via_search_when_empty() -> None:
                 return httpx.Response(200, json={"id": "db-new"})
 
             mock.post(f"{NOTION_API_BASE}/v1/databases").mock(side_effect=_create_handler)
-            mock.patch(f"{NOTION_API_BASE}/v1/databases/db-new").respond(
-                200, json={"id": "db-new"}
-            )
+            mock.patch(f"{NOTION_API_BASE}/v1/databases/db-new").respond(200, json={"id": "db-new"})
             deps = make_deps(fs, http)
             db_id = await get_or_create_database(deps)
 
@@ -193,6 +191,25 @@ async def test_search_fallback_when_create_returns_bad_request() -> None:
     assert db_id == "db-found"
     cfg = await deps.config_store.get("u1")
     assert cfg is not None and cfg.databaseId == "db-found"
+
+
+@pytest.mark.asyncio
+async def test_reraises_when_create_fails_and_search_finds_nothing() -> None:
+    """Create returns 400 AND the search fallback finds no existing DB →
+    re-raise the original DatabaseUnavailableError rather than hang."""
+    fs = FakeFirestore()
+    seed_token(fs)
+    seed_config(fs, database_id=None, granted_parent_pages=["page-a"])
+
+    async with httpx.AsyncClient() as http:
+        with respx.mock(assert_all_called=False) as mock:
+            mock.post(f"{NOTION_API_BASE}/v1/databases").respond(400, json={"message": "duplicate"})
+            mock.post(f"{NOTION_API_BASE}/v1/search").respond(200, json={"results": []})
+            deps = make_deps(fs, http)
+            with pytest.raises(DatabaseUnavailableError) as ei:
+                await get_or_create_database(deps)
+
+    assert ei.value.code == "bad_request"
 
 
 @pytest.mark.asyncio

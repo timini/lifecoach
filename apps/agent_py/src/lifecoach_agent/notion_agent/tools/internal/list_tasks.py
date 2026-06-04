@@ -38,14 +38,18 @@ def _status_filter(status: str | None) -> dict[str, Any]:
 def create_list_tasks_tool(deps: NotionToolDeps) -> Any:
     async def list_tasks(
         status: str = "open",
-        limit: int = 50,
+        limit: int = 200,
     ) -> dict[str, Any]:
         """List tasks from the Lifecoach Tasks database.
+
+        Pages through Notion (100 rows/page) until `limit` tasks are
+        collected or the database is exhausted — so a workspace with more
+        than 100 open tasks isn't silently truncated.
 
         Args:
             status: One of "open" (default — To Do / In Progress /
                 Waiting), "all", or a specific status literal.
-            limit: Max tasks to return (1–100). Default 50.
+            limit: Max tasks to return (1–500). Default 200.
 
         Returns:
             {status: "ok", tasks: [...], hasMore: bool}
@@ -56,41 +60,61 @@ def create_list_tasks_tool(deps: NotionToolDeps) -> Any:
         except DatabaseUnavailableError as err:
             return {"status": "error", "code": err.code, "message": str(err)}
 
-        body: dict[str, Any] = {
-            "page_size": max(1, min(int(limit), 100)),
-            "sorts": [{"timestamp": "last_edited_time", "direction": "descending"}],
-        }
+        target = max(1, min(int(limit), 500))
         flt = _status_filter(status)
-        if flt:
-            body["filter"] = flt
 
-        result = await run_notion(
-            store=deps.store,
-            uid=deps.uid,
-            tool_name=LIST_TASKS_TOOL_NAME,
-            method="POST",
-            path=f"/v1/databases/{db_id}/query",
-            body=body,
-            http=deps.http,
-            log=deps.log,
-        )
+        collected: list[dict[str, Any]] = []
+        cursor: str | None = None
+        has_more = False
+        truncated = False
+        while len(collected) < target:
+            body: dict[str, Any] = {
+                "page_size": min(target - len(collected), 100),
+                "sorts": [{"timestamp": "last_edited_time", "direction": "descending"}],
+            }
+            if flt:
+                body["filter"] = flt
+            if cursor:
+                body["start_cursor"] = cursor
 
-        if isinstance(result, RunNotionErr):
-            # If the stored db_id is gone, drop the cache so the next
-            # call re-bootstraps under whatever pages are now granted.
-            if result.code == "not_found":
-                await clear_database_id_on_not_found(deps)
-            return {"status": "error", "code": result.code, "message": result.message}
+            result = await run_notion(
+                store=deps.store,
+                uid=deps.uid,
+                tool_name=LIST_TASKS_TOOL_NAME,
+                method="POST",
+                path=f"/v1/databases/{db_id}/query",
+                body=body,
+                http=deps.http,
+                log=deps.log,
+            )
 
-        assert isinstance(result, RunNotionOk)
-        payload = result.body if isinstance(result.body, dict) else {}
-        raw_pages = payload.get("results") or []
-        tasks = [project_notion_task(p).model_dump() for p in raw_pages if isinstance(p, dict)]
+            if isinstance(result, RunNotionErr):
+                # If the stored db_id is gone, drop the cache so the next
+                # call re-bootstraps under whatever pages are now granted.
+                if result.code == "not_found":
+                    await clear_database_id_on_not_found(deps)
+                return {"status": "error", "code": result.code, "message": result.message}
+
+            assert isinstance(result, RunNotionOk)
+            payload = result.body if isinstance(result.body, dict) else {}
+            collected.extend(p for p in (payload.get("results") or []) if isinstance(p, dict))
+            truncated = truncated or result.truncated
+
+            next_cursor = payload.get("next_cursor")
+            if payload.get("has_more") and isinstance(next_cursor, str) and next_cursor:
+                cursor = next_cursor
+                has_more = True  # more remain; loop unless we've hit target
+            else:
+                has_more = False
+                break
+
+        tasks = [project_notion_task(p).model_dump() for p in collected[:target]]
         return {
             "status": "ok",
             "tasks": tasks,
-            "hasMore": bool(payload.get("has_more")),
-            "truncated": result.truncated,
+            # hasMore is true only if Notion still had rows we didn't fetch.
+            "hasMore": has_more or len(collected) > target,
+            "truncated": truncated,
         }
 
     from google.adk.tools import FunctionTool  # noqa: PLC0415

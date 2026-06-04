@@ -19,11 +19,9 @@ NOTION_DB_PROPERTIES below. The projection layer
 from __future__ import annotations
 
 import asyncio
+import weakref
 from typing import Any
 
-import httpx
-
-from lifecoach_agent.notion_agent.notion_client import call_notion
 from lifecoach_agent.notion_agent.run_notion import RunNotionErr, RunNotionOk, run_notion
 from lifecoach_agent.notion_agent.tools._deps import NotionToolDeps
 
@@ -82,7 +80,11 @@ NOTION_DB_PROPERTIES: dict[str, Any] = {
 # memory long enough to serve many requests; collapsing concurrent
 # first-call bootstraps onto a single lock per uid prevents duplicate
 # DB creates within a single process instance.
-_locks: dict[str, asyncio.Lock] = {}
+# WeakValueDictionary so a uid's lock is garbage-collected once no
+# bootstrap coroutine is holding it — concurrent callers for the same uid
+# still share one lock (the first holds a strong ref for its duration),
+# but the map doesn't grow unboundedly across a long-lived instance.
+_locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
 
 
 def _lock_for(uid: str) -> asyncio.Lock:
@@ -259,31 +261,6 @@ async def _search_existing_database(
     return None
 
 
-async def _verify_database_exists(
-    *,
-    deps: NotionToolDeps,
-    database_id: str,
-) -> bool:
-    """Sanity-check a stored databaseId — if Notion now 404s on it
-    (user revoked + re-granted without re-sharing this page) we clear
-    it and re-bootstrap on the next call."""
-    result = await run_notion(
-        store=deps.store,
-        uid=deps.uid,
-        tool_name="bootstrap_verify",
-        method="GET",
-        path=f"/v1/databases/{database_id}",
-        http=deps.http,
-        log=deps.log,
-    )
-    if isinstance(result, RunNotionErr):
-        # 401 / 404 → stale. Anything else (rate_limit etc.) we treat
-        # as "still exists, just transient error" and let the caller
-        # surface its own error.
-        return result.code not in ("not_found", "scope_required")
-    return True
-
-
 async def get_or_create_database(deps: NotionToolDeps) -> str:
     """Resolve the per-uid database id. Auto-creates on first call.
 
@@ -354,7 +331,3 @@ async def clear_database_id_on_not_found(deps: NotionToolDeps) -> None:
     stored id — most commonly after the user revokes + re-grants
     without re-sharing the previous parent page."""
     await deps.config_store.set_database_id(deps.uid, None)
-
-
-# Re-export call_notion + httpx for external mocking in tests.
-_re_export: Any = (call_notion, httpx)

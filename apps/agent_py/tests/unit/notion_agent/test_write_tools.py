@@ -304,3 +304,48 @@ async def test_complete_notion_task_appends_completion_note_to_notes() -> None:
     notes_text = sent["properties"]["Notes"]["rich_text"][0]["text"]["content"]
     assert "in progress notes" in notes_text
     assert "Completed: shipped Friday" in notes_text
+
+
+@pytest.mark.asyncio
+async def test_update_notion_task_empty_string_fields_are_noop() -> None:
+    """Empty-string field values must NOT clear the property — they're
+    treated as 'no change' (consistent with title), so an all-empty call
+    is a no-op and errors rather than silently wiping data."""
+    fs, _ = _make_setup()
+    async with httpx.AsyncClient() as http:
+        with respx.mock(assert_all_called=False) as mock:
+            patched = mock.patch(f"{NOTION_API_BASE}/v1/pages/p1")
+            deps = make_deps(fs, http)
+            tool = create_update_notion_task_tool(deps)
+            out = await _invoke(tool, id="p1", priority="", project="", due="", title="")
+
+    assert out["status"] == "error"
+    assert out["code"] == "bad_request"
+    assert not patched.called
+
+
+@pytest.mark.asyncio
+async def test_update_notion_task_chunks_notes_over_2000_chars() -> None:
+    """Notion rejects a rich_text element over 2000 chars; long notes are
+    split across multiple elements so the write doesn't 400."""
+    fs, _ = _make_setup()
+    sent: dict[str, Any] = {}
+    long_notes = "x" * 2500
+
+    async with httpx.AsyncClient() as http:
+        with respx.mock(assert_all_called=False) as mock:
+
+            def _handler(request: httpx.Request) -> httpx.Response:
+                sent.update(json.loads(request.content))
+                return httpx.Response(200, json=page_obj(id="p1"))
+
+            mock.patch(f"{NOTION_API_BASE}/v1/pages/p1").mock(side_effect=_handler)
+            deps = make_deps(fs, http)
+            tool = create_update_notion_task_tool(deps)
+            out = await _invoke(tool, id="p1", notes=long_notes, notes_mode="replace")
+
+    assert out["status"] == "ok"
+    elements = sent["properties"]["Notes"]["rich_text"]
+    assert len(elements) == 2
+    assert all(len(e["text"]["content"]) <= 2000 for e in elements)
+    assert "".join(e["text"]["content"] for e in elements) == long_notes
