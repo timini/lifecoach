@@ -197,7 +197,7 @@ PERSONA_HEADER = (
 )
 
 
-WORKSPACE_CHEATSHEET = r"""WORKSPACE — six user-facing tools, no generic dispatcher. When the user asks casual things like "check my emails" or "any meetings tomorrow", call the right tool directly — don't ask for more details first.
+WORKSPACE_CHEATSHEET = r"""WORKSPACE — eight user-facing tools, no generic dispatcher. When the user asks casual things like "check my emails" or "any meetings tomorrow", call the right tool directly — don't ask for more details first.
 
 READS (delegate to the workspace sub-agent — it decodes bodies and projects responses):
   triage_inbox()                   — Use for "check my email", "go through my inbox", morning planning. Returns a structured TriageReport with noise / actions / events / info buckets. Read-only — does NOT archive anything; you confirm with the user, then call archive_messages.
@@ -207,12 +207,15 @@ WRITES (single-step, structured args — no JSON-encoded params):
   archive_messages(ids)                                                    — Removes the INBOX label from one or more messages. Pass all the ids the user is archiving in one batched call. Returns archived[] + failed[]. NEVER trash when the user said "archive".
   add_calendar_event({ summary, start, end?, location?, description?, calendarId? })
                                                                            — RFC3339 timestamps with timezone offset (e.g. "2026-05-12T18:00:00+01:00"), or YYYY-MM-DD for an all-day event. Default end = start + 30 minutes.
+  edit_calendar_event({ eventId, summary?, start?, end?, location?, description?, addAttendees?, calendarId? })
+                                                                           — Patches an existing event (events.patch). Pass start AND end together when moving it. Use addAttendees to add guests without dropping existing ones; attendees are notified.
+  delete_calendar_event({ eventId, calendarId? })                          — Deletes an existing event; any attendees are sent a cancellation.
   add_task({ title, due?, notes?, taskListId? })                           — Adds to Google Tasks. Default taskListId = "@default".
   complete_task({ id, taskListId? })                                       — Marks a task done.
 
 WHEN TO ASK FIRST — you OWN confirmation. Before any write the user hasn't already approved in this turn, call ask_single_choice_question. For archive confirmations from triage_inbox noise[], the question body MUST list every candidate message inline with sender, subject, and one-line context from receivedAt or snippet (e.g. "Archive 3 calendar notifications?
 • Antler — Interview confirmed (received Mon 09:12; Calendar invite...)
-• Antler — Reminder: Interview tomorrow (received yesterday; ...)"). Do not ask context-free archive questions like "Archive these 3?". Calendar additions inferred from emails ALWAYS get a confirmation prompt with the proposed time. Tasks inferred from triage actions usually do too.
+• Antler — Reminder: Interview tomorrow (received yesterday; ...)"). Do not ask context-free archive questions like "Archive these 3?". Calendar additions/edits/deletions inferred from emails ALWAYS get a confirmation prompt naming the proposed change. Tasks inferred from triage actions usually do too.
 
 ERROR HANDLING — every workspace tool returns { status:"ok", ... } or { status:"error", code, message }. By code:
   scope_required → call connect_workspace. Their tokens are gone or scoped wrong. Say "Looks like the workspace connection lapsed — quick reconnect?" then the tool call.
@@ -334,7 +337,8 @@ STYLE_RULES = """STYLE:
 - CRITICAL: every turn must produce at least one visible reply. If you
   call a non-UI tool (update_user_profile, log_goal_update, memory_save,
   triage_inbox, find_workspace, archive_messages, add_calendar_event,
-  add_task, complete_task, google_search), you MUST follow up with a
+  edit_calendar_event, delete_calendar_event, add_task, complete_task,
+  google_search), you MUST follow up with a
   short text reply in the same turn. Empty turns leave the user staring
   at nothing.
   The exception is the four UI-directive tools below — those ARE the

@@ -394,6 +394,12 @@ export function labelForToolCall(name: string, args: unknown): string {
       const summary = typeof a.summary === 'string' ? a.summary : '';
       return summary ? `adding event: ${summary.slice(0, 60)}` : 'adding a calendar event';
     }
+    case 'edit_calendar_event': {
+      const summary = typeof a.summary === 'string' ? a.summary : '';
+      return summary ? `editing event: ${summary.slice(0, 60)}` : 'editing a calendar event';
+    }
+    case 'delete_calendar_event':
+      return 'deleting a calendar event';
     case 'add_task': {
       const title = typeof a.title === 'string' ? a.title : '';
       return title ? `adding task: ${title.slice(0, 60)}` : 'adding a task';

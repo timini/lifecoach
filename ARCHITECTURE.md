@@ -230,7 +230,7 @@ stateDiagram-v2
 | `email_pending` | choice / profile / goals / memory | "Check your inbox" |
 | `email_verified` | choice / profile / goals / memory | "Link Google" |
 | `google_linked` | choice / profile / goals / memory, **`connect_workspace`** | "Connect Workspace" |
-| `workspace_connected` | choice / profile / goals / memory, **`triage_inbox`**, **`find_workspace`**, **`archive_messages`**, **`add_calendar_event`**, **`add_task`**, **`complete_task`**, **`connect_workspace`** (reconnect path) | "Workspace connected" badge |
+| `workspace_connected` | choice / profile / goals / memory, **`triage_inbox`**, **`find_workspace`**, **`archive_messages`**, **`add_calendar_event`**, **`edit_calendar_event`**, **`delete_calendar_event`**, **`add_task`**, **`complete_task`**, **`connect_workspace`** (reconnect path) | "Workspace connected" badge |
 
 **WORKSPACE-ASK TRIGGER (immediate auth/connect rule, all states except `workspace_connected`).** When the user asks for anything that requires Workspace access — read inbox, triage, calendar today, list/add tasks — the agent's FIRST reply must be the auth or connect tool call, with no clarifying questions. The tool call IS the turn (turn-ending UI directive). Routing:
 
@@ -331,7 +331,7 @@ Every `/chat` turn builds a fresh `Runner` from `RunnerForParams(ctx, uid, usage
    - `auth_user` — when `user_state == "anonymous"`.
    - `memory_save` — when memory service is configured.
    - `connect_workspace` — when workspace is enabled and user is `google_linked` *or* `workspace_connected` (the reconnect path stays available after grant).
-   - The **six workspace tools** (`triage_inbox`, `find_workspace`, `archive_messages`, `add_calendar_event`, `add_task`, `complete_task`) — when user is `workspace_connected`. Built by `workspace_agent.create_workspace_tools(deps)`; `WORKSPACE_TOOL_NAMES` is the canonical list. The generic `call_workspace` dispatcher was retired at this point.
+   - The **eight workspace tools** (`triage_inbox`, `find_workspace`, `archive_messages`, `add_calendar_event`, `edit_calendar_event`, `delete_calendar_event`, `add_task`, `complete_task`) — when user is `workspace_connected`. Built by `workspace_agent.create_workspace_tools(deps)`; `WORKSPACE_TOOL_NAMES` is the canonical list. The generic `call_workspace` dispatcher was retired at this point.
    - `upgrade_to_pro` — when `usage_policy.upgrade_tool_available`.
    - Per enabled practice: zero-or-more tools from `practice.tools(deps, uid)`.
 2. **Agent factory:** `agent = build_root_agent_for(ctx, tools, model=usage_policy.model)` — `name="lifecoach"`, system instruction = `build_instruction(ctx)` materialised string.
@@ -396,6 +396,8 @@ Every tool lives in `src/lifecoach_agent/tools/` (one file, one tool factory). B
 | `find_workspace` | `{query: string}` | AgentTool wrapping a workspace sub-agent. Natural-language lookup across Gmail / Calendar / Tasks — including calendar-list / calendar-ID requests, which route to the internal `list_calendars` read (not Gmail search). Cites with `cal:` / `m:` / `ev:` / `t:` id prefixes (read-only). | no |
 | `archive_messages` | `{ids: string[]}` | Batched modify-remove-INBOX. Returns `archived[]` + `failed[]`. Any per-id `scope_required` surfaces as a top-level error so the LLM can call `connect_workspace`. | no |
 | `add_calendar_event` | `{summary, start, end?, location?, description?, calendarId?}` | `calendar.events.insert`. `end` defaults to start + 30 min for timed events, start + 1 day for all-day. | no |
+| `edit_calendar_event` | `{eventId, summary?, start?, end?, location?, description?, addAttendees?, calendarId?}` | `calendar.events.patch` (partial). `start` requires `end` (no zero-duration moves). `addAttendees` fetches the event first and merges, preserving existing guests' RSVP metadata. `sendUpdates=all` notifies guests. | no |
+| `delete_calendar_event` | `{eventId, calendarId?}` | `calendar.events.delete` with `sendUpdates=all` so attendees get the cancellation. | no |
 | `add_task` | `{title, due?, notes?, taskListId?}` | `tasks.tasks.insert`. Default `taskListId="@default"`. | no |
 | `complete_task` | `{id, taskListId?}` | `tasks.tasks.patch({status: "completed"})` — NEVER delete. | no |
 
@@ -444,14 +446,14 @@ workspace_agent/
   run_gws.py               auth + dispatch + classify + log helper every tool routes through
   projections/             gmail_message / calendar_event / calendar_list / task — drop API bloat, base64-decode bodies, 4 KB cap
   tools/                   7 internal sub-agent reads (list_inbox, get_messages, get_message, search_messages, list_calendars, list_events, list_tasks)
-                          + 4 narrow writes (archive_messages, add_calendar_event, add_task, complete_task)
+                          + 6 narrow writes (archive_messages, add_calendar_event, edit_calendar_event, delete_calendar_event, add_task, complete_task)
   agent_tools/             2 AgentTool wrappers (triage_inbox, find_workspace) exposed to the main agent
 ```
 
-**The main-facing surface (six tools):**
+**The main-facing surface (eight tools):**
 
 - **`triage_inbox()`** and **`find_workspace(query)`** are `AgentTool`s. Each wraps a dedicated `LlmAgent` instance with a scoped instruction and the same seven internal read tools — the sub-agent classifies an inbox or answers a natural-language lookup, the wrapper returns the result to the parent. Triage reads every body in one bulk `get_messages` call (not a `get_message` per id) and runs on the cheaper `TRIAGE_INBOX_AGENT_MODEL` (Flash Lite) while `find_workspace` keeps `WORKSPACE_AGENT_MODEL`. `triage_inbox` emits `<TRIAGE_REPORT>{json}</TRIAGE_REPORT>`; `parse_triage_report` validates against `TriageReportSchema` and returns `{status:"ok", report}` or `{status:"parse_error", raw}`.
-- **`archive_messages`**, **`add_calendar_event`**, **`add_task`**, **`complete_task`** are narrow `FunctionTool`s — direct, no LLM hop. The main agent owns confirmation via `ask_single_choice_question`; writes only fire after explicit user approval.
+- **`archive_messages`**, **`add_calendar_event`**, **`edit_calendar_event`**, **`delete_calendar_event`**, **`add_task`**, **`complete_task`** are narrow `FunctionTool`s — direct, no LLM hop. The main agent owns confirmation via `ask_single_choice_question`; writes only fire after explicit user approval.
 
 `gws_client.call_workspace` is the bottom-layer dispatcher. It walks the Discovery API tree (`gmail.users.messages.list(...)` etc.) via `google-api-python-client`, classifying errors into `scope_required`, `forbidden`, `network`, `rate_limited`, `not_found`, `bad_request`, `timeout`, `upstream`, `invalid_args`. Every workspace tool routes through `run_gws.py`, which (a) resolves the access token via `WorkspaceTokensStore`, (b) calls the dispatcher, (c) deletes the user's token doc on `scope_required` so the next turn demotes back to `google_linked` and the LLM invites reconnect.
 
