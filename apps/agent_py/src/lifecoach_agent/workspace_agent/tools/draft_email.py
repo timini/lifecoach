@@ -38,6 +38,53 @@ def _normalise_recipients(value: list[str] | str | None) -> list[str]:
     return [item for item in value if item]
 
 
+def _gmail_draft_url(message_id: str | None) -> str:
+    """Deep-link that opens the draft in the Gmail web UI for review/send.
+    Falls back to the Drafts folder when we don't have a message id."""
+    if message_id:
+        return f"https://mail.google.com/mail/u/0/#drafts?compose={message_id}"
+    return "https://mail.google.com/mail/u/0/#drafts"
+
+
+async def _thread_reply_message_id(deps: WorkspaceToolDeps, thread_id: str) -> str | None:
+    """Best-effort: fetch a thread's most recent message and return its
+    RFC2822 ``Message-Id`` so a reply draft can carry In-Reply-To /
+    References (proper threading) even when the caller only has a threadId
+    (e.g. from triage). Returns None on any failure — the draft still
+    attaches to the thread via ``threadId`` regardless."""
+    result = await run_gws(
+        store=deps.store,
+        uid=deps.uid,
+        tool_name=DRAFT_EMAIL_TOOL_NAME,
+        service="gmail",
+        resource="users.threads",
+        method="get",
+        params={
+            "userId": "me",
+            "id": thread_id,
+            "format": "metadata",
+            "metadataHeaders": ["Message-Id", "References"],
+        },
+        build_client=deps.build_client,
+        log=deps.log,
+    )
+    if not isinstance(result, RunGwsOk):
+        return None
+    body = result.body if isinstance(result.body, dict) else {}
+    messages = body.get("messages")
+    if not isinstance(messages, list) or not messages:
+        return None
+    last = messages[-1] if isinstance(messages[-1], dict) else {}
+    payload_val = last.get("payload")
+    payload: dict[str, Any] = payload_val if isinstance(payload_val, dict) else {}
+    for header in payload.get("headers") or []:
+        if isinstance(header, dict) and str(header.get("name", "")).lower() == "message-id":
+            value = header.get("value")
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return None
+
+
 def _encode_rfc2822_message(
     *,
     to: list[str] | str,
@@ -102,7 +149,8 @@ def create_draft_email_tool(deps: WorkspaceToolDeps) -> Any:
         references: str | None = None,
     ) -> dict[str, Any]:
         """Create a Gmail draft for the user to review and send later.
-        Never sends email.
+        Never sends email. Returns a `url` deep-link to the draft in Gmail —
+        ALWAYS share it with the user in your reply.
 
         Args:
             to: Recipient email addresses.
@@ -110,28 +158,24 @@ def create_draft_email_tool(deps: WorkspaceToolDeps) -> Any:
             body: Plain-text email body.
             cc: Optional CC recipient email addresses.
             bcc: Optional BCC recipient email addresses.
-            threadId: Optional Gmail thread id to attach this draft to an
-                existing conversation.
+            threadId: Gmail thread id to reply within an existing
+                conversation. Pass this for replies — the tool attaches the
+                draft to the thread and derives the reply headers itself, so
+                you do NOT need inReplyTo/references.
             replyTo: Optional Reply-To header value.
-            inReplyTo: Optional RFC 2822 Message-ID when drafting a reply.
-            references: Optional References header when drafting a reply.
+            inReplyTo: Optional RFC 2822 Message-ID — only if you already
+                have it; otherwise the tool fetches it from threadId.
+            references: Optional References header for the reply chain.
         """
-        # Gmail only threads a draft onto an existing conversation when the
-        # raw message carries BOTH In-Reply-To and References headers (a bare
-        # threadId, or only one header, is orphaned or rejected). Require the
-        # source Message-ID via inReplyTo, and synthesise References from it
-        # when the caller didn't pass an explicit chain — for a first reply
-        # References is just the message being replied to.
+        # Proper threading wants In-Reply-To / References headers, but the
+        # caller usually only has a threadId (e.g. from triage). Rather than
+        # reject — which pushes the model to drop threadId and start a NEW
+        # conversation — derive the source Message-ID from the thread itself.
+        # If that lookup fails we still proceed: a draft created with
+        # `threadId` is attached to the thread in Gmail regardless.
         if threadId and not inReplyTo:
-            return {
-                "status": "error",
-                "code": "invalid_args",
-                "message": (
-                    "To thread a reply draft, pass inReplyTo (the original message's "
-                    "Message-ID — get_message exposes it), not just threadId."
-                ),
-            }
-        if threadId and not references:
+            inReplyTo = await _thread_reply_message_id(deps, threadId)
+        if inReplyTo and not references:
             references = inReplyTo
 
         try:
@@ -169,10 +213,14 @@ def create_draft_email_tool(deps: WorkspaceToolDeps) -> Any:
         raw_body = result.body if isinstance(result.body, dict) else {}
         message_value = raw_body.get("message")
         message: dict[str, Any] = message_value if isinstance(message_value, dict) else {}
+        message_id = message.get("id")
         out: dict[str, Any] = {
             "status": "ok",
             "draftId": raw_body.get("id"),
-            "messageId": message.get("id"),
+            "messageId": message_id,
+            # Deep-link the agent MUST surface so the user can open/send the
+            # draft directly in Gmail.
+            "url": _gmail_draft_url(message_id if isinstance(message_id, str) else None),
         }
         returned_thread_id = message.get("threadId") or threadId
         if returned_thread_id:
