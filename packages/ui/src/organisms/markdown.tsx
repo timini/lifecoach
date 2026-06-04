@@ -8,7 +8,11 @@ export interface MarkdownProps {
   /** The raw markdown source. */
   children: string;
   className?: string;
+  /** Render only phrasing markdown, suitable for labels and inline text. */
+  inline?: boolean;
 }
+
+const INLINE_MARKDOWN_ELEMENTS = ['p', 'strong', 'em', 'a', 'code', 'br', 'del'] as const;
 
 /**
  * Inline markdown renderer for assistant chat bubbles. Supports GFM
@@ -22,15 +26,21 @@ export interface MarkdownProps {
  * texting, not writing an article). HTML in markdown is sanitised by
  * react-markdown's default skipHtml.
  */
-export function Markdown({ children, className }: MarkdownProps) {
+export function Markdown({ children, className, inline = false }: MarkdownProps) {
+  const Root = inline ? 'span' : 'div';
+
   return (
-    <div className={cn('whitespace-normal', className)}>
+    <Root className={cn('whitespace-normal', className)}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
+        allowedElements={inline ? INLINE_MARKDOWN_ELEMENTS : undefined}
+        unwrapDisallowed={inline}
         components={{
-          p: ({ children: c }) => <p className="my-2 first:mt-0 last:mb-0">{c}</p>,
+          p: ({ children: c }) =>
+            inline ? <>{c}</> : <p className="my-2 first:mt-0 last:mb-0">{c}</p>,
           strong: ({ children: c }) => <strong className="font-semibold">{c}</strong>,
           em: ({ children: c }) => <em className="italic">{c}</em>,
+          del: ({ children: c }) => <del className="line-through">{c}</del>,
           a: ({ href, children: c }) => (
             <a
               href={href}
@@ -70,6 +80,6 @@ export function Markdown({ children, className }: MarkdownProps) {
       >
         {children}
       </ReactMarkdown>
-    </div>
+    </Root>
   );
 }

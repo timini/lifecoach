@@ -39,6 +39,21 @@ export const Multi: Story = {
   },
 };
 
+export const MarkdownLabels: Story = {
+  args: {
+    question: 'Choose a **recovery** focus:',
+    options: ['**Walk** for 10 minutes', 'Journal _one_ thing', '`Mute` notifications'],
+    single: true,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText('recovery').tagName).toBe('STRONG');
+    await expect(canvas.getByText('Walk').tagName).toBe('STRONG');
+    await expect(canvas.getByText('one').tagName).toBe('EM');
+    await expect(canvas.getByText('Mute').tagName).toBe('CODE');
+  },
+};
+
 export const Disabled: Story = {
   args: { single: true, disabled: true },
 };
