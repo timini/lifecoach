@@ -34,6 +34,12 @@ import {
   getLocationPermissionState,
   requestBrowserLocation,
 } from '../../lib/geolocation';
+import {
+  type NotionStatus,
+  connectNotion,
+  fetchNotionStatus,
+  revokeNotion,
+} from '../../lib/notion';
 import { connectWorkspace, fetchWorkspaceStatus, revokeWorkspace } from '../../lib/workspace';
 import { PracticesSection } from './PracticesSection';
 
@@ -80,6 +86,12 @@ export default function SettingsPage() {
     grantedAt: null,
   });
   const [workspaceBusy, setWorkspaceBusy] = useState(false);
+  const [notion, setNotion] = useState<NotionStatus>({
+    connected: false,
+    workspaceName: null,
+    grantedAt: null,
+  });
+  const [notionBusy, setNotionBusy] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -159,6 +171,14 @@ export default function SettingsPage() {
         // Missing or 4xx — treat as disconnected; row will say Not connected.
       }
     })();
+    void (async () => {
+      try {
+        const status = await fetchNotionStatus(user);
+        setNotion(status);
+      } catch {
+        // Same treatment as workspace — missing/4xx → row says Not connected.
+      }
+    })();
   }, [user, loadProfile, loadGoals]);
 
   async function handleConnectWorkspace() {
@@ -184,6 +204,32 @@ export default function SettingsPage() {
       setAuthError(err instanceof Error ? err.message : String(err));
     } finally {
       setWorkspaceBusy(false);
+    }
+  }
+
+  async function handleConnectNotion() {
+    if (!user) return;
+    setNotionBusy(true);
+    try {
+      const status = await connectNotion(user);
+      setNotion(status);
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setNotionBusy(false);
+    }
+  }
+
+  async function handleRevokeNotion() {
+    if (!user) return;
+    setNotionBusy(true);
+    try {
+      const status = await revokeNotion(user);
+      setNotion(status);
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setNotionBusy(false);
     }
   }
 
@@ -392,6 +438,37 @@ export default function SettingsPage() {
                   disabled={workspaceBusy || !googleLinked}
                   title={googleLinked ? undefined : 'Sign in with Google first'}
                 >
+                  Connect
+                </Button>
+              )
+            }
+          />
+          <ConnectionRow
+            icon={<IconDot />}
+            label="Notion"
+            status={
+              notion.connected
+                ? `Connected${notion.workspaceName ? ` — ${notion.workspaceName}` : ''}${
+                    notion.grantedAt
+                      ? ` · since ${new Date(notion.grantedAt).toLocaleDateString()}`
+                      : ''
+                  }`
+                : 'Not connected — keep your tasks tidy as a Notion tree'
+            }
+            statusTone={notion.connected ? 'success' : 'muted'}
+            action={
+              notion.connected ? (
+                <Button
+                  size="sm"
+                  variant="subtle"
+                  onClick={() => void handleRevokeNotion()}
+                  disabled={notionBusy}
+                  title="Removes our connection locally. To fully revoke, also remove the integration at notion.so/my-integrations."
+                >
+                  Revoke
+                </Button>
+              ) : (
+                <Button size="sm" onClick={() => void handleConnectNotion()} disabled={notionBusy}>
                   Connect
                 </Button>
               )

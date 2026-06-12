@@ -108,6 +108,48 @@ def test_workspace_cheatsheet_only_when_workspace_connected() -> None:
     assert "cal: for calendars" in out_ws
 
 
+def test_notion_cheatsheet_only_when_notion_connected_flag() -> None:
+    """Notion is orthogonal — gated on the capability flag, not on
+    UserState. So an `email_verified` user with notion_connected=True
+    gets the cheatsheet; a `workspace_connected` user without it
+    doesn't."""
+    out_off = build_instruction(_base_ctx(notion_connected=False))
+    assert "NOTION — your TODO source of truth" not in out_off
+
+    out_on_email = build_instruction(_base_ctx(user_state="email_verified", notion_connected=True))
+    assert "NOTION — your TODO source of truth" in out_on_email
+    assert "notion_review_tasks" in out_on_email
+    assert "complete_notion_task" in out_on_email
+
+    # The workspace cheatsheet does NOT appear when only notion is
+    # connected — they're independent.
+    assert "WORKSPACE — six narrow tools" not in out_on_email
+
+
+def test_notion_and_workspace_cheatsheets_coexist() -> None:
+    """A user with both integrations gets both cheatsheets."""
+    out = build_instruction(_base_ctx(user_state="workspace_connected", notion_connected=True))
+    assert "WORKSPACE — nine user-facing tools" in out
+    assert "NOTION — your TODO source of truth" in out
+
+
+def test_capabilities_picker_hint_only_when_flag_set() -> None:
+    """The one-shot CAPABILITIES_PICKER_HINT is gated solely on the
+    `show_capabilities_proactively` flag — set by server.py for the
+    first signed-in turn when no integrations are connected."""
+    out_off = build_instruction(_base_ctx(user_state="email_verified"))
+    assert "show_capabilities()" not in out_off
+
+    out_on = build_instruction(
+        _base_ctx(
+            user_state="email_verified",
+            show_capabilities_proactively=True,
+        )
+    )
+    assert "show_capabilities()" in out_on
+    assert "Just signed in" in out_on
+
+
 def test_signup_soft_only_when_nudge_mode_signup_soft() -> None:
     out_none = build_instruction(_base_ctx())
     assert "SIGNUP_NUDGE" not in out_none

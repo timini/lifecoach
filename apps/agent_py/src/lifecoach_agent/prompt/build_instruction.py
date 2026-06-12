@@ -186,6 +186,16 @@ class InstructionContext:
     has_interacted_today: bool = False
     yesterday_summary: str | None = None
     week_summary: str | None = None
+    # Orthogonal capability flag — Notion-connectedness is independent
+    # of UserState. A user can be google_linked OR workspace_connected
+    # OR pro AND have Notion connected; the cheatsheet injection below
+    # is gated on this flag alone (not on a state literal).
+    notion_connected: bool = False
+    # Set once per first signed-in turn when no integrations are
+    # connected — the LLM is then prompt-nudged to fire show_capabilities()
+    # as its first action. server.py manages the userMeta flag that
+    # prevents this from re-firing turn-after-turn.
+    show_capabilities_proactively: bool = False
 
 
 # --- Static prompt fragments (copied verbatim from buildInstruction.ts) ---
@@ -232,6 +242,51 @@ ERROR HANDLING — every workspace tool returns { status:"ok", ... } or { status
 CALENDAR PREFERENCES — if the user confirms a calendar should be reused for future family events, save it with update_user_profile path="preferences.family_calendar_id" and the selected calendar id.
 
 archive_messages also returns a per-id failed[] when only some ids fail; handle that by surfacing those few to the user. NEVER mention "certificate", "discovery", "scope", "token", "401/403/etc" in user-facing text. Speak like a friend."""
+
+
+NOTION_CHEATSHEET = r"""NOTION — your TODO source of truth. The user has connected their Notion workspace; we maintain a "Lifecoach Tasks" database for them with these properties:
+  Task          (title)
+  Status        (select: "To Do" | "In Progress" | "Waiting" | "Done")
+  Priority      (select: "Urgent" | "High" | "Medium" | "Low")
+  Project       (select: free-form project names; new values create on use)
+  Due Date      (date)
+  Notes         (rich_text — the running knowledge base for that task)
+  Parent item   (relation to self — for sub-tasks under a parent project task)
+
+OPERATIVE RULES (these shape every coaching turn that touches tasks):
+  1. Every actionable item ends up as a Notion task. If the user surfaces something they need to do — from a triage, a side-comment, an email, a meeting outcome — capture it. Don't let actionable items live only in chat.
+  2. Every task needs four things at minimum: clear title, Status, Priority, Project. If any are missing when you create, ASK before saving — one short follow-up, then write.
+  3. Keep Notes up to date. Notion is the knowledge base. When the user works on a task — when you discuss decisions, draft content, options, blockers, next steps — APPEND to that task's Notes via update_notion_task with notes_mode:"append". The Notes field is where state of play lives.
+  4. Group sub-tasks under a parent. When a project has multiple steps, the parent is itself a task with Project set; sub-tasks point to it via parent_id. Use set_notion_task_parent to re-parent when the structure becomes clearer.
+  5. NEVER mark a task Done without explicit user confirmation. Even when they say "I finished X", reflect it back: "Mark <task title> as Done?" — wait for yes, then complete_notion_task. Done is irreversible in user perception; treat it that way.
+  6. Status moves you can make WITHOUT explicit confirmation: To Do → In Progress (they started), In Progress → Waiting (they're blocked on someone else), Waiting → In Progress (unblocked). These are state-of-play moves, not commitments.
+
+TOOLS (five task tools; plus connect_notion for (re)connecting — see ERROR HANDLING):
+  notion_review_tasks(filter?)            — Multi-step read. Returns a project-bucketed tree of OPEN tasks (everything not Done) with sub-tasks nested. filter is natural language: "just project Apollo", "high priority", "due this week", or omitted for everything. Use for "what's on my plate", "show me open tasks", weekly reviews, morning planning. Read-only.
+  add_notion_task({title, project?, priority?, due?, parent_id?, notes?})
+                                          — Create. due is YYYY-MM-DD or RFC3339. notes is the initial state-of-play. parent_id makes it a sub-task.
+  update_notion_task({id, status?, notes?, notes_mode?, priority?, due?, title?, project?})
+                                          — Patch. notes_mode defaults to "append" — pass "replace" only when the user explicitly asks to overwrite. Status accepts To Do / In Progress / Waiting — use complete_notion_task for Done.
+  set_notion_task_parent({id, parent_id})  — Re-parent. parent_id null moves to top level.
+  complete_notion_task({id, completion_note?}) — The ONLY way to mark Done. The user must have confirmed THIS turn or you must ask first. completion_note appends one final line to Notes if provided.
+
+ERROR HANDLING — every Notion tool returns {status:"ok",...} or {status:"error", code, message}. By code:
+  scope_required → call connect_notion. Their tokens are gone or scoped wrong. Say "Looks like the Notion connection lapsed — quick reconnect?" then the tool call.
+  not_found      → the task id or database id no longer exists. Say "couldn't find that task — has it been deleted in Notion?" and offer to refresh via notion_review_tasks.
+  rate_limited   → "Notion's rate-limiting us — give it ~30 seconds and try again." Don't reconnect.
+  forbidden      → "I can't access that page in your Notion." Don't reconnect.
+  bad_request    → fix the args silently and retry once. If still 400, surface the issue plainly.
+  network / timeout / upstream → "Notion had a hiccup — try again?" Don't reconnect.
+
+Never speak in tokens, scopes, or HTTP codes. Speak like a friend. Notion holds the truth; you keep it tidy."""
+
+
+CAPABILITIES_PICKER_HINT = (
+    "USER STATE: Just signed in, no integrations connected. Open your reply "
+    "with a `show_capabilities()` tool call to introduce what you can connect, "
+    "then say something warm — one sentence — about getting started together. "
+    "Do NOT ask which capability they want; the picker handles that."
+)
 
 
 SIGNUP_SOFT_DIRECTIVE = (
@@ -343,14 +398,15 @@ STYLE_RULES = """STYLE:
   draft_email, google_search), you MUST follow up with a
   short text reply in the same turn. Empty turns leave the user staring
   at nothing.
-  The exception is the four UI-directive tools below — those ARE the
+  The exception is the UI-directive tools below — those ARE the
   whole turn by design.
 - Ask at most ONE open question at a time.
 - Prefer ask_single_choice_question / ask_multiple_choice_question over open
   questions when the answer space is 2–8 obvious options. Minimise typing
   for the user.
 - CRITICAL: When you decide to call a choice tool, auth_user,
-  connect_workspace, or upgrade_to_pro, the TOOL CALL IS YOUR ENTIRE
+  connect_workspace, connect_notion, show_capabilities, or upgrade_to_pro,
+  the TOOL CALL IS YOUR ENTIRE
   RESPONSE for that turn. Do NOT write any text before the tool call,
   do NOT write any text after the tool call. Do not restate the question
   as text — the widget already shows it. Do not ask a follow-up question
@@ -818,6 +874,15 @@ def build_instruction(ctx: InstructionContext) -> str:
         # Workspace cheat-sheet only appears when the user has actually
         # connected Workspace.
         WORKSPACE_CHEATSHEET if ctx.user_state == "workspace_connected" else "",
+        # Notion cheat-sheet — orthogonal to UserState. Gated solely on
+        # the capability flag so a user who is e.g. `email_verified +
+        # notion_connected` (no Google link) still gets the directive.
+        NOTION_CHEATSHEET if ctx.notion_connected else "",
+        # One-shot proactive prompt to fire show_capabilities() — set
+        # for the first signed-in turn when neither integration is
+        # connected. server.py clears the trigger flag on userMeta
+        # after the call observably fires so we don't re-fire.
+        CAPABILITIES_PICKER_HINT if ctx.show_capabilities_proactively else "",
         format_time(ctx),
         *format_session_summaries(ctx),
         format_day_phase(ctx),

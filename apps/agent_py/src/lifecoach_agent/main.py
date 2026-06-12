@@ -42,6 +42,11 @@ from lifecoach_agent.context.session_summarizer import (
 )
 from lifecoach_agent.context.session_summary import SessionSummaryClient
 from lifecoach_agent.context.weather import WeatherClient
+from lifecoach_agent.notion_agent import NotionModuleDeps, create_notion_tools
+from lifecoach_agent.oauth.notion_client import (
+    NotionOAuthClient,
+    create_notion_oauth_client,
+)
 from lifecoach_agent.oauth.workspace_client import (
     WorkspaceOAuthClient,
     create_workspace_oauth_client,
@@ -54,6 +59,8 @@ from lifecoach_agent.storage.firestore_session import (
     save_session_summary,
 )
 from lifecoach_agent.storage.goal_updates import create_goal_updates_store
+from lifecoach_agent.storage.notion_config import create_notion_config_store
+from lifecoach_agent.storage.notion_tokens import create_notion_tokens_store
 from lifecoach_agent.storage.profile_history import create_profile_history_store
 from lifecoach_agent.storage.user_meta import create_user_meta_store
 from lifecoach_agent.storage.user_profile import create_user_profile_store
@@ -68,6 +75,8 @@ from lifecoach_agent.tools import (
     create_update_user_profile_tool,
     create_upgrade_to_pro_tool,
 )
+from lifecoach_agent.tools.connect_notion import create_connect_notion_tool
+from lifecoach_agent.tools.show_capabilities import create_show_capabilities_tool
 from lifecoach_agent.workspace_agent import (
     WorkspaceModuleDeps,
     create_workspace_tools,
@@ -315,6 +324,29 @@ def build_app() -> Any:
             '"GWS_OAUTH_CLIENT_ID / GWS_OAUTH_CLIENT_SECRET not set"}'
         )
 
+    # Notion OAuth — same shape as workspace, gated on its own env vars.
+    notion_client_id = os.environ.get("NOTION_OAUTH_CLIENT_ID")
+    notion_client_secret = os.environ.get("NOTION_OAUTH_CLIENT_SECRET")
+    notion_enabled = bool(notion_client_id and notion_client_secret)
+    notion_oauth_client: NotionOAuthClient | None = None
+    notion_tokens_store = None
+    notion_config_store = None
+    if notion_enabled:
+        notion_oauth_client = create_notion_oauth_client(
+            client_id=notion_client_id or "",
+            client_secret=notion_client_secret or "",
+            http=httpx.AsyncClient(timeout=10.0),
+        )
+        notion_tokens_store = create_notion_tokens_store(
+            firestore=firestore, oauth_client=notion_oauth_client
+        )
+        notion_config_store = create_notion_config_store(firestore=firestore)
+    else:
+        print(
+            '{"msg":"notion.disabled","reason":'
+            '"NOTION_OAUTH_CLIENT_ID / NOTION_OAUTH_CLIENT_SECRET not set"}'
+        )
+
     calendar_density: CalendarDensityClient | None = None
     if workspace_tokens_store is not None:
         calendar_density = CalendarDensityClient(
@@ -433,6 +465,43 @@ def build_app() -> Any:
                     )
                 )
             )
+        # Notion — orthogonal capability flag. Tools register when the
+        # user is signed-in-enough AND has connected. connect_notion +
+        # show_capabilities are always-available UI directives for
+        # signed-in-enough users (so they can fire on the proactive
+        # picker turn, and so a not-yet-connected user can reconnect).
+        signed_in_enough = ctx.user_state in (
+            "email_verified",
+            "google_linked",
+            "workspace_connected",
+        )
+        if notion_enabled and signed_in_enough:
+            tools.append(create_connect_notion_tool())
+        if signed_in_enough:
+            # show_capabilities is the picker; closure captures the
+            # current connect-state flags so tiles render with the
+            # right status (Connect / Connected ✓ / Coming soon).
+            tools.append(
+                create_show_capabilities_tool(
+                    workspace_connected=(ctx.user_state == "workspace_connected"),
+                    notion_connected=ctx.notion_connected,
+                )
+            )
+        if (
+            notion_enabled
+            and notion_tokens_store is not None
+            and notion_config_store is not None
+            and ctx.notion_connected
+        ):
+            tools.extend(
+                create_notion_tools(
+                    NotionModuleDeps(
+                        store=notion_tokens_store,
+                        config_store=notion_config_store,
+                        uid=uid,
+                    )
+                )
+            )
         if usage_policy.upgrade_tool_available:
             tools.append(create_upgrade_to_pro_tool())
         # Practices contribute their own tools (e.g. log_gratitude).
@@ -504,6 +573,9 @@ def build_app() -> Any:
         goal_updates_store=goal_updates_store,
         workspace_tokens_store=workspace_tokens_store,
         workspace_oauth_client=workspace_oauth_client,
+        notion_tokens_store=notion_tokens_store,
+        notion_oauth_client=notion_oauth_client,
+        notion_config_store=notion_config_store,
         user_meta_store=user_meta_store,
         now=_utc_now,
     )

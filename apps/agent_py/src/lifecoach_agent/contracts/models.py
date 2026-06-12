@@ -390,3 +390,87 @@ class TriageReport(BaseModel):
     actions: list[TriageAction]
     events: list[TriageEvent]
     info: list[TriageInfo]
+
+
+# --- Notion sub-agent -----------------------------------------------------
+
+NotionStatus = Literal["To Do", "In Progress", "Waiting", "Done"]
+NotionPriority = Literal["Urgent", "High", "Medium", "Low"]
+
+
+class NotionTaskProjection(BaseModel):
+    """Flat shape projected from a raw Notion page. The raw page carries
+    `properties.{Task,Status,Priority,Project,Due Date,Notes,Parent item}`
+    wrapped in Notion's wire format — projection strips it to scalars the
+    LLM (and the tree builder) can reason about."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    title: str
+    status: NotionStatus
+    priority: NotionPriority | None = None
+    project: str | None = None
+    due: str | None = None
+    notes: str | None = None
+    parentId: str | None = None  # noqa: N815 — Parent item relation target
+    url: str
+    createdTime: str  # noqa: N815
+    lastEditedTime: str  # noqa: N815
+
+
+class NotionTaskNode(BaseModel):
+    """One node in the tree returned by `notion_review_tasks`. Children
+    are Parent-item-related sub-tasks."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    task: NotionTaskProjection
+    children: list[NotionTaskNode] = Field(default_factory=list)
+
+
+class NotionTaskTree(BaseModel):
+    """Root of the tree the `notion_review_tasks` AgentTool returns.
+
+    `projects` is a dict keyed by Project select value; orphan tasks
+    (no Project set) live under the synthetic key '(no project)'. The
+    sub-agent emits this as a minified JSON blob in a
+    <NOTION_REVIEW>…</NOTION_REVIEW> marker which the wrapper parses."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    generatedAt: str  # noqa: N815
+    projects: dict[str, list[NotionTaskNode]]
+    totalOpen: int  # noqa: N815 — count of non-Done tasks across the tree
+
+
+# --- Capability picker (chat-rendered UI element) -------------------------
+
+CapabilityId = Literal["workspace", "notion", "career_coaching"]
+CapabilityStatus = Literal["available", "connected", "coming_soon"]
+CapabilityCta = Literal["connect_workspace", "connect_notion"]
+
+
+class CapabilityTilePayload(BaseModel):
+    """One tile in the capability picker. Three tiles ship in v1: Personal
+    assistant (workspace), Task management (notion), Career coaching
+    (placeholder). The chat-stream organism renders these as a horizontal
+    stack with images + text + per-status CTA."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: CapabilityId
+    title: str  # User-facing — coaching language, not engineering jargon.
+    body: str  # One-line value-prop.
+    iconKey: str  # noqa: N815 — "workspace" | "notion" | "career"
+    status: CapabilityStatus
+    cta: CapabilityCta | None = None  # None for status=coming_soon.
+
+
+class ShowCapabilitiesResponse(BaseModel):
+    """Tool response surfaced over SSE as the capability picker."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["shown"] = "shown"
+    capabilities: list[CapabilityTilePayload]
