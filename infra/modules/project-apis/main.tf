@@ -69,6 +69,11 @@ locals {
     "logging.googleapis.com",
     "monitoring.googleapis.com",
     "cloudtrace.googleapis.com",
+
+    # Background / scheduled agent work (ADR 0001). Cloud Scheduler is the
+    # coarse per-env wake-up tick; Cloud Tasks is the per-run execution queue.
+    "cloudscheduler.googleapis.com",
+    "cloudtasks.googleapis.com",
   ]
 }
 
