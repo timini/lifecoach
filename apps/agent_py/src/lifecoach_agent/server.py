@@ -61,6 +61,11 @@ from lifecoach_agent.auth import (
     claims_to_firebase_user_like,
     verify_request,
 )
+from lifecoach_agent.background.auth import (
+    BackgroundOidcClaims,
+    BackgroundOidcVerifier,
+    extract_bearer_token,
+)
 from lifecoach_agent.context.air_quality import AirQualityClient
 from lifecoach_agent.context.calendar_density import CalendarDensityClient
 from lifecoach_agent.context.holidays import HolidaysClient, tz_to_country
@@ -218,6 +223,10 @@ class CreateAppDeps:
     # browser, and Firebase Auth). None = disabled (tests / local dev);
     # production wiring in main.py reads AGENT_INTERNAL_BEARER from env.
     internal_bearer: str | None = None
+    # Verifies the Google OIDC token on `/background/*` calls (Cloud Scheduler /
+    # Cloud Tasks). None = disabled → background routes fail closed (401). The
+    # real verifier is wired in main.py once infra sets the OIDC audience env.
+    background_oidc_verifier: BackgroundOidcVerifier | None = None
 
 
 # --- Helpers for endpoint auth -------------------------------------------
@@ -234,6 +243,25 @@ def _internal_auth_ok(request: Request, deps: CreateAppDeps) -> bool:
 
 def _internal_auth_error() -> JSONResponse:
     return JSONResponse({"error": "agent_internal_auth_required"}, status_code=401)
+
+
+async def _authenticate_background(
+    request: Request, deps: CreateAppDeps
+) -> tuple[BackgroundOidcClaims | None, JSONResponse | None]:
+    """Authenticate a `/background/*` caller via Google OIDC. Returns
+    `(claims, None)` on success or `(None, error_response)` on failure:
+    401 when no verifier is configured or the bearer token is absent, 403
+    when the token is present but not a valid OIDC token for our audience
+    (e.g. a browser Firebase token, which has the wrong `iss`/`aud`)."""
+    token = extract_bearer_token(
+        request.headers.get("authorization") or request.headers.get("Authorization")
+    )
+    if deps.background_oidc_verifier is None or token is None:
+        return None, JSONResponse({"error": "background_oidc_required"}, status_code=401)
+    claims = await deps.background_oidc_verifier(token)
+    if claims is None:
+        return None, JSONResponse({"error": "background_oidc_invalid"}, status_code=403)
+    return claims, None
 
 
 async def _verify(request: Request, deps: CreateAppDeps) -> VerifiedClaims | None:
@@ -308,9 +336,15 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
     # hit the *.run.app URL directly and burn LLM spend, bypassing
     # both the browser and Firebase Auth. /health is exempt so Cloud
     # Run's load-balancer probes still work (no secret on those).
+    # `/background/*` is exempt: those routes are called by Cloud Scheduler /
+    # Cloud Tasks with a Google OIDC token (not the web proxy's shared secret),
+    # and verify that token themselves (`_authenticate_background`). /health is
+    # exempt so Cloud Run's load-balancer probes work without the secret.
     @app.middleware("http")
     async def _internal_bearer_gate(request: Request, call_next):  # type: ignore[no-untyped-def]
-        if request.url.path != "/health" and not _internal_auth_ok(request, deps):
+        path = request.url.path
+        exempt = path == "/health" or path.startswith("/background/")
+        if not exempt and not _internal_auth_ok(request, deps):
             return _internal_auth_error()
         return await call_next(request)
 
@@ -319,6 +353,30 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
     @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    # ---- /background/* (service-to-service, OIDC-gated) -------------------
+    #
+    # ADR 0001. These bypass the x-agent-internal-bearer middleware and are
+    # authenticated by Google OIDC instead (Cloud Scheduler → tick, Cloud
+    # Tasks → execute). The dispatch/execute bodies are intentionally no-ops
+    # in this step — the purpose is to prove the auth + routing wiring;
+    # the sweep+enqueue and the workflow runner land in later steps once the
+    # Cloud Scheduler job + Cloud Tasks queue exist (infra) and the
+    # email_triage_daily workflow is implemented.
+
+    @app.post("/background/scheduler/tick")
+    async def background_tick(request: Request) -> JSONResponse:
+        _claims, err = await _authenticate_background(request, deps)
+        if err is not None:
+            return err
+        return JSONResponse({"status": "ok", "dispatched": 0})
+
+    @app.post("/background/runs/{run_id}/execute")
+    async def background_execute(request: Request, run_id: str) -> JSONResponse:
+        _claims, err = await _authenticate_background(request, deps)
+        if err is not None:
+            return err
+        return JSONResponse({"status": "ok", "runId": run_id})
 
     # ---- /history --------------------------------------------------------
 

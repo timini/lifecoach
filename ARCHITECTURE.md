@@ -321,6 +321,10 @@ All routes live in `src/lifecoach_agent/server.py`. Body is JSON ≤ 256 KiB.
 | `POST /workspace/oauth-exchange` | bearer | `{code}` | `{connected, scopes, grantedAt}` | Exchange GIS code → tokens. |
 | `GET /workspace/status` | bearer | — | `{connected, scopes, grantedAt}` | Never echoes tokens. |
 | `DELETE /workspace` | bearer | — | `{connected:false, scopes:[], grantedAt:null}` | Revoke at Google + drop the Firestore doc. |
+| `POST /background/scheduler/tick` | **Google OIDC** | — | `{status, dispatched}` | ADR 0001. Cloud Scheduler sweeps due schedules. Bypasses the `x-agent-internal-bearer` gate; verifies OIDC (`aud`==agent URL). No-op body until the dispatcher lands. |
+| `POST /background/runs/{runId}/execute` | **Google OIDC** | — | `{status, runId}` | ADR 0001. Cloud Tasks executes one run. Same OIDC gate. No-op body until the workflow runner lands. |
+
+> **Background auth.** `/background/*` is exempt from the shared-secret middleware and authenticated by Google OIDC instead (`background/auth.py`): bearer extracted, then `iss` ∈ Google issuers + `aud` == the exact agent URL + optional service-account-email allowlist, all enforced server-side (never trusting `iss` alone). A browser Firebase token has the wrong `iss`/`aud` → 403. No verifier configured → 401 (fail closed). The verifier is injectable (`CreateAppDeps.background_oidc_verifier`); the real Google verifier is wired in `main.py` with the audience from the OIDC env that infra sets (ADR step 4d).
 
 ### 7.2 ADK runner wiring (`main.py:runner_for`)
 

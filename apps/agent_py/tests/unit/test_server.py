@@ -754,3 +754,106 @@ async def test_history_serves_session_round_trip_via_firestore_service() -> None
         res = await c.get("/history?userId=u1&sessionId=day-1")
     assert res.status_code == 200
     assert res.json() == {"events": []}
+
+
+# --- /background/* (ADR 0001 step 3) -------------------------------------
+
+
+def _fake_oidc_verifier(valid_token: str = "good-oidc") -> Any:
+    """Returns a verifier accepting exactly `valid_token`."""
+    from lifecoach_agent.background.auth import BackgroundOidcClaims
+
+    async def _verify(token: str) -> BackgroundOidcClaims | None:
+        if token == valid_token:
+            return BackgroundOidcClaims(
+                issuer="https://accounts.google.com",
+                audience="https://agent.run.app",
+                email="sa-background-scheduler@proj.iam.gserviceaccount.com",
+                subject="1",
+            )
+        return None
+
+    return _verify
+
+
+@pytest.mark.asyncio
+async def test_background_tick_rejects_without_verifier_configured() -> None:
+    # No verifier wired → fail closed even with a bearer token.
+    app = _make_app()
+    async with _client(app) as c:
+        res = await c.post(
+            "/background/scheduler/tick", headers={"Authorization": "Bearer anything"}
+        )
+    assert res.status_code == 401
+    assert res.json()["error"] == "background_oidc_required"
+
+
+@pytest.mark.asyncio
+async def test_background_tick_401_when_no_bearer() -> None:
+    app = _make_app(deps_overrides={"background_oidc_verifier": _fake_oidc_verifier()})
+    async with _client(app) as c:
+        res = await c.post("/background/scheduler/tick")
+    assert res.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_background_tick_403_on_invalid_oidc() -> None:
+    app = _make_app(deps_overrides={"background_oidc_verifier": _fake_oidc_verifier()})
+    async with _client(app) as c:
+        res = await c.post(
+            "/background/scheduler/tick", headers={"Authorization": "Bearer firebase-token"}
+        )
+    assert res.status_code == 403
+    assert res.json()["error"] == "background_oidc_invalid"
+
+
+@pytest.mark.asyncio
+async def test_background_tick_ok_with_valid_oidc() -> None:
+    app = _make_app(deps_overrides={"background_oidc_verifier": _fake_oidc_verifier()})
+    async with _client(app) as c:
+        res = await c.post(
+            "/background/scheduler/tick", headers={"Authorization": "Bearer good-oidc"}
+        )
+    assert res.status_code == 200
+    assert res.json() == {"status": "ok", "dispatched": 0}
+
+
+@pytest.mark.asyncio
+async def test_background_execute_ok_with_valid_oidc() -> None:
+    app = _make_app(deps_overrides={"background_oidc_verifier": _fake_oidc_verifier()})
+    async with _client(app) as c:
+        res = await c.post(
+            "/background/runs/run-42/execute", headers={"Authorization": "Bearer good-oidc"}
+        )
+    assert res.status_code == 200
+    assert res.json() == {"status": "ok", "runId": "run-42"}
+
+
+@pytest.mark.asyncio
+async def test_background_execute_403_on_invalid_oidc() -> None:
+    app = _make_app(deps_overrides={"background_oidc_verifier": _fake_oidc_verifier()})
+    async with _client(app) as c:
+        res = await c.post(
+            "/background/runs/run-42/execute", headers={"Authorization": "Bearer nope"}
+        )
+    assert res.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_background_routes_bypass_internal_bearer_gate() -> None:
+    # With the shared-secret middleware ACTIVE, a normal route is gated but a
+    # background route reaches its OIDC check (proving the bypass).
+    app = _make_app(
+        deps_overrides={
+            "internal_bearer": "s3cret",
+            "background_oidc_verifier": _fake_oidc_verifier(),
+        }
+    )
+    async with _client(app) as c:
+        gated = await c.get("/goals?userId=u1")  # no x-agent-internal-bearer
+        bg = await c.post(
+            "/background/scheduler/tick", headers={"Authorization": "Bearer good-oidc"}
+        )
+    assert gated.status_code == 401
+    assert gated.json()["error"] == "agent_internal_auth_required"
+    assert bg.status_code == 200
