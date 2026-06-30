@@ -819,6 +819,32 @@ async def test_background_tick_ok_with_valid_oidc() -> None:
 
 
 @pytest.mark.asyncio
+async def test_background_tick_runs_dispatcher_and_returns_count() -> None:
+    class _FakeDispatcher:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def tick(self) -> int:
+            self.calls += 1
+            return 3
+
+    dispatcher = _FakeDispatcher()
+    app = _make_app(
+        deps_overrides={
+            "background_oidc_verifier": _fake_oidc_verifier(),
+            "background_dispatcher": dispatcher,
+        }
+    )
+    async with _client(app) as c:
+        res = await c.post(
+            "/background/scheduler/tick", headers={"Authorization": "Bearer good-oidc"}
+        )
+    assert res.status_code == 200
+    assert res.json() == {"status": "ok", "dispatched": 3}
+    assert dispatcher.calls == 1
+
+
+@pytest.mark.asyncio
 async def test_background_execute_ok_with_valid_oidc() -> None:
     app = _make_app(deps_overrides={"background_oidc_verifier": _fake_oidc_verifier()})
     async with _client(app) as c:

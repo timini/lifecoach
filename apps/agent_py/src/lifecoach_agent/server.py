@@ -66,6 +66,7 @@ from lifecoach_agent.background.auth import (
     BackgroundOidcVerifier,
     extract_bearer_token,
 )
+from lifecoach_agent.background.dispatcher import Dispatcher
 from lifecoach_agent.context.air_quality import AirQualityClient
 from lifecoach_agent.context.calendar_density import CalendarDensityClient
 from lifecoach_agent.context.holidays import HolidaysClient, tz_to_country
@@ -227,6 +228,10 @@ class CreateAppDeps:
     # Cloud Tasks). None = disabled → background routes fail closed (401). The
     # real verifier is wired in main.py once infra sets the OIDC audience env.
     background_oidc_verifier: BackgroundOidcVerifier | None = None
+    # Sweeps due schedules and enqueues run tasks on `/background/scheduler/tick`
+    # (ADR 0001 §2). None = no-op dispatch (returns dispatched:0) for tests /
+    # local; production wiring builds it in main.py.
+    background_dispatcher: Dispatcher | None = None
 
 
 # --- Helpers for endpoint auth -------------------------------------------
@@ -358,18 +363,19 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
     #
     # ADR 0001. These bypass the x-agent-internal-bearer middleware and are
     # authenticated by Google OIDC instead (Cloud Scheduler → tick, Cloud
-    # Tasks → execute). The dispatch/execute bodies are intentionally no-ops
-    # in this step — the purpose is to prove the auth + routing wiring;
-    # the sweep+enqueue and the workflow runner land in later steps once the
-    # Cloud Scheduler job + Cloud Tasks queue exist (infra) and the
-    # email_triage_daily workflow is implemented.
+    # Tasks → execute). `tick` runs the dispatcher (sweep due schedules +
+    # enqueue run tasks, step 5a); `execute` is still a no-op until the
+    # email_triage_daily workflow runner lands (step 5b).
 
     @app.post("/background/scheduler/tick")
     async def background_tick(request: Request) -> JSONResponse:
         _claims, err = await _authenticate_background(request, deps)
         if err is not None:
             return err
-        return JSONResponse({"status": "ok", "dispatched": 0})
+        if deps.background_dispatcher is None:
+            return JSONResponse({"status": "ok", "dispatched": 0})
+        dispatched = await deps.background_dispatcher.tick()
+        return JSONResponse({"status": "ok", "dispatched": dispatched})
 
     @app.post("/background/runs/{run_id}/execute")
     async def background_execute(request: Request, run_id: str) -> JSONResponse:

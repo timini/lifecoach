@@ -146,19 +146,30 @@ class BackgroundScheduleStore:
         schedule_id: str,
         run_id: str,
         next_run_at: str,
-        last_status: str,
+        expected_next_run_at: str | None = None,
+        last_status: str | None = None,
         last_run_at: str | None = None,
     ) -> bool:
         """Second transaction after enqueue: clear the lease and roll
         `nextRunAt` forward — but only if *this* dispatcher still holds the
         lease (`pendingRunId == run_id`). If a newer tick reclaimed an expired
         lease, leave its claim untouched (PR #193 review). Returns True iff the
-        release was applied."""
-        if last_status not in SCHEDULE_LAST_STATUSES:
+        release was applied.
+
+        `last_status` is the **run outcome** (`ok`/`skipped`/`failed`), owned by
+        the executor — the dispatcher omits it (advances scheduling only) and
+        leaves the prior `lastRunAt`/`lastStatus` untouched.
+
+        `expected_next_run_at` is an optimistic-concurrency guard: if the
+        schedule's `nextRunAt` no longer equals it, the user edited the schedule
+        (new cadence/timezone) while this tick held the lease, so the lease is
+        cleared but `nextRunAt` is NOT overwritten with the stale advance — the
+        user's edit wins (Codex #201)."""
+        if last_status is not None and last_status not in SCHEDULE_LAST_STATUSES:
             raise ValueError(f"last_status must be one of {SCHEDULE_LAST_STATUSES}: {last_status}")
         path = _doc_path(schedule_id)
-        ran_at = canonical_iso(last_run_at) if last_run_at else self._now_iso()
         advanced = canonical_iso(next_run_at)
+        expected = canonical_iso(expected_next_run_at) if expected_next_run_at is not None else None
 
         async def _txn(txn: BgTransaction) -> bool:
             snap = await txn.get(path)
@@ -167,17 +178,22 @@ class BackgroundScheduleStore:
             data = snap.data() or {}
             if data.get("pendingRunId") != run_id:
                 return False
-            txn.update(
-                path,
-                {
-                    "pendingRunId": None,
-                    "leaseExpiresAt": None,
-                    "nextRunAt": advanced,
-                    "lastRunAt": ran_at,
-                    "lastStatus": last_status,
-                    "updatedAt": ran_at,
-                },
-            )
+            now = self._now_iso()
+            if expected is not None and data.get("nextRunAt") != expected:
+                # Schedule edited mid-tick — release the lease but preserve the
+                # user's freshly-saved nextRunAt instead of the stale advance.
+                txn.update(path, {"pendingRunId": None, "leaseExpiresAt": None, "updatedAt": now})
+                return True
+            update: dict[str, object] = {
+                "pendingRunId": None,
+                "leaseExpiresAt": None,
+                "nextRunAt": advanced,
+                "updatedAt": now,
+            }
+            if last_status is not None:
+                update["lastStatus"] = last_status
+                update["lastRunAt"] = canonical_iso(last_run_at) if last_run_at else now
+            txn.update(path, update)
             return True
 
         return await self._fs.run_transaction(_txn)

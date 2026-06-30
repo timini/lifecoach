@@ -162,6 +162,14 @@ def test_schedule_rejects_non_list_weekdays() -> None:
         BackgroundSchedule.model_validate(bad)
 
 
+def test_schedule_rejects_empty_weekdays() -> None:
+    # [] means "no days" → the schedule would never legitimately fire; reject it
+    # (mirrors the TS .min(1)). Otherwise next_run_at would degrade to weekly.
+    bad = {**VALID_SCHEDULE, "cadence": {"type": "daily", "localTime": "08:00", "weekdays": []}}
+    with pytest.raises(ValidationError):
+        BackgroundSchedule.model_validate(bad)
+
+
 def test_schedule_rejects_offset_timestamp() -> None:
     # z.string().datetime() default rejects numeric offsets; require '…Z'.
     with pytest.raises(ValidationError):

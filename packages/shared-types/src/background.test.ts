@@ -89,6 +89,11 @@ describe('BackgroundScheduleSchema', () => {
     expect(() => BackgroundScheduleSchema.parse(bad)).toThrow();
   });
 
+  it('rejects an empty weekdays array (omit means every day, not none)', () => {
+    const bad = { ...validSchedule, cadence: { type: 'daily', localTime: '08:00', weekdays: [] } };
+    expect(() => BackgroundScheduleSchema.parse(bad)).toThrow();
+  });
+
   it('rejects a non-ISO nextRunAt', () => {
     expect(() => BackgroundScheduleSchema.parse({ ...validSchedule, nextRunAt: 'soon' })).toThrow();
   });

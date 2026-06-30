@@ -213,6 +213,83 @@ async def test_release_lease_and_advance() -> None:
     assert doc["lastRunAt"] == "2026-05-15T08:00:01.000Z"
 
 
+async def test_release_lease_advance_only_leaves_outcome_untouched() -> None:
+    # The dispatcher advances scheduling without a run outcome (last_status
+    # omitted): lease cleared + nextRunAt rolled, but lastStatus/lastRunAt are
+    # left for the executor to set.
+    fs = FakeBackgroundFirestore()
+    store = _store(fs)
+    await store.upsert(_schedule("s1", next_run_at="2026-05-15T07:00:00.000Z"))
+    await store.claim_lease(
+        schedule_id="s1",
+        run_id="run-1",
+        lease_expires_at="2026-05-15T08:05:00.000Z",
+        now_iso="2026-05-15T08:00:00.000Z",
+    )
+    applied = await store.release_lease_and_advance(
+        schedule_id="s1",
+        run_id="run-1",
+        next_run_at="2026-05-16T07:00:00.000Z",
+    )
+    assert applied is True
+    doc = fs.docs["backgroundSchedules/s1"]
+    assert doc["pendingRunId"] is None
+    assert doc["leaseExpiresAt"] is None
+    assert doc["nextRunAt"] == "2026-05-16T07:00:00.000Z"
+    assert "lastStatus" not in doc
+    assert "lastRunAt" not in doc
+
+
+async def test_release_lease_preserves_user_edit_to_next_run_at() -> None:
+    # User edits the schedule mid-tick: upsert keeps the lease but rewrites
+    # nextRunAt. The release must clear the lease WITHOUT clobbering the user's
+    # new nextRunAt with the stale advance (Codex #201).
+    fs = FakeBackgroundFirestore()
+    store = _store(fs)
+    await store.upsert(_schedule("s1", next_run_at="2026-05-15T07:00:00.000Z"))
+    await store.claim_lease(
+        schedule_id="s1",
+        run_id="run-1",
+        lease_expires_at="2026-05-15T08:05:00.000Z",
+        now_iso="2026-05-15T08:00:00.000Z",
+    )
+    # Simulate the edit: nextRunAt moved to a new value while lease still held.
+    fs.docs["backgroundSchedules/s1"]["nextRunAt"] = "2026-05-15T20:00:00.000Z"
+
+    applied = await store.release_lease_and_advance(
+        schedule_id="s1",
+        run_id="run-1",
+        next_run_at="2026-05-16T07:00:00.000Z",  # stale advance from old cadence
+        expected_next_run_at="2026-05-15T07:00:00.000Z",
+    )
+    assert applied is True
+    doc = fs.docs["backgroundSchedules/s1"]
+    assert doc["pendingRunId"] is None
+    assert doc["leaseExpiresAt"] is None
+    # The user's edit is preserved, not overwritten by the stale advance.
+    assert doc["nextRunAt"] == "2026-05-15T20:00:00.000Z"
+
+
+async def test_release_lease_advances_when_expected_matches() -> None:
+    fs = FakeBackgroundFirestore()
+    store = _store(fs)
+    await store.upsert(_schedule("s1", next_run_at="2026-05-15T07:00:00.000Z"))
+    await store.claim_lease(
+        schedule_id="s1",
+        run_id="run-1",
+        lease_expires_at="2026-05-15T08:05:00.000Z",
+        now_iso="2026-05-15T08:00:00.000Z",
+    )
+    applied = await store.release_lease_and_advance(
+        schedule_id="s1",
+        run_id="run-1",
+        next_run_at="2026-05-16T07:00:00.000Z",
+        expected_next_run_at="2026-05-15T07:00:00.000Z",
+    )
+    assert applied is True
+    assert fs.docs["backgroundSchedules/s1"]["nextRunAt"] == "2026-05-16T07:00:00.000Z"
+
+
 async def test_release_lease_skips_when_another_tick_reclaimed() -> None:
     # A stale dispatcher must not clobber a newer tick's valid claim.
     fs = FakeBackgroundFirestore()
