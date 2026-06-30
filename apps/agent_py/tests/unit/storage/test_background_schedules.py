@@ -158,6 +158,35 @@ async def test_claim_lease_false_when_schedule_missing() -> None:
     assert ok is False
 
 
+async def test_claim_lease_refuses_disabled_schedule() -> None:
+    # Disabled after query_due ran → the transactional re-check rejects it.
+    fs = FakeBackgroundFirestore()
+    store = _store(fs)
+    await store.upsert(_schedule("s1", enabled=False, next_run_at="2026-05-15T07:00:00.000Z"))
+    ok = await store.claim_lease(
+        schedule_id="s1",
+        run_id="run-1",
+        lease_expires_at="2026-05-15T08:05:00.000Z",
+        now_iso="2026-05-15T08:00:00.000Z",
+    )
+    assert ok is False
+    assert "pendingRunId" not in fs.docs["backgroundSchedules/s1"]
+
+
+async def test_claim_lease_refuses_when_no_longer_due() -> None:
+    # nextRunAt moved into the future between query_due and claim.
+    fs = FakeBackgroundFirestore()
+    store = _store(fs)
+    await store.upsert(_schedule("s1", next_run_at="2026-05-15T23:00:00.000Z"))
+    ok = await store.claim_lease(
+        schedule_id="s1",
+        run_id="run-1",
+        lease_expires_at="2026-05-15T08:05:00.000Z",
+        now_iso="2026-05-15T08:00:00.000Z",
+    )
+    assert ok is False
+
+
 async def test_release_lease_and_advance() -> None:
     fs = FakeBackgroundFirestore()
     store = _store(fs)
@@ -168,12 +197,14 @@ async def test_release_lease_and_advance() -> None:
         lease_expires_at="2026-05-15T08:05:00.000Z",
         now_iso="2026-05-15T08:00:00.000Z",
     )
-    await store.release_lease_and_advance(
+    applied = await store.release_lease_and_advance(
         schedule_id="s1",
+        run_id="run-1",
         next_run_at="2026-05-16T07:00:00.000Z",
         last_status="ok",
         last_run_at="2026-05-15T08:00:01.000Z",
     )
+    assert applied is True
     doc = fs.docs["backgroundSchedules/s1"]
     assert doc["pendingRunId"] is None
     assert doc["leaseExpiresAt"] is None
@@ -182,12 +213,46 @@ async def test_release_lease_and_advance() -> None:
     assert doc["lastRunAt"] == "2026-05-15T08:00:01.000Z"
 
 
+async def test_release_lease_skips_when_another_tick_reclaimed() -> None:
+    # A stale dispatcher must not clobber a newer tick's valid claim.
+    fs = FakeBackgroundFirestore()
+    store = _store(fs)
+    await store.upsert(_schedule("s1", next_run_at="2026-05-15T07:00:00.000Z"))
+    fs.docs["backgroundSchedules/s1"]["pendingRunId"] = "run-NEWER"
+    fs.docs["backgroundSchedules/s1"]["leaseExpiresAt"] = "2026-05-15T09:00:00.000Z"
+    applied = await store.release_lease_and_advance(
+        schedule_id="s1",
+        run_id="run-STALE",
+        next_run_at="2026-05-16T07:00:00.000Z",
+        last_status="ok",
+    )
+    assert applied is False
+    assert fs.docs["backgroundSchedules/s1"]["pendingRunId"] == "run-NEWER"
+
+
+async def test_release_lease_rejects_bad_last_status() -> None:
+    fs = FakeBackgroundFirestore()
+    store = _store(fs)
+    await store.upsert(_schedule("s1", next_run_at="2026-05-15T07:00:00.000Z"))
+    with pytest.raises(ValueError):
+        await store.release_lease_and_advance(
+            schedule_id="s1",
+            run_id="run-1",
+            next_run_at="2026-05-16T07:00:00.000Z",
+            last_status="succeeded",  # a run status, not a schedule status
+        )
+
+
 async def test_release_lease_noop_when_missing() -> None:
     # Must not resurrect a deleted schedule.
     fs = FakeBackgroundFirestore()
-    await _store(fs).release_lease_and_advance(
-        schedule_id="ghost", next_run_at="2026-05-16T07:00:00.000Z", last_status="ok"
+    applied = await _store(fs).release_lease_and_advance(
+        schedule_id="ghost",
+        run_id="run-1",
+        next_run_at="2026-05-16T07:00:00.000Z",
+        last_status="ok",
     )
+    assert applied is False
     assert "backgroundSchedules/ghost" not in fs.docs
 
 
