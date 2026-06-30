@@ -58,6 +58,12 @@ variable "max_backoff" {
   default = "300s"
 }
 
+variable "enqueuer_members" {
+  type        = list(string)
+  default     = []
+  description = "IAM members (serviceAccount:…) granted roles/cloudtasks.enqueuer on this queue — the dispatcher (agent runtime SA) that calls CreateTask."
+}
+
 resource "google_cloud_tasks_queue" "runs" {
   project  = var.project_id
   location = var.region
@@ -73,6 +79,17 @@ resource "google_cloud_tasks_queue" "runs" {
     min_backoff  = var.min_backoff
     max_backoff  = var.max_backoff
   }
+}
+
+# The dispatcher (agent runtime SA) calls CreateTask → needs cloudtasks.tasks.create.
+# Scoped to this queue (least privilege) rather than a project-wide grant.
+resource "google_cloud_tasks_queue_iam_member" "enqueuers" {
+  for_each = toset(var.enqueuer_members)
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_tasks_queue.runs.name
+  role     = "roles/cloudtasks.enqueuer"
+  member   = each.value
 }
 
 output "queue_id" {

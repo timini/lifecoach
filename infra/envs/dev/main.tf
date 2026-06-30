@@ -235,7 +235,12 @@ module "background_tasks_queue" {
   max_dispatches_per_second = var.background_queue_max_dispatch_per_second
   max_concurrent_dispatches = var.background_queue_max_concurrent_dispatches
 
-  depends_on = [module.apis]
+  # The dispatcher enqueues as the agent runtime SA.
+  enqueuer_members = [
+    "serviceAccount:${module.agent.service_account_email}",
+  ]
+
+  depends_on = [module.apis, module.agent]
 }
 
 # --- Service-to-service shared secret (web ↔ agent) ----------------------
