@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import pytest
 
 from lifecoach_agent.background.runner import BackgroundRunner
@@ -103,13 +105,21 @@ def _action() -> BackgroundProposedAction:
     )
 
 
+@dataclass
+class _StoredToken:
+    scopes: list[str]
+
+
 class _FakeTokens:
-    def __init__(self, *, present: bool = True, revoked: bool = False) -> None:
+    def __init__(
+        self, *, present: bool = True, revoked: bool = False, scopes: list[str] | None = None
+    ) -> None:
         self._present = present
         self._revoked = revoked
+        self._scopes = scopes if scopes is not None else ["gmail.readonly"]
 
-    async def get(self, uid: str) -> object | None:
-        return object() if self._present else None
+    async def get(self, uid: str) -> _StoredToken | None:
+        return _StoredToken(scopes=self._scopes) if self._present else None
 
     async def get_valid_access_token(self, uid: str) -> str:
         if self._revoked:
@@ -119,12 +129,18 @@ class _FakeTokens:
 
 class _FakeWorkflow:
     name = "email_triage_daily"
+    required_scopes: tuple[str, ...] = ()
 
     def __init__(
-        self, *, result: BackgroundRunResult | None = None, raises: Exception | None = None
+        self,
+        *,
+        result: BackgroundRunResult | None = None,
+        raises: Exception | None = None,
+        required_scopes: tuple[str, ...] = (),
     ):
         self._result = result if result is not None else BackgroundRunResult()
         self._raises = raises
+        self.required_scopes = required_scopes
         self.calls = 0
         self.last_ctx: BackgroundRunContext | None = None
 
@@ -142,15 +158,18 @@ def _runner(
     tokens: _FakeTokens | None = None,
     workflow: _FakeWorkflow | None = None,
     register: bool = True,
+    max_attempts: int = 5,
+    notifications: object | None = None,
 ) -> BackgroundRunner:
     wf = workflow or _FakeWorkflow()
     return BackgroundRunner(
         runs=create_background_run_store(firestore=fs),  # type: ignore[arg-type]
         schedules=create_background_schedule_store(firestore=fs),  # type: ignore[arg-type]
-        notifications=create_background_notification_store(firestore=fs),  # type: ignore[arg-type]
+        notifications=notifications or create_background_notification_store(firestore=fs),  # type: ignore[arg-type]
         proposed_actions=create_background_proposed_action_store(firestore=fs),  # type: ignore[arg-type]
-        workspace_tokens=tokens or _FakeTokens(),
+        workspace_tokens=tokens or _FakeTokens(),  # type: ignore[arg-type]
         workflows={"email_triage_daily": wf} if register else {},
+        max_attempts=max_attempts,
         now_iso=lambda: _NOW,
     )
 
@@ -254,6 +273,57 @@ async def test_unknown_error_is_terminal_and_does_not_retry() -> None:
     # Raw exception text is NEVER persisted to Firestore (ADR §Error sanitization).
     assert "errorMessage" not in doc
     assert doc["errorCode"] == "WORKFLOW_ERROR"
+
+
+async def test_skip_when_required_scope_missing() -> None:
+    fs = FakeBackgroundFirestore()
+    await _seed(fs)
+    wf = _FakeWorkflow(required_scopes=("gmail.readonly",))
+    # Token connected but missing the Gmail scope (granular consent).
+    outcome = await _execute(
+        _runner(fs, workflow=wf, tokens=_FakeTokens(scopes=["calendar.readonly"]))
+    )
+    assert outcome.error_code == "WORKSPACE_SCOPE_MISSING"
+    assert wf.calls == 0
+    assert fs.docs["backgroundRuns/run-1"]["status"] == "skipped"
+
+
+async def test_retry_exhaustion_marks_terminal_not_stuck() -> None:
+    # On the final delivery a still-transient failure becomes terminal (+200) so
+    # the run isn't left non-terminal after Cloud Tasks gives up (Codex #203).
+    fs = FakeBackgroundFirestore()
+    await _seed(fs)
+    wf = _FakeWorkflow(raises=BackgroundRetryableError("GMAIL_UNAVAILABLE"))
+    outcome = await _execute(_runner(fs, workflow=wf, max_attempts=1))
+    assert (outcome.status, outcome.http_status, outcome.error_code) == (
+        "terminal_failed",
+        200,
+        "GMAIL_UNAVAILABLE",
+    )
+    assert fs.docs["backgroundRuns/run-1"]["status"] == "terminal_failed"
+
+
+async def test_persist_failure_marks_retryable_not_acked() -> None:
+    # A storage failure AFTER the workflow returned must not ack the task while
+    # the run is still running with a live lease — mark retryable + 5xx so the
+    # next delivery re-claims (Codex #203 P1).
+    class _FailingNotifications:
+        async def create(self, notification: object) -> bool:
+            raise RuntimeError("firestore unavailable")
+
+    fs = FakeBackgroundFirestore()
+    await _seed(fs)
+    wf = _FakeWorkflow(result=BackgroundRunResult(notification=_notification()))
+    outcome = await _execute(_runner(fs, workflow=wf, notifications=_FailingNotifications()))
+    assert (outcome.status, outcome.http_status, outcome.error_code) == (
+        "retryable_failed",
+        503,
+        "ARTIFACT_WRITE_FAILED",
+    )
+    doc = fs.docs["backgroundRuns/run-1"]
+    assert doc["status"] == "retryable_failed"
+    # Lease cleared so the next delivery can re-claim (not stuck running).
+    assert "leaseExpiresAt" not in doc
 
 
 async def test_duplicate_delivery_is_noop() -> None:

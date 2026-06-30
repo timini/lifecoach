@@ -62,5 +62,10 @@ class BackgroundRunResult:
 
 class BackgroundWorkflow(Protocol):
     name: str
+    # Google OAuth scopes this workflow needs. The runner skips a run
+    # (non-retryable) when the user's stored token is missing any of them —
+    # granular consent / scope rollouts can leave a connected token short a
+    # scope — so the gap is caught before any external call (ADR §3).
+    required_scopes: tuple[str, ...]
 
     async def run(self, ctx: BackgroundRunContext) -> BackgroundRunResult: ...
