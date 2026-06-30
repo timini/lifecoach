@@ -9,15 +9,30 @@ Orchestrates one idempotent run:
     → run the workflow (reads + classifies; never mutates third-party state)
     → persist the digest + proposed actions, then mark_succeeded
     → BackgroundRetryableError ⇒ `retryable_failed` + 5xx (Cloud Tasks retries)
-    → any other exception ⇒ `terminal_failed` + 200 (don't hammer the queue on a
-      deterministic bug); the sanitized class goes to Cloud Logging, never the
-      raw message to Firestore (ADR §Error sanitization).
+    → workflow raised a non-retryable exception ⇒ `terminal_failed` + 200 (don't
+      hammer the queue on a deterministic bug); the sanitized class goes to Cloud
+      Logging, never the raw message to Firestore (ADR §Error sanitization).
+
+Everything after a successful claim runs inside one guard: once the 600s lease is
+live, ANY unhandled storage/read failure (a `schedules.get`, a `tokens.get`, a
+mark write) must NOT escape as a bare 500. A 500 lets Cloud Tasks re-deliver
+while the lease is still live; the re-delivery hits the live lease, gets a
+`noop` 200, the queue deletes the task, and the run is stranded non-terminal.
+So the guard converts any such failure into `retryable_failed` (which clears the
+lease) + 5xx, so the next delivery re-claims and the create-if-absent writes
+replay idempotently (Codex #203 P1 + re-review #1).
+
+On every terminal outcome (succeeded / skipped / terminal_failed) the executor
+also mirrors the result onto the schedule (`lastStatus`/`lastRunAt`) so the
+settings UI shows the latest run — best-effort, since the run record is the
+source of truth (Codex #203 re-review #2).
 
 The app owns every terminal state — Cloud Tasks is never a dead-letter.
 """
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -30,6 +45,7 @@ from lifecoach_agent.background.workflow import (
     BackgroundRunContext,
     BackgroundWorkflow,
 )
+from lifecoach_agent.contracts.background import BackgroundRun
 from lifecoach_agent.storage.background_notifications import BackgroundNotificationStore
 from lifecoach_agent.storage.background_proposed_actions import BackgroundProposedActionStore
 from lifecoach_agent.storage.background_runs import BackgroundRunStore
@@ -109,30 +125,66 @@ class BackgroundRunner:
             # another worker owns it. Replay is a no-op; digests never double.
             return ExecuteOutcome("noop", 200)
 
+        # Lease is now live. Every post-claim failure must clear the lease + 5xx
+        # rather than escape as a bare 500 — otherwise the re-delivery hits the
+        # live lease, gets a noop-200 ack, and the run is stranded (Codex #203 P1
+        # + re-review #1). A workflow's deterministic failure is the one terminal
+        # case; everything else (storage reads/writes) is treated as retryable.
+        try:
+            return await self._run_claimed(
+                run_id=run_id, schedule_id=schedule_id, uid=uid, kind=kind, claimed=claimed
+            )
+        except BackgroundRetryableError as e:
+            return await self._handle_retryable(run_id, schedule_id, claimed.attempt, e.error_code)
+        except Exception as e:  # noqa: BLE001 — unhandled storage/read failure → retry, never strand
+            _logger.error(
+                "background_executor_error",
+                extra={"uid_hash": uid_hash(uid), "kind": kind, "error_class": type(e).__name__},
+            )
+            return await self._handle_retryable(
+                run_id, schedule_id, claimed.attempt, "EXECUTOR_ERROR"
+            )
+
+    async def _run_claimed(
+        self,
+        *,
+        run_id: str,
+        schedule_id: str,
+        uid: str,
+        kind: str,
+        claimed: BackgroundRun,
+    ) -> ExecuteOutcome:
         # --- validate before any external I/O (ADR §3) --------------------
         schedule = await self._schedules.get(schedule_id)
         if schedule is None or not schedule.enabled:
-            return await self._skip(run_id, "SCHEDULE_DISABLED")
+            return await self._skip(run_id, schedule_id, "SCHEDULE_DISABLED")
 
         token = await self._tokens.get(uid)
         if token is None:
-            return await self._skip(run_id, "WORKSPACE_DISCONNECTED")
+            return await self._skip(run_id, schedule_id, "WORKSPACE_DISCONNECTED")
 
         workflow = self._workflows.get(kind)
         if workflow is None:
-            return await self._skip(run_id, "WORKFLOW_NOT_REGISTERED")
+            return await self._skip(run_id, schedule_id, "WORKFLOW_NOT_REGISTERED")
 
         # Granular consent / scope rollout can leave a connected token missing
         # the scope a workflow needs — skip (non-retryable) before any Gmail
         # call rather than failing mid-run (Codex #203).
         required = set(getattr(workflow, "required_scopes", ()) or ())
         if not required.issubset(set(token.scopes)):
-            return await self._skip(run_id, "WORKSPACE_SCOPE_MISSING")
+            return await self._skip(run_id, schedule_id, "WORKSPACE_SCOPE_MISSING")
 
         try:
             access_token = await self._tokens.get_valid_access_token(uid)
-        except Exception:  # noqa: BLE001 — revoked/refresh failure → skip, not retry
-            return await self._skip(run_id, "WORKSPACE_TOKEN_REVOKED")
+        except Exception:  # noqa: BLE001 — token unusable → skip, not retry
+            # The shared token store deletes the doc and raises on ANY refresh
+            # failure (revoked refresh token *or* a transient token-endpoint
+            # outage) — it can't tell them apart, so this mirrors the foreground
+            # drop-to-google_linked behaviour as a non-retryable skip. Making
+            # the refresh transient-aware would mean reworking the shared store's
+            # error taxonomy (used by the chat path); tracked separately
+            # (Codex #203 re-review #3).
+            return await self._skip(run_id, schedule_id, "WORKSPACE_TOKEN_REVOKED")
 
         ctx = BackgroundRunContext(
             run=claimed,
@@ -144,25 +196,19 @@ class BackgroundRunner:
         # --- run ---------------------------------------------------------
         try:
             result = await workflow.run(ctx)
-        except BackgroundRetryableError as e:
-            return await self._handle_retryable(run_id, claimed.attempt, e.error_code)
+        except BackgroundRetryableError:
+            raise  # handled by execute() → _handle_retryable
         except Exception as e:  # noqa: BLE001 — deterministic failure → terminal, no retry
             # Sanitized class only to logs; raw message NEVER to Firestore (ADR).
             _logger.error(
                 "background_workflow_error",
                 extra={"uid_hash": uid_hash(uid), "kind": kind, "error_class": type(e).__name__},
             )
-            await self._runs.mark_terminal_failed(
-                run_id, error_code="WORKFLOW_ERROR", finished_at=self._now_iso()
-            )
-            return ExecuteOutcome("terminal_failed", 200, "WORKFLOW_ERROR")
+            return await self._terminal(run_id, schedule_id, "WORKFLOW_ERROR")
 
-        # --- persist (must not ack a retry while the lease is still live) --
-        # If a Firestore write fails here the run is still `running` with a live
-        # lease; acking (200) would let Cloud Tasks delete the task and strand
-        # the run. Mark it retryable (clears the lease) and return 5xx so the
-        # next delivery re-claims and the create-if-absent writes are idempotent
-        # (Codex #203 P1).
+        # --- persist -----------------------------------------------------
+        # A storage failure here propagates to execute()'s guard (→ retryable),
+        # but we surface the more specific ARTIFACT_WRITE_FAILED code first.
         try:
             for action in result.proposed_actions:
                 await self._actions.create(action)
@@ -182,23 +228,49 @@ class BackgroundRunner:
                 "background_persist_error",
                 extra={"uid_hash": uid_hash(uid), "kind": kind, "error_class": type(e).__name__},
             )
-            return await self._handle_retryable(run_id, claimed.attempt, "ARTIFACT_WRITE_FAILED")
+            return await self._handle_retryable(
+                run_id, schedule_id, claimed.attempt, "ARTIFACT_WRITE_FAILED"
+            )
+        await self._set_schedule_outcome(schedule_id, "ok")
         return ExecuteOutcome("succeeded", 200)
 
-    async def _handle_retryable(self, run_id: str, attempt: int, error_code: str) -> ExecuteOutcome:
+    async def _handle_retryable(
+        self, run_id: str, schedule_id: str, attempt: int, error_code: str
+    ) -> ExecuteOutcome:
         """Transient failure. On the final delivery (attempt ≥ max_attempts)
         record a terminal state + 200 so the run doesn't linger non-terminal
-        after Cloud Tasks gives up; otherwise `retryable_failed` + 5xx to retry."""
+        after Cloud Tasks gives up; otherwise `retryable_failed` + 5xx to retry.
+        A non-terminal retry leaves the schedule outcome untouched — only the
+        final terminal state is mirrored."""
         if attempt >= self._max_attempts:
             await self._runs.mark_terminal_failed(
                 run_id, error_code=error_code, finished_at=self._now_iso()
             )
+            await self._set_schedule_outcome(schedule_id, "failed")
             return ExecuteOutcome("terminal_failed", 200, error_code)
         await self._runs.mark_retryable_failed(
             run_id, error_code=error_code, finished_at=self._now_iso()
         )
         return ExecuteOutcome("retryable_failed", 503, error_code)
 
-    async def _skip(self, run_id: str, error_code: str) -> ExecuteOutcome:
+    async def _terminal(self, run_id: str, schedule_id: str, error_code: str) -> ExecuteOutcome:
+        await self._runs.mark_terminal_failed(
+            run_id, error_code=error_code, finished_at=self._now_iso()
+        )
+        await self._set_schedule_outcome(schedule_id, "failed")
+        return ExecuteOutcome("terminal_failed", 200, error_code)
+
+    async def _skip(self, run_id: str, schedule_id: str, error_code: str) -> ExecuteOutcome:
         await self._runs.mark_skipped(run_id, error_code=error_code, finished_at=self._now_iso())
+        await self._set_schedule_outcome(schedule_id, "skipped")
         return ExecuteOutcome("skipped", 200, error_code)
+
+    async def _set_schedule_outcome(self, schedule_id: str, last_status: str) -> None:
+        """Best-effort mirror of the run's terminal state onto the schedule
+        (`lastStatus`/`lastRunAt`) for the settings UI (Codex #203 re-review #2).
+        The run record is the source of truth, so a failure here must never undo
+        a terminal run or trigger a spurious workflow re-run — hence suppressed."""
+        with contextlib.suppress(Exception):
+            await self._schedules.set_last_outcome(
+                schedule_id=schedule_id, last_status=last_status, last_run_at=self._now_iso()
+            )

@@ -387,7 +387,12 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
         if err is not None:
             return err
         if deps.background_runner is None:
-            return JSONResponse({"status": "ok", "runId": run_id})
+            # No runner wired. With symmetric dispatcher/runner gating this is
+            # unreachable in steady state (no runner ⇒ no dispatcher ⇒ no tasks),
+            # but a task already in flight when config flips must NOT be acked
+            # (200) — that deletes it and strands the run `queued`. Return 503 so
+            # Cloud Tasks retries once the runner is wired (Codex #203 re-review #5).
+            return JSONResponse({"status": "unavailable", "runId": run_id}, status_code=503)
         try:
             body = await request.json()
         except Exception:  # noqa: BLE001 — malformed/empty body

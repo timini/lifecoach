@@ -326,6 +326,96 @@ async def test_persist_failure_marks_retryable_not_acked() -> None:
     assert "leaseExpiresAt" not in doc
 
 
+async def test_terminal_outcomes_mirror_schedule_last_status() -> None:
+    # The executor stamps lastStatus/lastRunAt on the schedule for the settings
+    # UI on every terminal outcome (Codex #203 re-review #2).
+    # succeeded → "ok"
+    fs = FakeBackgroundFirestore()
+    await _seed(fs)
+    await _execute(_runner(fs, workflow=_FakeWorkflow(result=BackgroundRunResult())))
+    sched = fs.docs["backgroundSchedules/s1"]
+    assert sched["lastStatus"] == "ok"
+    assert sched["lastRunAt"] == _NOW
+
+    # skipped → "skipped"
+    fs = FakeBackgroundFirestore()
+    await create_background_schedule_store(firestore=fs).upsert(_schedule(enabled=False))  # type: ignore[arg-type]
+    await create_background_run_store(firestore=fs).create(_run())  # type: ignore[arg-type]
+    await _execute(_runner(fs))
+    assert fs.docs["backgroundSchedules/s1"]["lastStatus"] == "skipped"
+
+    # terminal_failed → "failed"
+    fs = FakeBackgroundFirestore()
+    await _seed(fs)
+    await _execute(_runner(fs, workflow=_FakeWorkflow(raises=ValueError("boom"))))
+    assert fs.docs["backgroundSchedules/s1"]["lastStatus"] == "failed"
+
+
+async def test_validation_read_failure_after_claim_is_retryable_not_stranded() -> None:
+    # If a Firestore read in the validation phase throws AFTER the lease is live,
+    # the executor must clear the lease + return 5xx — never let a bare 500 escape
+    # (which would let the re-delivery hit the live lease, get a noop-200 ack, and
+    # strand the run) (Codex #203 re-review #1).
+    class _FailingSchedules:
+        async def get(self, schedule_id: str) -> object:
+            raise RuntimeError("firestore read unavailable")
+
+        async def set_last_outcome(self, **kwargs: object) -> bool:
+            return False
+
+    fs = FakeBackgroundFirestore()
+    await _seed(fs)
+    runner = BackgroundRunner(
+        runs=create_background_run_store(firestore=fs),  # type: ignore[arg-type]
+        schedules=_FailingSchedules(),  # type: ignore[arg-type]
+        notifications=create_background_notification_store(firestore=fs),  # type: ignore[arg-type]
+        proposed_actions=create_background_proposed_action_store(firestore=fs),  # type: ignore[arg-type]
+        workspace_tokens=_FakeTokens(),  # type: ignore[arg-type]
+        workflows={"email_triage_daily": _FakeWorkflow()},
+        now_iso=lambda: _NOW,
+    )
+    outcome = await _execute(runner)
+    assert (outcome.status, outcome.http_status, outcome.error_code) == (
+        "retryable_failed",
+        503,
+        "EXECUTOR_ERROR",
+    )
+    doc = fs.docs["backgroundRuns/run-1"]
+    assert doc["status"] == "retryable_failed"
+    # Lease cleared so the next delivery can re-claim (not stuck running).
+    assert "leaseExpiresAt" not in doc
+
+
+async def test_schedule_outcome_failure_does_not_break_succeeded_run() -> None:
+    # The schedule-outcome mirror is best-effort: a failure stamping it must not
+    # undo a succeeded run or trigger a spurious retry (Codex #203 re-review #2).
+    class _OkRunsFailingOutcome:
+        def __init__(self, real: object) -> None:
+            self._real = real
+
+        async def get(self, schedule_id: str) -> object:
+            return await self._real.get(schedule_id)
+
+        async def set_last_outcome(self, **kwargs: object) -> bool:
+            raise RuntimeError("schedule write unavailable")
+
+    fs = FakeBackgroundFirestore()
+    await _seed(fs)
+    real_sched = create_background_schedule_store(firestore=fs)
+    runner = BackgroundRunner(
+        runs=create_background_run_store(firestore=fs),  # type: ignore[arg-type]
+        schedules=_OkRunsFailingOutcome(real_sched),  # type: ignore[arg-type]
+        notifications=create_background_notification_store(firestore=fs),  # type: ignore[arg-type]
+        proposed_actions=create_background_proposed_action_store(firestore=fs),  # type: ignore[arg-type]
+        workspace_tokens=_FakeTokens(),  # type: ignore[arg-type]
+        workflows={"email_triage_daily": _FakeWorkflow()},
+        now_iso=lambda: _NOW,
+    )
+    outcome = await _execute(runner)
+    assert (outcome.status, outcome.http_status) == ("succeeded", 200)
+    assert fs.docs["backgroundRuns/run-1"]["status"] == "succeeded"
+
+
 async def test_duplicate_delivery_is_noop() -> None:
     # A run already terminal (succeeded) → claim returns None → no-op, no skip.
     fs = FakeBackgroundFirestore()
