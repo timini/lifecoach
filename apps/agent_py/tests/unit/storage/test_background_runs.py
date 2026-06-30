@@ -43,8 +43,18 @@ async def test_create_then_get_round_trips() -> None:
     fs = FakeBackgroundFirestore()
     store = _store(fs)
     run = _run("run-1")
-    await store.create(run)
+    assert await store.create(run) is True
     assert await store.get("run-1") == run
+
+
+async def test_create_refuses_to_overwrite_existing_run() -> None:
+    # A retried/slow dispatcher must not regress a running/terminal run.
+    fs = FakeBackgroundFirestore()
+    store = _store(fs)
+    await store.create(_run("run-1", status="running", attempt=1))
+    created = await store.create(_run("run-1"))  # same id, queued payload
+    assert created is False
+    assert fs.docs["backgroundRuns/run-1"]["status"] == "running"
 
 
 async def test_get_missing_returns_none() -> None:
@@ -94,15 +104,35 @@ async def test_claim_for_execution_from_retryable_failed() -> None:
     assert claimed is not None and claimed.attempt == 2
 
 
-async def test_claim_for_execution_noop_when_running() -> None:
-    # Duplicate Cloud Task delivery for an in-flight run must not re-run it.
+async def test_claim_for_execution_noop_when_running_with_live_lease() -> None:
+    # Duplicate Cloud Task delivery for an in-flight run (valid lease) no-ops.
     fs = FakeBackgroundFirestore()
     store = _store(fs)
     await store.create(_run("run-1", status="running", attempt=1))
+    fs.docs["backgroundRuns/run-1"]["leaseExpiresAt"] = "2026-05-15T08:05:00.000Z"
     assert (
-        await store.claim_for_execution(run_id="run-1", lease_expires_at="2026-05-15T08:10:00.000Z")
+        await store.claim_for_execution(
+            run_id="run-1",
+            lease_expires_at="2026-05-15T08:10:00.000Z",
+            now_iso="2026-05-15T08:00:00.000Z",
+        )
         is None
     )
+
+
+async def test_claim_for_execution_reclaims_expired_running_lease() -> None:
+    # Worker crashed mid-run without writing terminal state; the expired lease
+    # is the only recovery signal — the next delivery must reclaim it (P1).
+    fs = FakeBackgroundFirestore()
+    store = _store(fs)
+    await store.create(_run("run-1", status="running", attempt=1))
+    fs.docs["backgroundRuns/run-1"]["leaseExpiresAt"] = "2026-05-15T07:59:00.000Z"
+    claimed = await store.claim_for_execution(
+        run_id="run-1",
+        lease_expires_at="2026-05-15T08:10:00.000Z",
+        now_iso="2026-05-15T08:00:00.000Z",
+    )
+    assert claimed is not None and claimed.attempt == 2
 
 
 async def test_claim_for_execution_noop_when_terminal() -> None:
@@ -124,11 +154,14 @@ async def test_claim_for_execution_noop_when_missing() -> None:
     )
 
 
-async def test_mark_succeeded_persists_output_and_clears_lease() -> None:
+async def test_mark_succeeded_persists_output_and_clears_lease_and_errors() -> None:
     fs = FakeBackgroundFirestore()
     store = _store(fs)
+    # Previously retried: stale error metadata must be cleared on success.
     await store.create(_run("run-1", status="running"))
     fs.docs["backgroundRuns/run-1"]["leaseExpiresAt"] = "2026-05-15T08:05:00.000Z"
+    fs.docs["backgroundRuns/run-1"]["errorCode"] = "FIRESTORE_UNAVAILABLE"
+    fs.docs["backgroundRuns/run-1"]["errorMessage"] = "transient blip"
     await store.mark_succeeded(
         "run-1",
         output_ref="note_1",
@@ -142,7 +175,10 @@ async def test_mark_succeeded_persists_output_and_clears_lease() -> None:
     assert doc["outputRef"] == "note_1"
     assert doc["model"] == "gemini-flash-lite-latest"
     assert doc["tokenCostEstimate"] == 0.0012
-    assert doc["leaseExpiresAt"] is None
+    # Optional fields are deleted (omit), never written as null.
+    assert "leaseExpiresAt" not in doc
+    assert "errorCode" not in doc
+    assert "errorMessage" not in doc
 
 
 async def test_mark_skipped() -> None:
@@ -155,17 +191,17 @@ async def test_mark_skipped() -> None:
     assert doc["errorCode"] == "WORKSPACE_DISCONNECTED"
 
 
-async def test_mark_terminal_failed_with_message() -> None:
+async def test_mark_terminal_failed_persists_code_only() -> None:
     fs = FakeBackgroundFirestore()
     store = _store(fs)
     await store.create(_run("run-1", status="running"))
-    await store.mark_terminal_failed(
-        "run-1", error_code="MAX_ATTEMPTS_EXHAUSTED", error_message="attempt 5 of 5"
-    )
+    await store.mark_terminal_failed("run-1", error_code="MAX_ATTEMPTS_EXHAUSTED")
     doc = fs.docs["backgroundRuns/run-1"]
     assert doc["status"] == "terminal_failed"
     assert doc["errorCode"] == "MAX_ATTEMPTS_EXHAUSTED"
-    assert doc["errorMessage"] == "attempt 5 of 5"
+    # No free-text error text is ever persisted to Firestore (ADR).
+    assert "errorMessage" not in doc
+    assert "leaseExpiresAt" not in doc
 
 
 async def test_mark_retryable_failed() -> None:

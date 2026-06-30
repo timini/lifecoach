@@ -14,6 +14,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, TypeVar
 
+from lifecoach_agent.storage.background_firestore import _DeleteField
+
 T = TypeVar("T")
 
 _OPS = {
@@ -64,9 +66,15 @@ class _Txn:
     def _commit(self) -> None:
         for path, value, is_update in self._writes:
             if is_update and path in self._store:
-                self._store[path] = {**self._store[path], **value}
+                merged = {**self._store[path], **value}
+                # DELETE_FIELD sentinel removes the key (omit, not null).
+                self._store[path] = {
+                    k: v for k, v in merged.items() if not isinstance(v, _DeleteField)
+                }
             else:
-                self._store[path] = dict(value)
+                self._store[path] = {
+                    k: v for k, v in value.items() if not isinstance(v, _DeleteField)
+                }
 
 
 @dataclass
