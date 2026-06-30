@@ -119,3 +119,15 @@ variable "background_scheduler_cron" {
   default     = "*/15 * * * *"
   description = "Cadence of the background dispatcher tick (ADR 0001). Dev = every 15 min; prod pins 5 min."
 }
+
+variable "background_queue_max_dispatch_per_second" {
+  type        = number
+  default     = 5
+  description = "Cloud Tasks dispatch-rate ceiling for background runs (ADR 0001)."
+}
+
+variable "background_queue_max_concurrent_dispatches" {
+  type        = number
+  default     = 5
+  description = "Max in-flight background run deliveries (ADR 0001)."
+}
