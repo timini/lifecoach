@@ -55,12 +55,17 @@ export type ScheduleLastStatus = (typeof SCHEDULE_LAST_STATUSES)[number];
 
 /** Daily cadence policy. `localTime` is `HH:MM` 24h in the schedule's IANA
  * `timezone`; `weekdays` (0=Sunday … 6=Saturday, JS `Date.getDay()`) narrows
- * to specific days — omit for every day. */
+ * to specific days — omit for every day. An empty array is rejected: it would
+ * mean "no days" (the schedule never legitimately fires), so it's an invalid
+ * config rather than a silently-degraded one. */
 export const ScheduleCadenceSchema = z
   .object({
     type: z.literal('daily'),
     localTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'localTime must be HH:MM 24h'),
-    weekdays: z.array(z.number().int().min(0).max(6)).optional(),
+    weekdays: z
+      .array(z.number().int().min(0).max(6))
+      .min(1, 'weekdays must be omitted or non-empty')
+      .optional(),
   })
   .strict();
 

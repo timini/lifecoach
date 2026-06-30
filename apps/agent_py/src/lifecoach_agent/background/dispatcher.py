@@ -114,6 +114,9 @@ class Dispatcher:
                 schedule_id=sched.id,
                 run_id=run_id,
                 next_run_at=next_run_at(sched.cadence, sched.timezone, after_iso=scheduled_for),
+                # If the user edited the schedule mid-tick, don't clobber their
+                # new nextRunAt with this stale advance.
+                expected_next_run_at=scheduled_for,
             )
             dispatched += 1
         return dispatched

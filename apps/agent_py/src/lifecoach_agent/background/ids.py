@@ -37,8 +37,13 @@ def idempotency_key(schedule_id: str, kind: str, scheduled_for_iso: str) -> str:
 
 
 def _short_hash(schedule_id: str, kind: str, scheduled_for_iso: str) -> str:
+    # 16 hex chars = 64 bits. The run document id is keyed on this hash, so at
+    # scale (thousands of users sharing an 08:00 fire time) a 24-bit digest
+    # would hit birthday collisions and one user's create() would no-op against
+    # another's run while its task still pointed at the colliding id (Codex
+    # #201). 64 bits keeps cross-schedule collisions negligible.
     digest = hashlib.sha256(idempotency_key(schedule_id, kind, scheduled_for_iso).encode("utf-8"))
-    return digest.hexdigest()[:6]
+    return digest.hexdigest()[:16]
 
 
 def run_id(schedule_id: str, kind: str, scheduled_for_iso: str) -> str:

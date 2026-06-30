@@ -92,6 +92,10 @@ class ScheduleCadence(BaseModel):
             raise ValueError("weekdays must be omitted, not null")
         if not isinstance(v, list):
             raise ValueError("weekdays must be a list")
+        # An empty list means "no days" — the schedule would never legitimately
+        # fire; reject it as invalid config (mirrors the TS `.min(1)`).
+        if len(v) == 0:
+            raise ValueError("weekdays must be omitted or non-empty")
         for day in v:
             if not isinstance(day, int) or isinstance(day, bool) or day < 0 or day > 6:
                 raise ValueError(f"weekday out of range 0..6: {day}")

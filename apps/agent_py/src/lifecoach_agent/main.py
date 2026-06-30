@@ -311,7 +311,10 @@ def _build_background_dispatcher() -> Any:
     invoker_sa = os.environ.get("BACKGROUND_INVOKER_SA_EMAIL")
     queue = os.environ.get("BACKGROUND_TASKS_QUEUE")
     location = os.environ.get("BACKGROUND_TASKS_LOCATION")
-    project = os.environ.get("LIFECOACH_VERTEX_PROJECT")
+    # GOOGLE_CLOUD_PROJECT is set unconditionally on the agent service by infra;
+    # LIFECOACH_VERTEX_PROJECT is only present when Vertex Memory is configured,
+    # so it's the wrong gate here (would silently disable dispatch — Codex #201).
+    project = os.environ.get("GOOGLE_CLOUD_PROJECT")
     if not (audience and invoker_sa and queue and location and project):
         return None
 

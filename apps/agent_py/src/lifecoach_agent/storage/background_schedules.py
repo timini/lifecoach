@@ -146,6 +146,7 @@ class BackgroundScheduleStore:
         schedule_id: str,
         run_id: str,
         next_run_at: str,
+        expected_next_run_at: str | None = None,
         last_status: str | None = None,
         last_run_at: str | None = None,
     ) -> bool:
@@ -157,11 +158,18 @@ class BackgroundScheduleStore:
 
         `last_status` is the **run outcome** (`ok`/`skipped`/`failed`), owned by
         the executor — the dispatcher omits it (advances scheduling only) and
-        leaves the prior `lastRunAt`/`lastStatus` untouched."""
+        leaves the prior `lastRunAt`/`lastStatus` untouched.
+
+        `expected_next_run_at` is an optimistic-concurrency guard: if the
+        schedule's `nextRunAt` no longer equals it, the user edited the schedule
+        (new cadence/timezone) while this tick held the lease, so the lease is
+        cleared but `nextRunAt` is NOT overwritten with the stale advance — the
+        user's edit wins (Codex #201)."""
         if last_status is not None and last_status not in SCHEDULE_LAST_STATUSES:
             raise ValueError(f"last_status must be one of {SCHEDULE_LAST_STATUSES}: {last_status}")
         path = _doc_path(schedule_id)
         advanced = canonical_iso(next_run_at)
+        expected = canonical_iso(expected_next_run_at) if expected_next_run_at is not None else None
 
         async def _txn(txn: BgTransaction) -> bool:
             snap = await txn.get(path)
@@ -171,6 +179,11 @@ class BackgroundScheduleStore:
             if data.get("pendingRunId") != run_id:
                 return False
             now = self._now_iso()
+            if expected is not None and data.get("nextRunAt") != expected:
+                # Schedule edited mid-tick — release the lease but preserve the
+                # user's freshly-saved nextRunAt instead of the stale advance.
+                txn.update(path, {"pendingRunId": None, "leaseExpiresAt": None, "updatedAt": now})
+                return True
             update: dict[str, object] = {
                 "pendingRunId": None,
                 "leaseExpiresAt": None,
