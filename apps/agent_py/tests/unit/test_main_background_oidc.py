@@ -7,7 +7,29 @@ from __future__ import annotations
 
 import pytest
 
-from lifecoach_agent.main import _build_background_oidc_verifier
+from lifecoach_agent.main import (
+    _build_background_dispatcher,
+    _build_background_oidc_verifier,
+)
+
+_DISPATCHER_ENVS = (
+    "BACKGROUND_OIDC_AUDIENCE",
+    "BACKGROUND_INVOKER_SA_EMAIL",
+    "BACKGROUND_TASKS_QUEUE",
+    "BACKGROUND_TASKS_LOCATION",
+    "LIFECOACH_VERTEX_PROJECT",
+)
+
+
+def test_dispatcher_none_when_config_incomplete(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Missing any one of the required envs → no dispatcher (tick stays no-op).
+    for name in _DISPATCHER_ENVS:
+        monkeypatch.delenv(name, raising=False)
+    assert _build_background_dispatcher() is None
+    # Even with all-but-one set, still None.
+    for name in _DISPATCHER_ENVS[:-1]:
+        monkeypatch.setenv(name, "x")
+    assert _build_background_dispatcher() is None
 
 
 def test_returns_none_when_audience_unset(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -300,6 +300,38 @@ def _build_background_oidc_verifier() -> Any:
     )
 
 
+def _build_background_dispatcher() -> Any:
+    """Build the dispatcher for `/background/scheduler/tick` (ADR 0001 §2).
+
+    Returns None unless the full background config is present (audience, invoker
+    SA, Cloud Tasks queue/location, project) — so local/dev without background
+    infra leaves the tick a no-op. The audience env doubles as the agent base
+    URL the dispatcher targets and the OIDC audience the tasks carry."""
+    audience = os.environ.get("BACKGROUND_OIDC_AUDIENCE")
+    invoker_sa = os.environ.get("BACKGROUND_INVOKER_SA_EMAIL")
+    queue = os.environ.get("BACKGROUND_TASKS_QUEUE")
+    location = os.environ.get("BACKGROUND_TASKS_LOCATION")
+    project = os.environ.get("LIFECOACH_VERTEX_PROJECT")
+    if not (audience and invoker_sa and queue and location and project):
+        return None
+
+    from lifecoach_agent.background.dispatcher import Dispatcher
+    from lifecoach_agent.background.tasks_client import CloudTasksClient
+    from lifecoach_agent.storage.background_firestore_adapter import create_background_firestore
+    from lifecoach_agent.storage.background_runs import create_background_run_store
+    from lifecoach_agent.storage.background_schedules import create_background_schedule_store
+
+    fs = create_background_firestore()
+    return Dispatcher(
+        schedules=create_background_schedule_store(firestore=fs),
+        runs=create_background_run_store(firestore=fs),
+        tasks=CloudTasksClient.from_env(project=project, location=location, queue=queue),
+        agent_base_url=audience,
+        invoker_sa_email=invoker_sa,
+        oidc_audience=audience,
+    )
+
+
 def build_app() -> Any:
     """Wire together the FastAPI app + Runner factory for production."""
     firestore = _build_real_firestore()
@@ -513,6 +545,9 @@ def build_app() -> Any:
         # Google OIDC gate for /background/* (Cloud Scheduler / Cloud Tasks).
         # None when BACKGROUND_OIDC_AUDIENCE is unset → routes fail closed.
         background_oidc_verifier=_build_background_oidc_verifier(),
+        # Dispatcher for /background/scheduler/tick. None until background infra
+        # config is present → tick stays a no-op.
+        background_dispatcher=_build_background_dispatcher(),
         weather=weather,
         places=places,
         places_token_provider=places_token_provider,

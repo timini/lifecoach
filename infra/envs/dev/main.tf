@@ -207,6 +207,11 @@ locals {
     "background-scheduler@${var.project_id}.iam.gserviceaccount.com",
     "background-invoker@${var.project_id}.iam.gserviceaccount.com",
   ])
+
+  # Single source of truth for the Cloud Tasks queue name — passed to the
+  # queue module AND surfaced to the agent as an env. Referencing the module's
+  # output from the agent env instead would cycle (agent ← queue ← agent SA).
+  background_queue_name = "background-agent-runs"
 }
 
 module "background_iam" {
@@ -242,6 +247,7 @@ module "background_tasks_queue" {
   source                    = "../../modules/background-tasks-queue"
   project_id                = var.project_id
   region                    = var.region
+  queue_name                = local.background_queue_name
   max_dispatches_per_second = var.background_queue_max_dispatch_per_second
   max_concurrent_dispatches = var.background_queue_max_concurrent_dispatches
 
@@ -378,6 +384,11 @@ module "agent" {
       # unset → routes fail closed.
       BACKGROUND_OIDC_AUDIENCE     = local.background_oidc_audience
       BACKGROUND_ALLOWED_SA_EMAILS = local.background_sa_emails
+      # Dispatcher config (ADR 0001 step 5a): the invoker SA whose OIDC identity
+      # each enqueued task carries, and the Cloud Tasks queue to enqueue into.
+      BACKGROUND_INVOKER_SA_EMAIL = "background-invoker@${var.project_id}.iam.gserviceaccount.com"
+      BACKGROUND_TASKS_QUEUE      = local.background_queue_name
+      BACKGROUND_TASKS_LOCATION   = var.region
     },
     var.sentry_dsn != "" ? { SENTRY_DSN = var.sentry_dsn } : {},
   )
