@@ -172,6 +172,16 @@ module "firestore" {
   depends_on = [module.apis, module.agent]
 }
 
+# --- Background work: Firestore composite indexes (ADR 0001, step 4e) -----
+# Back the dispatcher's due-query + idempotency lookup (shipped) and the
+# digest/run-history UI reads (step 7). Created against the (default) db.
+module "background_firestore_indexes" {
+  source     = "../../modules/background-firestore-indexes"
+  project_id = var.project_id
+
+  depends_on = [module.firestore]
+}
+
 # --- Background work: OIDC identities (ADR 0001, step 4d) -----------------
 # Two SAs that call the OIDC-gated /background/* routes — Cloud Scheduler
 # (tick) and Cloud Tasks (run execute) — each granted run.invoker on the

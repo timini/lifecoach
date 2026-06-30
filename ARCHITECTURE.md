@@ -615,8 +615,14 @@ infra/
     ├── firestore             Firestore database
     ├── gcs-user-bucket       per-user data bucket
     ├── gws-oauth-secret      Workspace client secret in Secret Manager
-    └── github-wif            Workload Identity Federation for GitHub Actions
+    ├── github-wif            Workload Identity Federation for GitHub Actions
+    ├── background-iam              ADR 0001 — background-scheduler/-invoker SAs, run.invoker + actAs bindings
+    ├── background-scheduler        ADR 0001 — Cloud Scheduler tick job (POSTs /background/scheduler/tick)
+    ├── background-tasks-queue      ADR 0001 — Cloud Tasks queue for per-run execution
+    └── background-firestore-indexes ADR 0001 — composite indexes (schedules due-query, runs idempotency, UI reads)
 ```
+
+**Background subsystem infra (ADR 0001).** `background-iam` creates the two OIDC identities (`background-scheduler`, `background-invoker`), grants each `roles/run.invoker` on the agent service, and the `roles/iam.serviceAccountUser` (actAs) bindings the dispatcher (agent runtime SA → invoker SA) and the Terraform deployer (→ scheduler SA) need to mint OIDC tokens. `background-scheduler` runs one Cloud Scheduler job (15 min in dev, 5 min in prod) with `retry_count=0`; `background-tasks-queue` is the per-run execution queue (env-tunable rate + concurrency caps). The OIDC audience is the agent's deterministic Cloud Run URL, set on the agent as `BACKGROUND_OIDC_AUDIENCE` + `BACKGROUND_ALLOWED_SA_EMAILS` (consumed by `_build_background_oidc_verifier()` in `main.py`). `background-firestore-indexes` provisions the composite indexes backing `query_due` + `find_by_idempotency_key` (shipped) and the digest/run-history UI reads (step 7).
 
 **Hard rule (invariant 5):** every infra change is Terraform. No `gcloud services enable`, no console clicks, no `terraform import` to retrofit manual changes. The single exception is `infra/bootstrap/bootstrap.sh` which Terraform itself can't run.
 
