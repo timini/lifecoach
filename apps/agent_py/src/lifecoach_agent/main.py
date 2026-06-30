@@ -280,6 +280,26 @@ def _build_calendar_events_fetcher() -> Any:
     return fetch
 
 
+def _build_background_oidc_verifier() -> Any:
+    """Build the Google OIDC verifier for the `/background/*` routes (ADR 0001).
+
+    Returns None when `BACKGROUND_OIDC_AUDIENCE` is unset (local/dev with no
+    background work) — the routes then fail closed (401). In production, infra
+    sets the audience to the agent's Cloud Run URL and the allowlist to the
+    background-scheduler / background-invoker SA emails (step 4d)."""
+    audience = os.environ.get("BACKGROUND_OIDC_AUDIENCE")
+    if not audience:
+        return None
+    from lifecoach_agent.background.auth import create_oidc_verifier
+
+    raw_allowed = os.environ.get("BACKGROUND_ALLOWED_SA_EMAILS", "")
+    allowed = tuple(e.strip() for e in raw_allowed.split(",") if e.strip())
+    return create_oidc_verifier(
+        expected_audience=audience,
+        allowed_emails=allowed or None,
+    )
+
+
 def build_app() -> Any:
     """Wire together the FastAPI app + Runner factory for production."""
     firestore = _build_real_firestore()
@@ -490,6 +510,9 @@ def build_app() -> Any:
         # same value and forwards it as `x-agent-internal-bearer` on
         # every proxied call. Empty/unset disables the check (tests).
         internal_bearer=os.environ.get("AGENT_INTERNAL_BEARER") or None,
+        # Google OIDC gate for /background/* (Cloud Scheduler / Cloud Tasks).
+        # None when BACKGROUND_OIDC_AUDIENCE is unset → routes fail closed.
+        background_oidc_verifier=_build_background_oidc_verifier(),
         weather=weather,
         places=places,
         places_token_provider=places_token_provider,
