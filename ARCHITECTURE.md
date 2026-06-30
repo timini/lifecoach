@@ -523,7 +523,7 @@ Notable client files:
 
 | Package | Type | Purpose |
 |---|---|---|
-| `@lifecoach/shared-types` | TS Zod | Source of truth for all data crossing the web↔agent boundary: `UserProfileSchema`, `GoalUpdateSchema`, `ChoiceQuestionSchema`, `AuthUserArgsSchema`, `WorkspaceStatusSchema`, `TriageReportSchema` (per-message context fields are `.min(1)`). Python mirror at `apps/agent_py/src/lifecoach_agent/contracts/`, parity tested in `tests/unit/test_contracts.py`. |
+| `@lifecoach/shared-types` | TS Zod | Source of truth for all data crossing the web↔agent boundary: `UserProfileSchema`, `GoalUpdateSchema`, `ChoiceQuestionSchema`, `AuthUserArgsSchema`, `WorkspaceStatusSchema`, `TriageReportSchema` (per-message context fields are `.min(1)`), and the background-work contracts `BackgroundScheduleSchema` / `BackgroundRunSchema` / `BackgroundNotificationSchema` / `BackgroundProposedActionSchema` + `sanitizeTaskId()` (ADR 0001, `background.ts`). Python mirror at `apps/agent_py/src/lifecoach_agent/contracts/` (`background.py`), parity tested in `tests/unit/test_contracts.py` + `tests/unit/test_background_contracts.py`. |
 | `@lifecoach/user-state` | TS pure | `UserStateMachine` + `UsageStateMachine` for `apps/web`. Mirrored in Python at `lifecoach_agent/state/`. |
 | `@lifecoach/ui` | TS React | Tailwind 4 design system: atoms / molecules / organisms / templates. Consumed as source by `apps/web`. Stories in `*.stories.tsx` are the test surface (vitest browser mode via `@storybook/addon-vitest`). |
 | `@lifecoach/testing` | TS | Test helpers + fakes for `apps/web` and `packages/*`. |
