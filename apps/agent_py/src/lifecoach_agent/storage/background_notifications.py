@@ -16,6 +16,7 @@ from collections.abc import Callable
 
 from lifecoach_agent.contracts.background import BackgroundNotification
 from lifecoach_agent.storage.background_firestore import BackgroundFirestore, BgTransaction
+from lifecoach_agent.storage.background_time import canonical_iso
 from lifecoach_agent.storage.background_time import now_iso as _now_iso_default
 
 _COLLECTION = "backgroundNotifications"
@@ -40,6 +41,13 @@ class BackgroundNotificationStore:
         a replayed run can't double-write. Returns True if created."""
         path = _doc_path(notification.id)
         doc = notification.model_dump(exclude_none=True)
+        # Canonicalize to fixed-width ms+Z so the digest UI's
+        # `order_by(createdAt)` (and the uid,status,createdAt index) sorts
+        # correctly as strings — `…05Z` would otherwise sort after `…05.100Z`
+        # (Codex #202).
+        doc["createdAt"] = canonical_iso(str(doc["createdAt"]))
+        if "expiresAt" in doc:
+            doc["expiresAt"] = canonical_iso(str(doc["expiresAt"]))
 
         async def _txn(txn: BgTransaction) -> bool:
             existing = await txn.get(path)

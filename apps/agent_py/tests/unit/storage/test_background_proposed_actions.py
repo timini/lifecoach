@@ -50,6 +50,13 @@ async def test_create_refuses_to_overwrite() -> None:
     assert fs.docs["backgroundProposedActions/a1"]["summary"] == "original"
 
 
+async def test_create_canonicalizes_created_at() -> None:
+    fs = FakeBackgroundFirestore()
+    store = _store(fs)
+    await store.create(_action(createdAt="2026-05-15T08:00:05Z"))
+    assert fs.docs["backgroundProposedActions/a1"]["createdAt"] == "2026-05-15T08:00:05.000Z"
+
+
 async def test_get_missing_returns_none() -> None:
     assert await _store(FakeBackgroundFirestore()).get("nope") is None
 

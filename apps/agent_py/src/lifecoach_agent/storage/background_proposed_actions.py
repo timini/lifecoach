@@ -15,6 +15,7 @@ from collections.abc import Callable
 
 from lifecoach_agent.contracts.background import BackgroundProposedAction
 from lifecoach_agent.storage.background_firestore import BackgroundFirestore, BgTransaction
+from lifecoach_agent.storage.background_time import canonical_iso
 from lifecoach_agent.storage.background_time import now_iso as _now_iso_default
 
 _COLLECTION = "backgroundProposedActions"
@@ -39,6 +40,9 @@ class BackgroundProposedActionStore:
         one (replay-safe). Returns True if created."""
         path = _doc_path(action.id)
         doc = action.model_dump(exclude_none=True)
+        # Fixed-width ms+Z for correct string ordering (Codex #202), consistent
+        # with the other background stores.
+        doc["createdAt"] = canonical_iso(str(doc["createdAt"]))
 
         async def _txn(txn: BgTransaction) -> bool:
             existing = await txn.get(path)

@@ -59,6 +59,19 @@ async def test_create_refuses_to_overwrite() -> None:
     assert fs.docs["backgroundNotifications/n1"]["title"] == "original"
 
 
+async def test_create_canonicalizes_timestamps() -> None:
+    # A valid but non-ms timestamp must be stored fixed-width so the digest
+    # index orders correctly as strings (Codex #202).
+    fs = FakeBackgroundFirestore()
+    store = _store(fs)
+    await store.create(
+        _notification(createdAt="2026-05-15T08:00:05Z", expiresAt="2026-06-15T08:00:05Z")
+    )
+    doc = fs.docs["backgroundNotifications/n1"]
+    assert doc["createdAt"] == "2026-05-15T08:00:05.000Z"
+    assert doc["expiresAt"] == "2026-06-15T08:00:05.000Z"
+
+
 async def test_get_missing_returns_none() -> None:
     assert await _store(FakeBackgroundFirestore()).get("nope") is None
 
