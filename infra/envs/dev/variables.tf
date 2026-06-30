@@ -113,3 +113,9 @@ variable "firebase_auth_domain_override" {
   default     = ""
   description = "Hostname to surface as NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN to the web bundle. Empty (default) keeps the firebaseapp.com auto-domain — sign-in still works but users see the firebaseapp.com URL briefly during the OAuth popup. Set to \"auth.tranquil.coach\" (the Firebase Hosting custom domain provisioned by infra/envs/dev/firebase-hosting-auth.tf) to surface the branded subdomain instead. See the deployment sequence comment at the top of firebase-hosting-auth.tf — flip only AFTER the cert is ACTIVE and the OAuth client has the matching /__/auth/handler URI."
 }
+
+variable "background_scheduler_cron" {
+  type        = string
+  default     = "*/15 * * * *"
+  description = "Cadence of the background dispatcher tick (ADR 0001). Dev = every 15 min; prod pins 5 min."
+}
