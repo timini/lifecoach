@@ -432,6 +432,9 @@ Every module under `storage/` is a thin async client over an injected `Firestore
 | `goal_updates.py` | GCS | `users/{uid}/goal_updates.json` | Append-only JSON array of `GoalUpdate`. |
 | `user_meta.py` | Firestore | `userMeta/{uid}` | `{uid, chatTurnCount, firstSeenAt, tier, updatedAt}`. Counter increments at the start of every `/chat`. Drives `UsageStateMachine`. |
 | `workspace_tokens.py` | Firestore | `workspaceTokens/{uid}` | `{uid, accessToken, refreshToken, scopes, grantedAt, expiresAt}`. Per-uid mutex on refresh. **Tokens never leave the agent.** |
+| `background_schedules.py` | Firestore | `backgroundSchedules/{scheduleId}` | `BackgroundSchedule` (ADR 0001) + operational lease fields `{pendingRunId, leaseExpiresAt}` (kept off the contract, stripped on read-back). Owns the bounded due-query (`enabled==true ∧ nextRunAt<=now`, `order_by(nextRunAt).limit(N)`) and the **transactional lease-claim** dedupe primitive. Uses the dedicated `BackgroundFirestore` surface (query + transactions), not `FirestoreLike`. |
+
+> **Background Firestore surface.** The dispatcher/executor need query pushdown + transactions that `FirestoreLike` can't express, so `storage/background_firestore.py` defines a small dedicated `BackgroundFirestore` Protocol (`get/set/delete/query/run_transaction`). It maps onto `AsyncClient` (`query`→`collection().where().order_by().limit().get()`; `run_transaction`→`@async_transactional`) and onto `tests/unit/storage/_bg_firestore.py` in tests.
 
 > **Storage Protocol shape ≠ SDK shape.** The `FirestoreLike` Protocol is JS-style (`doc()`, `collection()`, snapshot has `.data()`). The Python `google.cloud.firestore.AsyncClient` uses `document()`, `to_dict()`, returns a list from `collection.get()`. The bridge lives in `main.py:_build_real_firestore` and is regression-tested at `tests/unit/test_firestore_adapter.py`.
 
@@ -570,6 +573,7 @@ The FE filters text events to `event.author === "lifecoach"` AND `event.partial 
 apps/{app_name}/users/{uid}/sessions/{sessionId}     // ADK session — see §7.6
 userMeta/{uid}                                       // chat counter + tier
 workspaceTokens/{uid}                                // OAuth tokens (server-side only)
+backgroundSchedules/{scheduleId}                     // ADR 0001 — BackgroundSchedule + lease fields
 ```
 
 Session ID convention: `{uid}-{YYYY-MM-DD}` (per-uid per-day). New day = new session.
