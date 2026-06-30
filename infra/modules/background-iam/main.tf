@@ -33,6 +33,16 @@ variable "agent_service_name" {
   description = "Name of the agent Cloud Run (v2) service the background SAs may invoke."
 }
 
+variable "agent_runtime_sa_email" {
+  type        = string
+  description = "The agent runtime SA — the dispatcher that enqueues Cloud Tasks. Needs actAs on the invoker SA to mint per-task OIDC tokens."
+}
+
+variable "deployer_sa_email" {
+  type        = string
+  description = "The Terraform deployer SA. Needs actAs on the scheduler SA to create the Cloud Scheduler job (4b) with that OIDC identity."
+}
+
 resource "google_service_account" "scheduler" {
   project      = var.project_id
   account_id   = "background-scheduler"
@@ -61,6 +71,22 @@ resource "google_cloud_run_v2_service_iam_member" "tasks_invoker" {
   name     = var.agent_service_name
   role     = "roles/run.invoker"
   member   = "serviceAccount:${google_service_account.invoker.email}"
+}
+
+# Cloud Tasks `oidc_token.service_account_email = background-invoker` requires
+# the CreateTask caller (the agent runtime SA) to have actAs on that SA.
+resource "google_service_account_iam_member" "dispatcher_actas_invoker" {
+  service_account_id = google_service_account.invoker.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${var.agent_runtime_sa_email}"
+}
+
+# The Cloud Scheduler job (4b) uses background-scheduler as its OIDC identity;
+# the Terraform deployer that creates the job needs actAs on that SA.
+resource "google_service_account_iam_member" "deployer_actas_scheduler" {
+  service_account_id = google_service_account.scheduler.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${var.deployer_sa_email}"
 }
 
 output "scheduler_sa_email" {

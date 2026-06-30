@@ -175,13 +175,37 @@ module "firestore" {
 # --- Background work: OIDC identities (ADR 0001, step 4d) -----------------
 # Two SAs that call the OIDC-gated /background/* routes — Cloud Scheduler
 # (tick) and Cloud Tasks (run execute) — each granted run.invoker on the
-# agent service. The scheduler job (4b) and the dispatcher's per-task OIDC
-# tokens (later) bind the audience to module.agent.url.
+# agent service, plus the actAs bindings the dispatcher + deployer need to
+# mint OIDC tokens as those SAs. The OIDC audience is the agent's Cloud Run
+# URL (local.background_oidc_audience), set as an env on the agent (below)
+# and used by the scheduler job (4b) + per-task tokens (dispatcher).
+data "google_project" "current" {
+  project_id = var.project_id
+}
+
+locals {
+  # Cloud Run v2 deterministic URL. The agent is public + self-verifies the
+  # OIDC token (background/auth.py), so this just has to MATCH on both the
+  # caller (scheduler/tasks) and the agent — using the service URL keeps it
+  # aligned with Cloud Run's own IAM check if the service ever goes private.
+  background_oidc_audience = "https://lifecoach-agent-${data.google_project.current.number}.${var.region}.run.app"
+
+  # Hardcoded SA emails break the agent ↔ background_iam cycle (agent needs
+  # the allowlist; background_iam needs agent.service_name) — same pattern as
+  # gws_oauth_secret above. The emails are deterministic from account_id.
+  background_sa_emails = join(",", [
+    "background-scheduler@${var.project_id}.iam.gserviceaccount.com",
+    "background-invoker@${var.project_id}.iam.gserviceaccount.com",
+  ])
+}
+
 module "background_iam" {
-  source             = "../../modules/background-iam"
-  project_id         = var.project_id
-  region             = var.region
-  agent_service_name = module.agent.service_name
+  source                 = "../../modules/background-iam"
+  project_id             = var.project_id
+  region                 = var.region
+  agent_service_name     = module.agent.service_name
+  agent_runtime_sa_email = module.agent.service_account_email
+  deployer_sa_email      = module.github_wif.deployer_email
 
   depends_on = [module.apis, module.agent]
 }
@@ -305,6 +329,12 @@ module "agent" {
       # Secret Manager in `secret_env` below.
       GWS_OAUTH_CLIENT_ID = module.firebase_auth.google_client_id
       SENTRY_ENVIRONMENT  = var.environment
+      # Background /background/* OIDC gate (ADR 0001). Audience = the agent's
+      # own Cloud Run URL; allowlist = the two background SA emails. The
+      # verifier is built from these in main.py (_build_background_oidc_verifier);
+      # unset → routes fail closed.
+      BACKGROUND_OIDC_AUDIENCE     = local.background_oidc_audience
+      BACKGROUND_ALLOWED_SA_EMAILS = local.background_sa_emails
     },
     var.sentry_dsn != "" ? { SENTRY_DSN = var.sentry_dsn } : {},
   )
