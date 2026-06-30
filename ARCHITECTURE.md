@@ -433,6 +433,7 @@ Every module under `storage/` is a thin async client over an injected `Firestore
 | `user_meta.py` | Firestore | `userMeta/{uid}` | `{uid, chatTurnCount, firstSeenAt, tier, updatedAt}`. Counter increments at the start of every `/chat`. Drives `UsageStateMachine`. |
 | `workspace_tokens.py` | Firestore | `workspaceTokens/{uid}` | `{uid, accessToken, refreshToken, scopes, grantedAt, expiresAt}`. Per-uid mutex on refresh. **Tokens never leave the agent.** |
 | `background_schedules.py` | Firestore | `backgroundSchedules/{scheduleId}` | `BackgroundSchedule` (ADR 0001) + operational lease fields `{pendingRunId, leaseExpiresAt}` (kept off the contract, stripped on read-back). Owns the bounded due-query (`enabled==true ∧ nextRunAt<=now`, `order_by(nextRunAt).limit(N)`) and the **transactional lease-claim** dedupe primitive. Uses the dedicated `BackgroundFirestore` surface (query + transactions), not `FirestoreLike`. |
+| `background_runs.py` | Firestore | `backgroundRuns/{runId}` | `BackgroundRun` (ADR 0001). `claim_for_execution()` transactionally flips `queued`/`retryable_failed`→`running` (a duplicate Cloud Task delivery for a `running`/terminal run no-ops). `find_by_idempotency_key()` is the second dedupe layer. `mark_*()` persist terminal state in-app (Cloud Tasks is never the dead-letter) with a stable `errorCode` only — raw third-party exception text is never stored. |
 
 > **Background Firestore surface.** The dispatcher/executor need query pushdown + transactions that `FirestoreLike` can't express, so `storage/background_firestore.py` defines a small dedicated `BackgroundFirestore` Protocol (`get/set/delete/query/run_transaction`). It maps onto `AsyncClient` (`query`→`collection().where().order_by().limit().get()`; `run_transaction`→`@async_transactional`) and onto `tests/unit/storage/_bg_firestore.py` in tests.
 
@@ -574,6 +575,7 @@ apps/{app_name}/users/{uid}/sessions/{sessionId}     // ADK session — see §7.
 userMeta/{uid}                                       // chat counter + tier
 workspaceTokens/{uid}                                // OAuth tokens (server-side only)
 backgroundSchedules/{scheduleId}                     // ADR 0001 — BackgroundSchedule + lease fields
+backgroundRuns/{runId}                               // ADR 0001 — BackgroundRun (app-owned terminal state)
 ```
 
 Session ID convention: `{uid}-{YYYY-MM-DD}` (per-uid per-day). New day = new session.

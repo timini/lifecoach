@@ -28,6 +28,28 @@ T = TypeVar("T")
 QueryFilter = tuple[str, str, Any]
 
 
+class _DeleteField:
+    """Sentinel value for an `update()` patch that *removes* a field rather
+    than writing null. Optional contract fields (e.g. `leaseExpiresAt`) are
+    omit-only, not nullable — writing Firestore `null` would fail the web
+    parser — so terminal writes delete the field instead. The real adapter
+    maps this to ``google.cloud.firestore.DELETE_FIELD``; the in-memory fake
+    pops the key."""
+
+    _instance: _DeleteField | None = None
+
+    def __new__(cls) -> _DeleteField:
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+        return "<DELETE_FIELD>"
+
+
+DELETE_FIELD = _DeleteField()
+
+
 class BgSnapshot(Protocol):
     """A document snapshot. Unlike the session Protocol this also exposes
     the document `id`, which query results need (the due-query returns docs
