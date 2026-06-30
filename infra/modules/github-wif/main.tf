@@ -143,6 +143,14 @@ locals {
     # also doesn't include sslCertificates.create. `loadBalancerAdmin`
     # covers both the NEG and cert lifecycle plus everything else LB.
     "roles/compute.loadBalancerAdmin",
+    # Cloud Scheduler — Terraform manages the background dispatcher tick job
+    # (ADR 0001 step 4b). Without cloudscheduler.jobs.create the apply 403s
+    # on the google_cloud_scheduler_job create.
+    "roles/cloudscheduler.admin",
+    # Cloud Tasks — Terraform manages the background run queue (ADR 0001
+    # step 4c). queueAdmin covers cloudtasks.queues.create/update for the
+    # google_cloud_tasks_queue resource + its IAM bindings.
+    "roles/cloudtasks.queueAdmin",
   ])
 }
 
