@@ -67,6 +67,7 @@ from lifecoach_agent.background.auth import (
     extract_bearer_token,
 )
 from lifecoach_agent.background.dispatcher import Dispatcher
+from lifecoach_agent.background.runner import BackgroundRunner
 from lifecoach_agent.context.air_quality import AirQualityClient
 from lifecoach_agent.context.calendar_density import CalendarDensityClient
 from lifecoach_agent.context.holidays import HolidaysClient, tz_to_country
@@ -232,6 +233,9 @@ class CreateAppDeps:
     # (ADR 0001 §2). None = no-op dispatch (returns dispatched:0) for tests /
     # local; production wiring builds it in main.py.
     background_dispatcher: Dispatcher | None = None
+    # Executes one run on `/background/runs/{runId}/execute` (ADR 0001 §3/§5).
+    # None = no-op (returns ok) for tests / local; built in main.py.
+    background_runner: BackgroundRunner | None = None
 
 
 # --- Helpers for endpoint auth -------------------------------------------
@@ -382,7 +386,22 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
         _claims, err = await _authenticate_background(request, deps)
         if err is not None:
             return err
-        return JSONResponse({"status": "ok", "runId": run_id})
+        if deps.background_runner is None:
+            return JSONResponse({"status": "ok", "runId": run_id})
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001 — malformed/empty body
+            body = {}
+        outcome = await deps.background_runner.execute(
+            run_id=run_id,
+            schedule_id=str(body.get("scheduleId", "")),
+            uid=str(body.get("uid", "")),
+            kind=str(body.get("kind", "")),
+        )
+        payload: dict[str, Any] = {"status": outcome.status, "runId": run_id}
+        if outcome.error_code is not None:
+            payload["errorCode"] = outcome.error_code
+        return JSONResponse(payload, status_code=outcome.http_status)
 
     # ---- /history --------------------------------------------------------
 
