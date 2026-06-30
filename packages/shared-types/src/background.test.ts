@@ -93,6 +93,26 @@ describe('BackgroundScheduleSchema', () => {
     expect(() => BackgroundScheduleSchema.parse({ ...validSchedule, nextRunAt: 'soon' })).toThrow();
   });
 
+  it('rejects an offset (non-Z) timestamp', () => {
+    expect(() =>
+      BackgroundScheduleSchema.parse({ ...validSchedule, nextRunAt: '2026-05-15T08:00:00+00:00' }),
+    ).toThrow();
+  });
+
+  it('rejects null weekdays (optional means omit, not null)', () => {
+    const bad = {
+      ...validSchedule,
+      cadence: { type: 'daily', localTime: '08:00', weekdays: null },
+    };
+    expect(() => BackgroundScheduleSchema.parse(bad)).toThrow();
+  });
+
+  it('rejects an unresolvable timezone', () => {
+    expect(() =>
+      BackgroundScheduleSchema.parse({ ...validSchedule, timezone: 'not-a-zone' }),
+    ).toThrow();
+  });
+
   it('rejects unknown keys', () => {
     expect(() => BackgroundScheduleSchema.parse({ ...validSchedule, extra: 1 })).toThrow();
   });
@@ -123,6 +143,11 @@ describe('BackgroundProposedActionSchema', () => {
 
   it('rejects an unknown action type', () => {
     const bad = { ...validProposedAction, type: 'send_email' };
+    expect(() => BackgroundProposedActionSchema.parse(bad)).toThrow();
+  });
+
+  it('rejects empty sourceMessageIds', () => {
+    const bad = { ...validProposedAction, sourceMessageIds: [] };
     expect(() => BackgroundProposedActionSchema.parse(bad)).toThrow();
   });
 

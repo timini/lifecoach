@@ -13,22 +13,22 @@ classes, and short client-safe text.
 from __future__ import annotations
 
 import re
-from datetime import datetime
 from typing import Any, Final, Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+# Mirrors Zod's `z.string().datetime()` *default*: date + time + a literal
+# trailing `Z` (UTC), optional fractional seconds — and crucially NOT a
+# numeric offset (`+00:00`). The agent writes `…Z` timestamps; accepting the
+# offset form here would let a Python-created record pass server validation
+# then fail in the web parser. See PR #192 Codex review.
+_ISO8601_Z_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$")
+
 
 def _validate_iso8601(value: str, label: str) -> str:
-    """Match Zod's ``z.string().datetime()`` — ISO 8601 with a time
-    component (and, like the existing contracts, a timezone via the
-    trailing ``Z`` or offset)."""
-    try:
-        datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError as e:
-        raise ValueError(f"invalid ISO 8601 {label}: {value}") from e
-    if "T" not in value:
-        raise ValueError(f"{label} must include time component")
+    if not _ISO8601_Z_RE.match(value):
+        raise ValueError(f"invalid ISO 8601 (must be UTC '…Z') {label}: {value}")
     return value
 
 
@@ -81,13 +81,19 @@ class ScheduleCadence(BaseModel):
             raise ValueError(f"localTime must be HH:MM 24h: {v}")
         return v
 
-    @field_validator("weekdays")
+    @field_validator("weekdays", mode="before")
     @classmethod
-    def weekdays_in_range(cls, v: list[int] | None) -> list[int] | None:
+    def weekdays_omit_only_in_range(cls, v: Any) -> Any:
+        # TS uses `z.array(...).optional()` — omitted is fine, but explicit
+        # `null` is rejected (the web parser rejects it too). A `mode="before"`
+        # validator runs for an explicitly-provided value (incl. null) but is
+        # skipped when the field is omitted, so this is omit-only by design.
         if v is None:
-            return v
+            raise ValueError("weekdays must be omitted, not null")
+        if not isinstance(v, list):
+            raise ValueError("weekdays must be a list")
         for day in v:
-            if day < 0 or day > 6:
+            if not isinstance(day, int) or isinstance(day, bool) or day < 0 or day > 6:
                 raise ValueError(f"weekday out of range 0..6: {day}")
         return v
 
@@ -128,6 +134,18 @@ class BackgroundSchedule(BaseModel):
     lastStatus: ScheduleLastStatus | None = None  # noqa: N815
     createdAt: str  # noqa: N815
     updatedAt: str  # noqa: N815
+
+    @field_validator("timezone")
+    @classmethod
+    def timezone_is_iana(cls, v: str) -> str:
+        # Reject values like "PST" / "not-a-zone" that the scheduler can't
+        # resolve for local-time + DST computation (mirrors the TS refine
+        # against Intl.DateTimeFormat).
+        try:
+            ZoneInfo(v)
+        except (ZoneInfoNotFoundError, ValueError) as e:
+            raise ValueError(f"invalid IANA timezone: {v}") from e
+        return v
 
     @field_validator("nextRunAt", "createdAt", "updatedAt")
     @classmethod
@@ -182,7 +200,9 @@ class BackgroundRun(BaseModel):
     inputWindowEnd: str  # noqa: N815
     startedAt: str | None = None  # noqa: N815
     finishedAt: str | None = None  # noqa: N815
-    attempt: int = Field(ge=0)
+    # strict=True mirrors Zod's `z.number().int()` — a JSON string like "0"
+    # is rejected, not silently coerced.
+    attempt: int = Field(ge=0, strict=True)
     leaseExpiresAt: str | None = None  # noqa: N815
     outputRef: str | None = Field(default=None, min_length=1)  # noqa: N815
     errorCode: str | None = Field(default=None, min_length=1)  # noqa: N815
@@ -243,7 +263,9 @@ class BackgroundProposedAction(BaseModel):
     notificationId: str | None = Field(default=None, min_length=1)  # noqa: N815
     type: ProposedActionType
     status: ProposedActionStatus
-    sourceMessageIds: list[str]  # noqa: N815
+    # min_length=1: an auditable archive/task/calendar action must tie back to
+    # at least one concrete source message (mirrors the TS `.min(1)`).
+    sourceMessageIds: list[str] = Field(min_length=1)  # noqa: N815
     summary: str = Field(min_length=1)
     params: dict[str, Any] | None = None
     result: ProposedActionResult | None = None

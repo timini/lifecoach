@@ -86,6 +86,17 @@ export const NotifyPreferencesSchema = z
 
 export type NotifyPreferences = z.infer<typeof NotifyPreferencesSchema>;
 
+/** True if `tz` is a resolvable IANA timezone. Rejects "PST" / "not-a-zone"
+ * which would mis-compute local daily runs + DST transitions. */
+function isValidTimeZone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** A user-configured automation. Application state, not model state. */
 export const BackgroundScheduleSchema = z
   .object({
@@ -93,7 +104,7 @@ export const BackgroundScheduleSchema = z
     uid: z.string().min(1),
     kind: z.enum(BACKGROUND_WORKFLOW_KINDS),
     enabled: z.boolean(),
-    timezone: z.string().min(1),
+    timezone: z.string().min(1).refine(isValidTimeZone, 'timezone must be a valid IANA zone'),
     cadence: ScheduleCadenceSchema,
     lookbackWindow: z.enum(LOOKBACK_WINDOWS),
     consentVersion: z.string().min(1),
@@ -201,7 +212,8 @@ export const BackgroundProposedActionSchema = z
     type: z.enum(PROPOSED_ACTION_TYPES),
     status: z.enum(PROPOSED_ACTION_STATUSES),
     // Stable Workspace message IDs the action derives from; never raw content.
-    sourceMessageIds: z.array(z.string().min(1)),
+    // At least one — an auditable action must tie back to a concrete message.
+    sourceMessageIds: z.array(z.string().min(1)).min(1),
     // Short client-safe description ("Archive 4 newsletters from last week").
     summary: z.string().min(1),
     // Action-specific arguments (e.g. task title, event start). Schema-free

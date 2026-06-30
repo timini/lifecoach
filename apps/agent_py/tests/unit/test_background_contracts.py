@@ -139,14 +139,43 @@ def test_schedule_rejects_date_only_timestamp() -> None:
 def test_schedule_accepts_omitted_weekdays_and_last_run() -> None:
     every_day = {
         **VALID_SCHEDULE,
-        # explicit null exercises the weekdays validator's None branch
-        "cadence": {"type": "daily", "localTime": "08:00", "weekdays": None},
+        # weekdays OMITTED (not null) → every day
+        "cadence": {"type": "daily", "localTime": "08:00"},
         "lastRunAt": "2026-05-14T08:00:00.000Z",
         "lastStatus": "ok",
     }
     parsed = BackgroundSchedule.model_validate(every_day)
     assert parsed.cadence.weekdays is None
     assert parsed.lastRunAt == "2026-05-14T08:00:00.000Z"
+
+
+def test_schedule_rejects_null_weekdays() -> None:
+    # TS uses .optional() (omit ok, explicit null rejected) — mirror it.
+    bad = {**VALID_SCHEDULE, "cadence": {"type": "daily", "localTime": "08:00", "weekdays": None}}
+    with pytest.raises(ValidationError):
+        BackgroundSchedule.model_validate(bad)
+
+
+def test_schedule_rejects_non_list_weekdays() -> None:
+    bad = {**VALID_SCHEDULE, "cadence": {"type": "daily", "localTime": "08:00", "weekdays": "mon"}}
+    with pytest.raises(ValidationError):
+        BackgroundSchedule.model_validate(bad)
+
+
+def test_schedule_rejects_offset_timestamp() -> None:
+    # z.string().datetime() default rejects numeric offsets; require '…Z'.
+    with pytest.raises(ValidationError):
+        BackgroundSchedule.model_validate(
+            {**VALID_SCHEDULE, "nextRunAt": "2026-05-15T08:00:00+00:00"}
+        )
+
+
+def test_schedule_rejects_unknown_timezone() -> None:
+    # 'not-a-zone' is rejected by both zoneinfo and Intl. (Note: legacy
+    # abbreviations like 'PST' diverge — Node's Intl accepts them, zoneinfo
+    # doesn't — so the parity test sticks to an unambiguously-invalid value.)
+    with pytest.raises(ValidationError):
+        BackgroundSchedule.model_validate({**VALID_SCHEDULE, "timezone": "not-a-zone"})
 
 
 # --- BackgroundRun --------------------------------------------------------
@@ -164,6 +193,12 @@ def test_run_rejects_unknown_status() -> None:
 def test_run_rejects_negative_attempt() -> None:
     with pytest.raises(ValidationError):
         BackgroundRun.model_validate({**VALID_RUN, "attempt": -1})
+
+
+def test_run_rejects_string_attempt() -> None:
+    # strict int — "0" is not silently coerced (matches z.number().int()).
+    with pytest.raises(ValidationError):
+        BackgroundRun.model_validate({**VALID_RUN, "attempt": "0"})
 
 
 def test_run_rejects_negative_cost() -> None:
@@ -201,6 +236,12 @@ def test_proposed_action_accepts() -> None:
 def test_proposed_action_rejects_unknown_type() -> None:
     with pytest.raises(ValidationError):
         BackgroundProposedAction.model_validate({**VALID_PROPOSED_ACTION, "type": "send_email"})
+
+
+def test_proposed_action_rejects_empty_source_ids() -> None:
+    # An auditable action must reference ≥1 concrete source message.
+    with pytest.raises(ValidationError):
+        BackgroundProposedAction.model_validate({**VALID_PROPOSED_ACTION, "sourceMessageIds": []})
 
 
 def test_proposed_action_accepts_executed_with_result() -> None:
