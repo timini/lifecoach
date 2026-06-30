@@ -300,13 +300,20 @@ def _build_background_oidc_verifier() -> Any:
     )
 
 
-def _build_background_dispatcher() -> Any:
+def _build_background_dispatcher(workspace_tokens_store: Any) -> Any:
     """Build the dispatcher for `/background/scheduler/tick` (ADR 0001 §2).
 
     Returns None unless the full background config is present (audience, invoker
     SA, Cloud Tasks queue/location, project) — so local/dev without background
     infra leaves the tick a no-op. The audience env doubles as the agent base
-    URL the dispatcher targets and the OIDC audience the tasks carry."""
+    URL the dispatcher targets and the OIDC audience the tasks carry.
+
+    Gated on `workspace_tokens_store` too, symmetric with the runner: every
+    background workflow needs Workspace OAuth, so a dispatcher that enqueues runs
+    the executor can't run would strand them `queued` forever. Don't dispatch
+    what you can't execute (Codex #203 re-review #5)."""
+    if workspace_tokens_store is None:
+        return None
     audience = os.environ.get("BACKGROUND_OIDC_AUDIENCE")
     invoker_sa = os.environ.get("BACKGROUND_INVOKER_SA_EMAIL")
     queue = os.environ.get("BACKGROUND_TASKS_QUEUE")
@@ -332,6 +339,41 @@ def _build_background_dispatcher() -> Any:
         agent_base_url=audience,
         invoker_sa_email=invoker_sa,
         oidc_audience=audience,
+    )
+
+
+def _build_background_runner(workspace_tokens_store: Any) -> Any:
+    """Build the executor for `/background/runs/{runId}/execute` (ADR 0001 §3/§5).
+
+    Returns None unless background infra is configured (BACKGROUND_OIDC_AUDIENCE)
+    and Workspace OAuth is enabled (the runner can't run a Workspace workflow
+    without the token store). The workflow registry is empty until step 5b-iii
+    registers `email_triage_daily` — until then every run validates then skips
+    with `WORKFLOW_NOT_REGISTERED` (HTTP 200, no retry)."""
+    if not os.environ.get("BACKGROUND_OIDC_AUDIENCE") or workspace_tokens_store is None:
+        return None
+
+    from lifecoach_agent.background.runner import BackgroundRunner
+    from lifecoach_agent.background.workflow import BackgroundWorkflow
+    from lifecoach_agent.storage.background_firestore_adapter import create_background_firestore
+    from lifecoach_agent.storage.background_notifications import (
+        create_background_notification_store,
+    )
+    from lifecoach_agent.storage.background_proposed_actions import (
+        create_background_proposed_action_store,
+    )
+    from lifecoach_agent.storage.background_runs import create_background_run_store
+    from lifecoach_agent.storage.background_schedules import create_background_schedule_store
+
+    fs = create_background_firestore()
+    workflows: dict[str, BackgroundWorkflow] = {}
+    return BackgroundRunner(
+        runs=create_background_run_store(firestore=fs),
+        schedules=create_background_schedule_store(firestore=fs),
+        notifications=create_background_notification_store(firestore=fs),
+        proposed_actions=create_background_proposed_action_store(firestore=fs),
+        workspace_tokens=workspace_tokens_store,
+        workflows=workflows,
     )
 
 
@@ -550,7 +592,10 @@ def build_app() -> Any:
         background_oidc_verifier=_build_background_oidc_verifier(),
         # Dispatcher for /background/scheduler/tick. None until background infra
         # config is present → tick stays a no-op.
-        background_dispatcher=_build_background_dispatcher(),
+        background_dispatcher=_build_background_dispatcher(workspace_tokens_store),
+        # Executor for /background/runs/{id}/execute. None until background infra
+        # + Workspace OAuth are configured → execute stays a no-op.
+        background_runner=_build_background_runner(workspace_tokens_store),
         weather=weather,
         places=places,
         places_token_provider=places_token_provider,

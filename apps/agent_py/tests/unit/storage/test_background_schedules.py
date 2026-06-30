@@ -358,3 +358,49 @@ async def test_default_now_iso_is_used_when_omitted() -> None:
     await store.upsert(_schedule("s1", next_run_at="1970-01-01T00:00:00.000Z"))
     due = await store.query_due(limit=10)
     assert [s.id for s in due] == ["s1"]
+
+
+async def test_set_last_outcome_stamps_status_without_touching_scheduling() -> None:
+    # The executor records the run outcome on the schedule (lastStatus/lastRunAt)
+    # without holding the lease or advancing nextRunAt (Codex #203 re-review #2).
+    fs = FakeBackgroundFirestore()
+    store = _store(fs)
+    await store.upsert(_schedule("s1", next_run_at="2026-05-16T07:00:00.000Z"))
+    applied = await store.set_last_outcome(
+        schedule_id="s1", last_status="ok", last_run_at="2026-05-15T08:00:10.000Z"
+    )
+    assert applied is True
+    doc = fs.docs["backgroundSchedules/s1"]
+    assert doc["lastStatus"] == "ok"
+    assert doc["lastRunAt"] == "2026-05-15T08:00:10.000Z"
+    # Scheduling untouched.
+    assert doc["nextRunAt"] == "2026-05-16T07:00:00.000Z"
+    assert "pendingRunId" not in doc
+
+
+async def test_set_last_outcome_defaults_run_at_to_now() -> None:
+    fs = FakeBackgroundFirestore()
+    store = create_background_schedule_store(
+        firestore=fs,  # type: ignore[arg-type]
+        now_iso=lambda: "2026-05-15T08:00:10.000Z",
+    )
+    await store.upsert(_schedule("s1", next_run_at="2026-05-16T07:00:00.000Z"))
+    await store.set_last_outcome(schedule_id="s1", last_status="failed")
+    assert fs.docs["backgroundSchedules/s1"]["lastRunAt"] == "2026-05-15T08:00:10.000Z"
+
+
+async def test_set_last_outcome_missing_schedule_is_noop() -> None:
+    # A schedule deleted mid-run → no-op (returns False), no crash.
+    assert (
+        await _store(FakeBackgroundFirestore()).set_last_outcome(
+            schedule_id="gone", last_status="ok"
+        )
+        is False
+    )
+
+
+async def test_set_last_outcome_rejects_invalid_status() -> None:
+    with pytest.raises(ValueError):
+        await _store(FakeBackgroundFirestore()).set_last_outcome(
+            schedule_id="s1", last_status="bogus"
+        )

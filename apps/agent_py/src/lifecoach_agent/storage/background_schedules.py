@@ -198,6 +198,41 @@ class BackgroundScheduleStore:
 
         return await self._fs.run_transaction(_txn)
 
+    async def set_last_outcome(
+        self,
+        *,
+        schedule_id: str,
+        last_status: str,
+        last_run_at: str | None = None,
+    ) -> bool:
+        """Stamp the **run outcome** (`lastStatus`/`lastRunAt`) on the schedule
+        after the executor reaches a terminal state. Unlike
+        `release_lease_and_advance` (owned by the dispatcher, which advances
+        `nextRunAt` under the lease), this touches *only* the last-outcome fields
+        — the executor doesn't hold the schedule lease and must not change
+        scheduling. A schedule deleted mid-run is a no-op (returns False). Lets
+        the settings UI show the latest outcome (Codex #203 re-review #2)."""
+        if last_status not in SCHEDULE_LAST_STATUSES:
+            raise ValueError(f"last_status must be one of {SCHEDULE_LAST_STATUSES}: {last_status}")
+        path = _doc_path(schedule_id)
+
+        async def _txn(txn: BgTransaction) -> bool:
+            snap = await txn.get(path)
+            if not snap.exists:
+                return False
+            now = self._now_iso()
+            txn.update(
+                path,
+                {
+                    "lastStatus": last_status,
+                    "lastRunAt": canonical_iso(last_run_at) if last_run_at else now,
+                    "updatedAt": now,
+                },
+            )
+            return True
+
+        return await self._fs.run_transaction(_txn)
+
 
 def create_background_schedule_store(
     *,

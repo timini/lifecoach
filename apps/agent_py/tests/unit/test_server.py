@@ -845,14 +845,57 @@ async def test_background_tick_runs_dispatcher_and_returns_count() -> None:
 
 
 @pytest.mark.asyncio
-async def test_background_execute_ok_with_valid_oidc() -> None:
+async def test_background_execute_runs_runner_and_maps_status() -> None:
+    from lifecoach_agent.background.runner import ExecuteOutcome
+
+    class _FakeRunner:
+        def __init__(self) -> None:
+            self.kwargs: dict[str, str] | None = None
+
+        async def execute(self, **kwargs: str) -> ExecuteOutcome:
+            self.kwargs = kwargs
+            return ExecuteOutcome("retryable_failed", 503, "GMAIL_UNAVAILABLE")
+
+    runner = _FakeRunner()
+    app = _make_app(
+        deps_overrides={
+            "background_oidc_verifier": _fake_oidc_verifier(),
+            "background_runner": runner,
+        }
+    )
+    async with _client(app) as c:
+        res = await c.post(
+            "/background/runs/run-7/execute",
+            headers={"Authorization": "Bearer good-oidc"},
+            json={"scheduleId": "s1", "uid": "u1", "kind": "email_triage_daily"},
+        )
+    assert res.status_code == 503
+    assert res.json() == {
+        "status": "retryable_failed",
+        "runId": "run-7",
+        "errorCode": "GMAIL_UNAVAILABLE",
+    }
+    assert runner.kwargs == {
+        "run_id": "run-7",
+        "schedule_id": "s1",
+        "uid": "u1",
+        "kind": "email_triage_daily",
+    }
+
+
+@pytest.mark.asyncio
+async def test_background_execute_503_when_no_runner_wired() -> None:
+    # Authenticated but no runner (Workspace OAuth not configured). The task must
+    # NOT be acked (200) — that would delete it and strand the run `queued`.
+    # Return 503 so Cloud Tasks retries once a runner is wired (Codex #203
+    # re-review #5). Symmetric gating makes this unreachable in steady state.
     app = _make_app(deps_overrides={"background_oidc_verifier": _fake_oidc_verifier()})
     async with _client(app) as c:
         res = await c.post(
             "/background/runs/run-42/execute", headers={"Authorization": "Bearer good-oidc"}
         )
-    assert res.status_code == 200
-    assert res.json() == {"status": "ok", "runId": "run-42"}
+    assert res.status_code == 503
+    assert res.json() == {"status": "unavailable", "runId": "run-42"}
 
 
 @pytest.mark.asyncio

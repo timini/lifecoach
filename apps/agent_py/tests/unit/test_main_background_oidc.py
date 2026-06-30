@@ -21,15 +21,27 @@ _DISPATCHER_ENVS = (
 )
 
 
+_TOKENS = object()  # opaque stand-in for a configured WorkspaceTokensStore
+
+
 def test_dispatcher_none_when_config_incomplete(monkeypatch: pytest.MonkeyPatch) -> None:
     # Missing any one of the required envs → no dispatcher (tick stays no-op).
     for name in _DISPATCHER_ENVS:
         monkeypatch.delenv(name, raising=False)
-    assert _build_background_dispatcher() is None
+    assert _build_background_dispatcher(_TOKENS) is None
     # Even with all-but-one set, still None.
     for name in _DISPATCHER_ENVS[:-1]:
         monkeypatch.setenv(name, "x")
-    assert _build_background_dispatcher() is None
+    assert _build_background_dispatcher(_TOKENS) is None
+
+
+def test_dispatcher_none_without_workspace_tokens(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Symmetric with the runner: full background config but no Workspace OAuth →
+    # no dispatcher, so the tick never enqueues runs the executor can't run
+    # (Codex #203 re-review #5).
+    for name in _DISPATCHER_ENVS:
+        monkeypatch.setenv(name, "x")
+    assert _build_background_dispatcher(None) is None
 
 
 def test_returns_none_when_audience_unset(monkeypatch: pytest.MonkeyPatch) -> None:
