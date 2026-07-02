@@ -355,11 +355,15 @@ module "agent" {
   service_name = "lifecoach-agent"
   image        = "${module.artifact_registry.repository_url}/lifecoach-agent:${var.image_tag}"
 
-  # Keep one instance warm so dev users don't eat the ~6s ADK + ~30s
-  # Vertex/auth-handshake cold-start tax on the first chat after idle.
-  # The ADK + Firebase Admin + Vertex SDK boot is heavy (~1s); the first
-  # LLM call against a cold instance is what blows the perceived latency.
-  min_instances = 1
+  # Scale to zero when idle. A warm instance (min_instances=1) meant this
+  # container billed CPU 24/7 under "Services CPU (instance-based billing)" —
+  # ~£129/mo of idle burn on a dev project that sits unused most of the day.
+  # min_instances=0 lets Cloud Run tear the instance down after the idle window
+  # and switches CPU to request-based (cpu_idle=true by default when min=0, i.e.
+  # "CPU only during requests"). Tradeoff accepted for dev: the first chat after
+  # idle eats the ~6s ADK + Vertex/auth cold-start tax. Prod would keep a warm
+  # instance; dev prioritises cost.
+  min_instances = 0
 
   env = merge(
     {
@@ -434,10 +438,10 @@ module "web" {
   service_name = "lifecoach-web"
   image        = "${module.artifact_registry.repository_url}/lifecoach-web:${var.image_tag}"
 
-  # Pair with the agent's min_instances=1 so the first reload after idle
-  # doesn't hit a cold Next.js server. Next start-up is lighter (~2s) but
-  # still adds to the perceived "warming up" delay.
-  min_instances = 1
+  # Scale to zero when idle, matching the agent. Next.js start-up is lighter
+  # (~2s) so the first reload after idle just shows a brief "warming up" delay —
+  # an acceptable dev tradeoff for dropping the 24/7 idle CPU billing.
+  min_instances = 0
 
   container_port = 3000
 
