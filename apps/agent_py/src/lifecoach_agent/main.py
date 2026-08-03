@@ -347,12 +347,16 @@ def _build_background_runner(workspace_tokens_store: Any) -> Any:
 
     Returns None unless background infra is configured (BACKGROUND_OIDC_AUDIENCE)
     and Workspace OAuth is enabled (the runner can't run a Workspace workflow
-    without the token store). The workflow registry is empty until step 5b-iii
-    registers `email_triage_daily` — until then every run validates then skips
-    with `WORKFLOW_NOT_REGISTERED` (HTTP 200, no retry)."""
+    without the token store)."""
     if not os.environ.get("BACKGROUND_OIDC_AUDIENCE") or workspace_tokens_store is None:
         return None
 
+    from lifecoach_agent.background.email_triage import (
+        EmailTriageDailyWorkflow,
+        FirestoreBackgroundAllowlist,
+        GeminiInboxClassifier,
+        GmailInboxReader,
+    )
     from lifecoach_agent.background.runner import BackgroundRunner
     from lifecoach_agent.background.workflow import BackgroundWorkflow
     from lifecoach_agent.storage.background_firestore_adapter import create_background_firestore
@@ -366,7 +370,15 @@ def _build_background_runner(workspace_tokens_store: Any) -> Any:
     from lifecoach_agent.storage.background_schedules import create_background_schedule_store
 
     fs = create_background_firestore()
-    workflows: dict[str, BackgroundWorkflow] = {}
+    from google import genai
+
+    workflows: dict[str, BackgroundWorkflow] = {
+        "email_triage_daily": EmailTriageDailyWorkflow(
+            reader=GmailInboxReader(),
+            classifier=GeminiInboxClassifier(genai.Client()),
+            allowlist=FirestoreBackgroundAllowlist(fs),
+        )
+    }
     return BackgroundRunner(
         runs=create_background_run_store(firestore=fs),
         schedules=create_background_schedule_store(firestore=fs),
