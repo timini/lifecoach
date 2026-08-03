@@ -77,6 +77,10 @@ class _WorkspaceTokens(Protocol):
     async def get_valid_access_token(self, uid: str) -> str: ...
 
 
+class _Eligibility(Protocol):
+    async def is_allowed(self, uid: str) -> bool: ...
+
+
 class BackgroundRunner:
     def __init__(
         self,
@@ -87,6 +91,7 @@ class BackgroundRunner:
         proposed_actions: BackgroundProposedActionStore,
         workspace_tokens: _WorkspaceTokens,
         workflows: Mapping[str, BackgroundWorkflow],
+        eligibility: _Eligibility | None = None,
         lease_ttl_seconds: int = 600,
         max_attempts: int = 5,
         now_iso: Callable[[], str] | None = None,
@@ -97,6 +102,7 @@ class BackgroundRunner:
         self._actions = proposed_actions
         self._tokens = workspace_tokens
         self._workflows = workflows
+        self._eligibility = eligibility
         self._lease_ttl_seconds = lease_ttl_seconds
         # Matches the Cloud Tasks queue retry_config.max_attempts; the runner
         # marks the final delivery terminal so the run never lags non-terminal
@@ -158,6 +164,11 @@ class BackgroundRunner:
         schedule = await self._schedules.get(schedule_id)
         if schedule is None or not schedule.enabled:
             return await self._skip(run_id, schedule_id, "SCHEDULE_DISABLED")
+
+        # Internal rollout gate is checked before token refresh, Gmail, or model
+        # I/O. Missing/malformed config fails closed.
+        if self._eligibility is not None and not await self._eligibility.is_allowed(uid):
+            return await self._skip(run_id, schedule_id, "USER_NOT_ALLOWLISTED")
 
         token = await self._tokens.get(uid)
         if token is None:
