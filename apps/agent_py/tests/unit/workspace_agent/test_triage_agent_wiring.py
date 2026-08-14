@@ -36,7 +36,7 @@ def _deps() -> WorkspaceToolDeps:
 
 
 def test_triage_model_is_flash_lite_and_distinct_from_workspace_model() -> None:
-    assert TRIAGE_INBOX_AGENT_MODEL == "gemini-flash-lite-latest"
+    assert TRIAGE_INBOX_AGENT_MODEL == "gemini-3.5-flash-lite"
     assert TRIAGE_INBOX_AGENT_MODEL != WORKSPACE_AGENT_MODEL
 
 

@@ -38,14 +38,14 @@ from lifecoach_agent.workspace_agent.tools._deps import WorkspaceToolDeps
 WORKSPACE_AGENT_NAME = "workspace_agent"
 # Same model as the parent coach. Flash is fast enough for find_workspace
 # lookups and already on Vertex location=global.
-WORKSPACE_AGENT_MODEL = "gemini-3-flash-preview"
+WORKSPACE_AGENT_MODEL = "gemini-3.7-flash"
 # Inbox triage is a high-volume, bulk-classification path (one list_inbox +
 # one get_messages, then classify N emails into four buckets), so it runs on
 # the cheaper / lower-latency Flash Lite tier — the same id the usage-state
 # policy already routes the cheap tier to (see state/usage_state.py). Named
 # separately from WORKSPACE_AGENT_MODEL so it can be flipped in isolation;
 # find_workspace stays on the stronger WORKSPACE_AGENT_MODEL.
-TRIAGE_INBOX_AGENT_MODEL = "gemini-flash-lite-latest"
+TRIAGE_INBOX_AGENT_MODEL = "gemini-3.5-flash-lite"
 
 WORKSPACE_AGENT_INSTRUCTION = (
     "You are a sub-agent for Google Workspace (Gmail, Calendar, Google Tasks).\n\n"

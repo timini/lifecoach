@@ -192,7 +192,7 @@ async def test_succeeded_persists_artifacts_and_marks_run() -> None:
         result=BackgroundRunResult(
             notification=_notification(),
             proposed_actions=[_action()],
-            model="gemini-flash-lite-latest",
+            model="gemini-3.5-flash-lite",
             token_cost_estimate=0.0009,
         )
     )
@@ -207,7 +207,7 @@ async def test_succeeded_persists_artifacts_and_marks_run() -> None:
     run_doc = fs.docs["backgroundRuns/run-1"]
     assert run_doc["status"] == "succeeded"
     assert run_doc["outputRef"] == "n1"
-    assert run_doc["model"] == "gemini-flash-lite-latest"
+    assert run_doc["model"] == "gemini-3.5-flash-lite"
 
 
 async def test_skip_when_schedule_disabled() -> None:

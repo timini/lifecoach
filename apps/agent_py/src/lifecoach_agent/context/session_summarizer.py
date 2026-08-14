@@ -1,5 +1,5 @@
 """Production summarizer for `session_summary.py`. Wraps a single
-google-genai call against gemini-flash-lite-latest — the cheap, fast
+google-genai call against gemini-3.5-flash-lite — the cheap, fast
 model issue #10 specifies for one-paragraph daily-summary work.
 
 Kept in its own file so the data-layer (`session_summary.py`) stays
@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-MODEL = "gemini-flash-lite-latest"
+MODEL = "gemini-3.5-flash-lite"
 
 SYSTEM_PROMPT = """You write one-paragraph summaries of a single day's coaching chat between a User and Coach. The summary will be injected into tomorrow's system prompt so the Coach has continuity without re-reading the transcript.
 
