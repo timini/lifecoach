@@ -871,7 +871,7 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                 else _none()
             ),
             _timed(
-                deps.profile_store.read(effective_user_id)
+                deps.profile_store.read_for_context(effective_user_id)
                 if deps.profile_store is not None
                 else _none()
             ),

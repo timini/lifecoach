@@ -53,6 +53,53 @@ export const Conversation: Story = {
   },
 };
 
+export const GroundedResearch: Story = {
+  args: {
+    messages: [
+      { id: 'u1', role: 'user', text: 'What changed in Cloud Run sandboxes?' },
+      {
+        id: 'a1',
+        role: 'assistant',
+        elements: [
+          {
+            kind: 'text',
+            text: 'Cloud Run can now launch fast, isolated execution sandboxes inside a service.',
+          },
+          {
+            kind: 'sources',
+            sources: [
+              {
+                title: 'Code execution in Cloud Run',
+                url: 'https://docs.cloud.google.com/run/docs/code-execution',
+                domain: 'docs.cloud.google.com',
+              },
+              {
+                title: 'Cloud Run release notes',
+                url: 'https://docs.cloud.google.com/run/docs/release-notes',
+                domain: 'docs.cloud.google.com',
+              },
+            ],
+          },
+          {
+            kind: 'search-suggestions',
+            html: '<div style="font: 12px sans-serif"><a href="https://www.google.com/search?q=Cloud+Run+sandboxes">Search on Google: Cloud Run sandboxes</a></div>',
+          },
+        ],
+      },
+    ],
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      canvas.getByRole('link', { name: /code execution in cloud run/i }),
+    ).toHaveAttribute('href', 'https://docs.cloud.google.com/run/docs/code-execution');
+    await expect(canvas.getByTitle('Google Search suggestions')).toHaveAttribute(
+      'srcdoc',
+      expect.stringContaining('https://www.google.com/search?q=Cloud+Run+sandboxes'),
+    );
+  },
+};
+
 export const WithChoice: Story = {
   args: {
     messages: [

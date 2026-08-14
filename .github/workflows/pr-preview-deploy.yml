@@ -76,7 +76,15 @@ jobs:
           workload_identity_provider: ${{ vars.WIF_PROVIDER }}
           service_account: ${{ vars.DEPLOY_SA }}
 
-      - uses: google-github-actions/setup-gcloud@v2
+      - uses: google-github-actions/setup-gcloud@v3
+        with:
+          # Preinstall the component so `gcloud beta` never prompts in CI.
+          install_components: beta
+
+      # setup-gcloud's version catalogue can lag the Cloud SDK release channel.
+      # Cloud Run's --sandbox-launcher flag requires gcloud 575.0.0 or newer.
+      - name: Update Cloud SDK for sandbox launcher
+        run: gcloud components update --quiet
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

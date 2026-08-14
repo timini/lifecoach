@@ -1,5 +1,6 @@
 'use client';
 
+import { ExternalLink } from 'lucide-react';
 import { useState } from 'react';
 import { Spinner } from '../atoms/spinner';
 import { AuthPrompt } from '../molecules/auth-prompt';
@@ -14,6 +15,8 @@ import { Markdown } from './markdown';
 
 export type ChatStreamElement =
   | { kind: 'text'; text: string }
+  | { kind: 'sources'; sources: Array<{ title: string; url: string; domain?: string }> }
+  | { kind: 'search-suggestions'; html: string }
   | { kind: 'choice'; single: boolean; question: string; options: string[] }
   | { kind: 'auth'; mode: 'google' | 'email'; email?: string }
   | { kind: 'workspace' }
@@ -241,6 +244,12 @@ function AssistantGroup({
         if (el.kind === 'tool-call') {
           return <ToolCallElement key={elKey} element={el} />;
         }
+        if (el.kind === 'sources') {
+          return <GroundingSources key={elKey} sources={el.sources} />;
+        }
+        if (el.kind === 'search-suggestions') {
+          return <SearchSuggestions key={elKey} html={el.html} />;
+        }
         return (
           <ChoicePrompt
             key={elKey}
@@ -253,6 +262,39 @@ function AssistantGroup({
         );
       })}
     </>
+  );
+}
+
+function SearchSuggestions({ html }: { html: string }) {
+  return (
+    <iframe
+      title="Google Search suggestions"
+      srcDoc={html}
+      sandbox="allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation"
+      className="h-14 w-full max-w-[90%] border-0"
+    />
+  );
+}
+
+function GroundingSources({
+  sources,
+}: { sources: Array<{ title: string; url: string; domain?: string }> }) {
+  return (
+    <div className="flex max-w-[90%] flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+      {sources.map((source) => (
+        <a
+          key={source.url}
+          href={source.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex min-w-0 items-center gap-1 underline underline-offset-2 hover:text-foreground"
+          title={source.url}
+        >
+          <ExternalLink className="size-3 shrink-0" aria-hidden="true" />
+          <span className="max-w-56 truncate">{source.title}</span>
+        </a>
+      ))}
+    </div>
   );
 }
 

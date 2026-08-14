@@ -28,6 +28,7 @@ import httpx
 
 from lifecoach_agent.agent import build_root_agent_for
 from lifecoach_agent.auth import firebase_admin_verifier
+from lifecoach_agent.code_execution import create_run_analysis_tool_from_env
 from lifecoach_agent.context.air_quality import AirQualityClient
 from lifecoach_agent.context.calendar_density import CalendarDensityClient
 from lifecoach_agent.context.holidays import HolidaysClient
@@ -68,6 +69,7 @@ from lifecoach_agent.tools import (
     create_update_user_profile_tool,
     create_upgrade_to_pro_tool,
 )
+from lifecoach_agent.web_research import create_web_research_tool
 from lifecoach_agent.workspace_agent import (
     WorkspaceModuleDeps,
     create_workspace_tools,
@@ -484,6 +486,7 @@ def build_app() -> Any:
         store=_SessionSummaryStoreAdapter(),
         summarizer=create_gemini_flash_lite_summarizer(),
     )
+    run_analysis_tool = create_run_analysis_tool_from_env()
 
     # Runner factory --------------------------------------------------
     def runner_for(params: RunnerForParams) -> Any:  # RunnerLike, structurally
@@ -532,6 +535,8 @@ def build_app() -> Any:
             )
         if usage_policy.upgrade_tool_available:
             tools.append(create_upgrade_to_pro_tool())
+        if run_analysis_tool is not None:
+            tools.append(run_analysis_tool)
         # Practices contribute their own tools (e.g. log_gratitude).
         for practice in get_enabled_practices(ctx.user_profile):
             if practice.tools is None:
@@ -553,6 +558,11 @@ def build_app() -> Any:
             "walled={usage_policy.walled}. The server should short-circuit "
             "walled requests before reaching here."
         )
+        # Google Search is isolated in a search-only child agent because
+        # Gemini/ADK cannot mix the built-in directly with ordinary function
+        # tools. AgentTool keeps the root surface composable and propagates
+        # grounding metadata onto the parent's user-facing response.
+        tools.append(create_web_research_tool(model=usage_policy.model))
         agent = build_root_agent_for(ctx, tools, model=usage_policy.model)
         # `FirestoreSessionService` doesn't yet subclass ADK's
         # `BaseSessionService` — that landing is tracked alongside the

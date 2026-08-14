@@ -14,6 +14,8 @@
 
 export type AssistantElement =
   | { kind: 'text'; text: string }
+  | { kind: 'sources'; sources: GroundingSource[] }
+  | { kind: 'search-suggestions'; html: string }
   | { kind: 'choice'; single: boolean; question: string; options: string[] }
   | { kind: 'auth'; mode: 'google' | 'email'; email?: string }
   | { kind: 'workspace' }
@@ -80,6 +82,9 @@ export function parseSseAssistant(raw: string): AssistantElement[] {
       continue;
     }
     if (!isAgentEvent(parsed)) continue;
+
+    const sources = sourcesFromGroundingMetadata(parsed.groundingMetadata);
+    const searchSuggestions = searchSuggestionsFromGroundingMetadata(parsed.groundingMetadata);
 
     // Collect text from lifecoach delta events only. ADK emits a trailing
     // partial=undefined aggregate that duplicates the deltas; skip it.
@@ -167,6 +172,17 @@ export function parseSseAssistant(raw: string): AssistantElement[] {
         out.push({ kind: 'upgrade' });
       }
     }
+
+    if (sources.length > 0) {
+      if (pendingText.trim()) {
+        out.push({ kind: 'text', text: pendingText });
+        pendingText = '';
+      }
+      out.push({ kind: 'sources', sources });
+    }
+    if (searchSuggestions) {
+      out.push({ kind: 'search-suggestions', html: searchSuggestions });
+    }
   }
 
   if (pendingText.trim()) out.push({ kind: 'text', text: pendingText });
@@ -236,6 +252,9 @@ export function parseSseBlock(block: string): AssistantOp[] {
   }
 
   if (!isAgentEvent(parsed)) return out;
+
+  const sources = sourcesFromGroundingMetadata(parsed.groundingMetadata);
+  const searchSuggestions = searchSuggestionsFromGroundingMetadata(parsed.groundingMetadata);
 
   const parts = parsed.content?.parts ?? [];
 
@@ -368,7 +387,64 @@ export function parseSseBlock(block: string): AssistantOp[] {
     }
   }
 
+  if (sources.length > 0) {
+    out.push({ op: 'push', element: { kind: 'sources', sources } });
+  }
+  if (searchSuggestions) {
+    out.push({ op: 'push', element: { kind: 'search-suggestions', html: searchSuggestions } });
+  }
+
   return out;
+}
+
+export interface GroundingSource {
+  title: string;
+  url: string;
+  domain?: string;
+}
+
+export function sourcesFromGroundingMetadata(value: unknown): GroundingSource[] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+  const chunks = (value as { groundingChunks?: unknown }).groundingChunks;
+  if (!Array.isArray(chunks)) return [];
+
+  const byUrl = new Map<string, GroundingSource>();
+  for (const chunk of chunks) {
+    if (!chunk || typeof chunk !== 'object' || Array.isArray(chunk)) continue;
+    const web = (chunk as { web?: unknown }).web;
+    if (!web || typeof web !== 'object' || Array.isArray(web)) continue;
+    const candidate = web as { uri?: unknown; title?: unknown; domain?: unknown };
+    if (typeof candidate.uri !== 'string' || !/^https?:\/\//i.test(candidate.uri)) continue;
+    let fallbackTitle: string;
+    try {
+      fallbackTitle = new URL(candidate.uri).hostname;
+    } catch {
+      continue;
+    }
+    const title =
+      typeof candidate.title === 'string' && candidate.title.trim()
+        ? candidate.title.trim()
+        : fallbackTitle;
+    if (byUrl.has(candidate.uri)) continue;
+    byUrl.set(candidate.uri, {
+      title,
+      url: candidate.uri,
+      ...(typeof candidate.domain === 'string' && candidate.domain.trim()
+        ? { domain: candidate.domain.trim() }
+        : {}),
+    });
+  }
+  return [...byUrl.values()].slice(0, 8);
+}
+
+export function searchSuggestionsFromGroundingMetadata(value: unknown): string | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const entryPoint = (value as { searchEntryPoint?: unknown }).searchEntryPoint;
+  if (!entryPoint || typeof entryPoint !== 'object' || Array.isArray(entryPoint)) return undefined;
+  const renderedContent = (entryPoint as { renderedContent?: unknown }).renderedContent;
+  return typeof renderedContent === 'string' && renderedContent.trim()
+    ? renderedContent
+    : undefined;
 }
 
 /**
@@ -431,7 +507,8 @@ export function labelForToolCall(name: string, args: unknown): string {
       return 'saving memory';
     case 'memory_search':
       return 'recalling';
-    case 'google_search':
+    case 'google_search': // legacy persisted sessions
+    case 'google_search_agent':
       return 'searching the web';
     // Bridged workspace sub-agent inner tools.
     case 'list_inbox': {
@@ -487,6 +564,7 @@ interface AgentEvent {
    * inner badges under the parent. */
   customMetadata?: { parentToolCallId?: string };
   content?: { parts?: Array<AgentPart> };
+  groundingMetadata?: unknown;
   /**
    * ADK streaming flag. `true` on partial delta events; `false` on the
    * final aggregate event (text re-emitted in full). `undefined` in

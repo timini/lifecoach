@@ -56,9 +56,10 @@ module "agent" {
       # Reuses dev's user bucket. The bucket name follows the gcs-user-bucket
       # module's `lifecoach-users-${environment}-${project_id}` convention; we
       # hardcode `dev` here because previews share dev's bucket.
-      USER_BUCKET         = "lifecoach-users-dev-${var.project_id}"
-      GWS_OAUTH_CLIENT_ID = var.google_oauth_client_id
-      SENTRY_ENVIRONMENT  = "preview-pr-${var.pr_number}"
+      USER_BUCKET                    = "lifecoach-users-dev-${var.project_id}"
+      GWS_OAUTH_CLIENT_ID            = var.google_oauth_client_id
+      SENTRY_ENVIRONMENT             = "preview-pr-${var.pr_number}"
+      SANDBOX_CODE_EXECUTION_ENABLED = "true"
     },
     var.sentry_dsn != "" ? { SENTRY_DSN = var.sentry_dsn } : {},
   )

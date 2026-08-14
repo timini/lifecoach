@@ -132,6 +132,27 @@ async def test_triage_inbox_bridged_agent_tool_returns_parse_error_on_invalid_re
         assert parsed["raw"] == invalid_text
 
 
+@pytest.mark.asyncio
+async def test_bridged_agent_tool_returns_structured_error_at_total_deadline() -> None:
+    import json
+    from unittest.mock import patch
+
+    async def slow_run(*_args: Any, **_kwargs: Any) -> str:
+        await asyncio.sleep(1)
+        return "late"
+
+    agent = SimpleNamespace(name="find_workspace", description="find workspace")
+    tool = BridgedAgentTool(agent=agent, timeout_s=0.01)  # type: ignore[arg-type]
+    with patch.object(BridgedAgentTool, "_run_agent", slow_run):
+        result = await tool.run_async(args={"request": "today"}, tool_context=SimpleNamespace())
+
+    assert json.loads(result) == {
+        "status": "error",
+        "code": "timeout",
+        "message": "Workspace lookup exceeded 0.01s",
+    }
+
+
 class _FakeStore:
     pass
 

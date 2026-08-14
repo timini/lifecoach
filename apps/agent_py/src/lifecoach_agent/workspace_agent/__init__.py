@@ -3,16 +3,8 @@ once and gates it on `userState === 'workspace_connected'`. The returned
 list is everything the main agent needs to talk to Google Workspace —
 the generic `call_workspace` dispatcher is gone.
 
-Returned tools, in order:
-  1. triage_inbox()           — AgentTool wrapping the triage sub-agent
-  2. find_workspace(query)    — AgentTool wrapping the search sub-agent
-  3. archive_messages(ids)    — FunctionTool — direct, no LLM hop
-  4. add_calendar_event(...)  — FunctionTool — direct, no LLM hop
-  5. edit_calendar_event(...) — FunctionTool — direct, no LLM hop
-  6. delete_calendar_event(...) — FunctionTool — direct, no LLM hop
-  7. add_task(...)            — FunctionTool — direct, no LLM hop
-  8. complete_task(id)        — FunctionTool — direct, no LLM hop
-  9. draft_email(...)         — FunctionTool — direct, no LLM hop
+Returned tools include two delegated workflows, two direct read hot paths,
+and seven direct writes. Calendar/task listing avoids a child-model round trip.
 """
 
 from __future__ import annotations
@@ -61,6 +53,8 @@ from lifecoach_agent.workspace_agent.tools import (
     DELETE_CALENDAR_EVENT_TOOL_NAME,
     DRAFT_EMAIL_TOOL_NAME,
     EDIT_CALENDAR_EVENT_TOOL_NAME,
+    LIST_EVENTS_TOOL_NAME,
+    LIST_TASKS_TOOL_NAME,
     create_add_calendar_event_tool,
     create_add_task_tool,
     create_archive_messages_tool,
@@ -68,6 +62,8 @@ from lifecoach_agent.workspace_agent.tools import (
     create_delete_calendar_event_tool,
     create_draft_email_tool,
     create_edit_calendar_event_tool,
+    create_list_events_tool,
+    create_list_tasks_tool,
 )
 from lifecoach_agent.workspace_agent.tools._deps import WorkspaceToolDeps
 
@@ -93,9 +89,10 @@ class WorkspaceModuleDeps:
 
 
 def create_workspace_tools(deps: WorkspaceModuleDeps) -> list[Any]:
-    """Build the 9 workspace-facing tools (2 AgentTools + 7 narrow writes)
-    for the main agent. Closes over `deps.uid` + `deps.store` so the LLM
-    never sees auth values."""
+    """Build the workspace-facing tools for the main agent.
+
+    Closes over `deps.uid` + `deps.store` so the LLM never sees auth values.
+    """
     main_tool_deps = WorkspaceToolDeps(
         store=deps.store, uid=deps.uid, build_client=deps.build_client, log=deps.log
     )
@@ -103,6 +100,8 @@ def create_workspace_tools(deps: WorkspaceModuleDeps) -> list[Any]:
     return [
         create_triage_inbox_tool(sub_agent_deps, event_queue=deps.event_queue),
         create_find_workspace_tool(sub_agent_deps, event_queue=deps.event_queue),
+        create_list_events_tool(main_tool_deps),
+        create_list_tasks_tool(main_tool_deps),
         create_archive_messages_tool(main_tool_deps),
         create_add_calendar_event_tool(main_tool_deps),
         create_edit_calendar_event_tool(main_tool_deps),
@@ -118,6 +117,8 @@ def create_workspace_tools(deps: WorkspaceModuleDeps) -> list[Any]:
 WORKSPACE_TOOL_NAMES: tuple[str, ...] = (
     TRIAGE_INBOX_TOOL_NAME,
     FIND_WORKSPACE_TOOL_NAME,
+    LIST_EVENTS_TOOL_NAME,
+    LIST_TASKS_TOOL_NAME,
     ARCHIVE_MESSAGES_TOOL_NAME,
     ADD_CALENDAR_EVENT_TOOL_NAME,
     EDIT_CALENDAR_EVENT_TOOL_NAME,
@@ -137,6 +138,8 @@ __all__ = [
     "DRAFT_EMAIL_TOOL_NAME",
     "EDIT_CALENDAR_EVENT_TOOL_NAME",
     "FIND_WORKSPACE_TOOL_NAME",
+    "LIST_EVENTS_TOOL_NAME",
+    "LIST_TASKS_TOOL_NAME",
     "MAX_RESPONSE_BYTES",
     "TRIAGE_INBOX_TOOL_NAME",
     "WORKSPACE_AGENT_INSTRUCTION",
@@ -165,6 +168,8 @@ __all__ = [
     "create_draft_email_tool",
     "create_edit_calendar_event_tool",
     "create_find_workspace_tool",
+    "create_list_events_tool",
+    "create_list_tasks_tool",
     "create_triage_inbox_tool",
     "create_workspace_agent",
     "create_workspace_tools",

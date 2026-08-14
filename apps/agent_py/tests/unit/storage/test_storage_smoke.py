@@ -7,6 +7,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
+from google.adk.events import Event, EventActions
+from google.genai import types as genai_types
 
 from lifecoach_agent.oauth.workspace_client import RefreshResult, WorkspaceTokens
 from lifecoach_agent.storage.firestore_session import (
@@ -161,6 +163,33 @@ async def test_firestore_session_create_get_delete() -> None:
     assert (
         await svc.get_session(app_name="lifecoach", user_id="u1", session_id="2026-05-06") is None
     )
+
+
+@pytest.mark.asyncio
+async def test_firestore_session_does_not_persist_temporary_grounding_state() -> None:
+    fs = FakeFirestore()
+    svc = create_firestore_session_service(firestore=fs)
+    session = await svc.create_session(app_name="lifecoach", user_id="u1", session_id="2026-05-06")
+    grounding = genai_types.GroundingMetadata(web_search_queries=["current bank rate"])
+    event = Event(
+        author="lifecoach",
+        grounding_metadata=grounding,
+        actions=EventActions(
+            state_delta={
+                "temp:_adk_grounding_metadata": grounding,
+                "persistent": "kept",
+            }
+        ),
+    )
+
+    await svc.append_event(session, event)
+
+    stored = (await fs.doc("apps/lifecoach/users/u1/sessions/2026-05-06").get()).data()
+    assert stored is not None
+    assert stored["state"] == {"persistent": "kept"}
+    assert stored["events"][0]["groundingMetadata"]["webSearchQueries"] == ["current bank rate"]
+    # Keep the temporary value in memory for the remainder of this invocation.
+    assert session.state["temp:_adk_grounding_metadata"] is grounding
 
 
 @pytest.mark.asyncio

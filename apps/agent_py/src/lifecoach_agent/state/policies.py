@@ -20,7 +20,7 @@ CORE_TOOLS: Final[tuple[ToolName, ...]] = (
     "log_goal_update",
     "ask_single_choice_question",
     "ask_multiple_choice_question",
-    "google_search",
+    "google_search_agent",
     "memory_search",
     "memory_save",
 )
@@ -45,8 +45,8 @@ _STATE_ADDITIONAL_TOOLS: dict[UserState, tuple[ToolName, ...]] = {
     # trigger the browser's GIS popup.
     "google_linked": ("connect_workspace",),
     # workspace_connected users get the full Google Workspace surface
-    # exported by `workspace_agent` (2 AgentTools wrapping the workspace
-    # sub-agent + 7 narrow write FunctionTools). The canonical list is
+    # exported by `workspace_agent` (2 AgentTools, 2 direct reads, and 7
+    # narrow write FunctionTools). The canonical list is
     # `lifecoach_agent.workspace_agent.WORKSPACE_TOOL_NAMES`; this tuple
     # must match it 1:1 + `connect_workspace`. A drift test in
     # `tests/unit/state/test_policies_workspace_drift.py` keeps them in
@@ -56,6 +56,8 @@ _STATE_ADDITIONAL_TOOLS: dict[UserState, tuple[ToolName, ...]] = {
     "workspace_connected": (
         "triage_inbox",
         "find_workspace",
+        "list_events",
+        "list_tasks",
         "archive_messages",
         "add_calendar_event",
         "edit_calendar_event",
@@ -116,8 +118,8 @@ _STATE_DIRECTIVE: dict[UserState, str] = {
         "the conversation.\n\n" + _WORKSPACE_ASK_TRIGGER_GOOGLE_LINKED
     ),
     "workspace_connected": (
-        "User granted Google Workspace access. Use the nine workspace tools "
-        "(triage_inbox, find_workspace, archive_messages, add_calendar_event, "
+        "User granted Google Workspace access. Use the typed workspace tools "
+        "(triage_inbox, find_workspace, list_events, list_tasks, archive_messages, add_calendar_event, "
         "edit_calendar_event, delete_calendar_event, add_task, complete_task, "
         "draft_email) when the user asks something that requires "
         "their workspace. Never speculate about their workspace contents — "

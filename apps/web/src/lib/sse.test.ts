@@ -53,6 +53,35 @@ describe('parseSseAssistantText', () => {
 });
 
 describe('parseSseAssistant', () => {
+  it('emits deduplicated grounding sources after grounded text', () => {
+    const event = {
+      author: 'lifecoach',
+      partial: true,
+      content: { parts: [{ text: 'Current result.' }] },
+      groundingMetadata: {
+        searchEntryPoint: {
+          renderedContent: '<div class="search-suggestions">Search rewire.it</div>',
+        },
+        groundingChunks: [
+          { web: { uri: 'https://rewire.it/post', title: 'Rewire post', domain: 'rewire.it' } },
+          { web: { uri: 'https://rewire.it/post', title: 'Duplicate' } },
+        ],
+      },
+    };
+
+    expect(parseSseAssistant(`data: ${JSON.stringify(event)}\n\n`)).toEqual([
+      { kind: 'text', text: 'Current result.' },
+      {
+        kind: 'sources',
+        sources: [{ title: 'Rewire post', url: 'https://rewire.it/post', domain: 'rewire.it' }],
+      },
+      {
+        kind: 'search-suggestions',
+        html: '<div class="search-suggestions">Search rewire.it</div>',
+      },
+    ]);
+  });
+
   it('extracts a single-choice question from a tool response event', () => {
     const fr = {
       functionResponse: {
@@ -420,6 +449,7 @@ describe('labelForToolCall', () => {
     expect(labelForToolCall('memory_save', {})).toBe('saving memory');
     expect(labelForToolCall('memory_search', {})).toBe('recalling');
     expect(labelForToolCall('google_search', {})).toBe('searching the web');
+    expect(labelForToolCall('google_search_agent', {})).toBe('searching the web');
     expect(labelForToolCall('upgrade_to_pro', {})).toBe('offering pro upgrade');
   });
 

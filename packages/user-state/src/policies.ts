@@ -9,7 +9,7 @@ export const CORE_TOOLS: readonly ToolName[] = [
   'log_goal_update',
   'ask_single_choice_question',
   'ask_multiple_choice_question',
-  'google_search',
+  'google_search_agent',
   'memory_search',
   'memory_save',
 ];
@@ -31,12 +31,14 @@ const STATE_ADDITIONAL_TOOLS: Record<UserState, readonly ToolName[]> = {
   // browser's GIS popup.
   google_linked: ['connect_workspace'],
   // workspace_connected users get the full Google Workspace surface:
-  // 2 AgentTools wrapping the workspace sub-agent (read flows) + 7
-  // narrow write FunctionTools. `connect_workspace` stays available so
+  // 2 AgentTools, 2 direct read FunctionTools, and 7 narrow write
+  // FunctionTools. `connect_workspace` stays available so
   // reconnects work if the user narrows scopes or the token gets revoked.
   workspace_connected: [
     'triage_inbox',
     'find_workspace',
+    'list_events',
+    'list_tasks',
     'archive_messages',
     'add_calendar_event',
     'edit_calendar_event',

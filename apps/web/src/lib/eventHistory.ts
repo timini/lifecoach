@@ -17,7 +17,13 @@
  * matching call's status and don't render their own bubble.
  */
 
-import { labelForToolCall, stripWorkspaceBridgeMetadata, workspaceParentIdFromArgs } from './sse';
+import {
+  labelForToolCall,
+  searchSuggestionsFromGroundingMetadata,
+  sourcesFromGroundingMetadata,
+  stripWorkspaceBridgeMetadata,
+  workspaceParentIdFromArgs,
+} from './sse';
 
 /** Author tag stamped onto bridged workspace sub-agent events by
  * `BridgedAgentTool`. Different from `lifecoach` so ADK's contents
@@ -36,6 +42,8 @@ export interface HistoryUserMessage {
 
 export type HistoryAssistantElement =
   | { kind: 'text'; text: string }
+  | { kind: 'sources'; sources: ReturnType<typeof sourcesFromGroundingMetadata> }
+  | { kind: 'search-suggestions'; html: string }
   | {
       kind: 'tool-call';
       id: string;
@@ -96,6 +104,7 @@ interface EventLike {
    */
   timestamp?: number;
   content?: { role?: string; parts?: PartLike[] };
+  groundingMetadata?: unknown;
   /** Set by `BridgedAgentTool` so bridged sub-agent events carry their
    * outer AgentTool's function_call_id. The FE keys on this to nest
    * inner badges under the parent in /history rehydration. */
@@ -135,7 +144,8 @@ const REPLAYABLE_TOOLS = new Set<string>([
   'log_goal_update',
   'memory_save',
   'memory_search',
-  'google_search',
+  'google_search', // legacy persisted sessions
+  'google_search_agent',
   // Bridged workspace sub-agent inner tools. Rendered as nested
   // badges under their parent AgentTool when replayed.
   'list_inbox',
@@ -180,7 +190,9 @@ export function eventsToMessages(events: readonly EventLike[]): HistoryMessage[]
     // prior call's pill and have nothing of their own to render.
     const hasAnyText = parts.some((p) => typeof p.text === 'string' && p.text.length > 0);
     const hasAnyCall = parts.some((p) => p.functionCall !== undefined);
-    if (!hasAnyText && !hasAnyCall) continue;
+    const groundingSources = sourcesFromGroundingMetadata(event.groundingMetadata);
+    const searchSuggestions = searchSuggestionsFromGroundingMetadata(event.groundingMetadata);
+    if (!hasAnyText && !hasAnyCall && groundingSources.length === 0 && !searchSuggestions) continue;
 
     // Bridged workspace events: persisted under the bridge author so
     // ADK doesn't replay them as main-agent tool calls (see
@@ -244,6 +256,12 @@ export function eventsToMessages(events: readonly EventLike[]): HistoryMessage[]
           }
         }
       }
+    }
+    if (groundingSources.length > 0) {
+      elements.push({ kind: 'sources', sources: groundingSources });
+    }
+    if (searchSuggestions) {
+      elements.push({ kind: 'search-suggestions', html: searchSuggestions });
     }
 
     if (elements.length === 0) continue;
