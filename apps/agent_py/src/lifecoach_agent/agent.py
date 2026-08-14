@@ -27,7 +27,7 @@ from lifecoach_agent.prompt.build_instruction import (
 if TYPE_CHECKING:
     from google.genai import types as genai_types
 
-DEFAULT_MODEL = os.environ.get("LIFECOACH_MODEL", "gemini-3-flash-preview")
+DEFAULT_MODEL = os.environ.get("LIFECOACH_MODEL", "gemini-3.7-flash")
 
 
 def build_root_agent_for(
