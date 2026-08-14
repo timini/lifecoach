@@ -100,6 +100,42 @@ class FakeRunner:
 
 
 @dataclass
+class OTelDetachErrorRunner(FakeRunner):
+    """Yields useful payload, then raises the OTel context-detach ValueError.
+
+    Mirrors the ADK+OpenTelemetry teardown race seen in prod where the
+    span token is reset from a different asyncio context after the
+    user-visible response has already streamed.
+    """
+
+    def run_async(self, **_kwargs: Any) -> AsyncIterator[dict[str, Any]]:
+        self.calls_made += 1
+
+        async def gen() -> AsyncIterator[dict[str, Any]]:
+            yield _model_text("hi before tracing cleanup")
+            raise ValueError(
+                "<Token var=<ContextVar name='current_context' default={} at 0xabc> "
+                "at 0xdef> was created in a different Context"
+            )
+
+        return gen()
+
+
+@dataclass
+class GenericValueErrorRunner(FakeRunner):
+    """Raises an unrelated ValueError — must still surface as `event: error`."""
+
+    def run_async(self, **_kwargs: Any) -> AsyncIterator[dict[str, Any]]:
+        self.calls_made += 1
+
+        async def gen() -> AsyncIterator[dict[str, Any]]:
+            raise ValueError("something genuinely bad")
+            yield {}  # pragma: no cover — make gen an async generator
+
+        return gen()
+
+
+@dataclass
 class FakeUserMetaStore:
     """Minimal user-meta store for usage-limit tests."""
 
@@ -485,6 +521,50 @@ async def test_chat_streams_text_when_model_responds() -> None:
         text = await _drain(res)
     assert "hi back" in text
     assert "event: done" in text
+
+
+@pytest.mark.asyncio
+async def test_chat_suppresses_otel_context_detach_error_after_streaming() -> None:
+    """ADK/OpenTelemetry can raise a benign contextvars `ValueError` while
+    finalising the SSE async generator. After useful payload has been
+    yielded, the server must end the stream with `event: done` and never
+    emit `event: error` or a traceback — Sentry/Cloud-Run should not see
+    that race as a real failure."""
+    runner = OTelDetachErrorRunner(events_per_call=[])
+    app = _make_app(runner=runner)
+    async with (
+        _client(app) as c,
+        c.stream(
+            "POST",
+            "/chat",
+            json={"userId": "u1", "sessionId": "s1", "message": "hi"},
+        ) as res,
+    ):
+        text = await _drain(res)
+    assert "hi before tracing cleanup" in text
+    assert "event: done" in text
+    assert "event: error" not in text
+    assert runner.calls_made == 1
+
+
+@pytest.mark.asyncio
+async def test_chat_propagates_unrelated_value_errors_as_event_error() -> None:
+    """Sanity: the OTel-detach predicate is intentionally narrow — any
+    other `ValueError` from the runner must still surface as an
+    `event: error` so we don't silently swallow real bugs."""
+    runner = GenericValueErrorRunner(events_per_call=[])
+    app = _make_app(runner=runner)
+    async with (
+        _client(app) as c,
+        c.stream(
+            "POST",
+            "/chat",
+            json={"userId": "u1", "sessionId": "s1", "message": "hi"},
+        ) as res,
+    ):
+        text = await _drain(res)
+    assert "event: error" in text
+    assert "something genuinely bad" in text
 
 
 @pytest.mark.asyncio
