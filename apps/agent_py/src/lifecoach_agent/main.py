@@ -347,9 +347,9 @@ def _build_background_runner(workspace_tokens_store: Any) -> Any:
 
     Returns None unless background infra is configured (BACKGROUND_OIDC_AUDIENCE)
     and Workspace OAuth is enabled (the runner can't run a Workspace workflow
-    without the token store). The workflow registry is empty until step 5b-iii
-    registers `email_triage_daily` — until then every run validates then skips
-    with `WORKFLOW_NOT_REGISTERED` (HTTP 200, no retry)."""
+    without the token store). ``email_triage_daily`` is registered only when
+    Vertex configuration is present; incomplete configuration therefore fails
+    closed with ``WORKFLOW_NOT_REGISTERED`` instead of running a partial flow."""
     if not os.environ.get("BACKGROUND_OIDC_AUDIENCE") or workspace_tokens_store is None:
         return None
 
@@ -367,6 +367,24 @@ def _build_background_runner(workspace_tokens_store: Any) -> Any:
 
     fs = create_background_firestore()
     workflows: dict[str, BackgroundWorkflow] = {}
+    project = os.environ.get("LIFECOACH_VERTEX_PROJECT") or os.environ.get("GOOGLE_CLOUD_PROJECT")
+    location = os.environ.get("LIFECOACH_VERTEX_LOCATION") or os.environ.get(
+        "GOOGLE_CLOUD_LOCATION"
+    )
+    if project and location:
+        from google import genai
+
+        from lifecoach_agent.background.email_triage_daily import (
+            EmailTriageDailyWorkflow,
+            FirestoreEligibility,
+            GeminiClassifier,
+        )
+
+        workflows["email_triage_daily"] = EmailTriageDailyWorkflow(
+            classifier=GeminiClassifier(
+                genai.Client(vertexai=True, project=project, location=location)
+            ),
+        )
     return BackgroundRunner(
         runs=create_background_run_store(firestore=fs),
         schedules=create_background_schedule_store(firestore=fs),
@@ -374,6 +392,7 @@ def _build_background_runner(workspace_tokens_store: Any) -> Any:
         proposed_actions=create_background_proposed_action_store(firestore=fs),
         workspace_tokens=workspace_tokens_store,
         workflows=workflows,
+        eligibility=FirestoreEligibility(fs) if workflows else None,
     )
 
 

@@ -160,6 +160,7 @@ def _runner(
     register: bool = True,
     max_attempts: int = 5,
     notifications: object | None = None,
+    eligibility: object | None = None,
 ) -> BackgroundRunner:
     wf = workflow or _FakeWorkflow()
     return BackgroundRunner(
@@ -169,6 +170,7 @@ def _runner(
         proposed_actions=create_background_proposed_action_store(firestore=fs),  # type: ignore[arg-type]
         workspace_tokens=tokens or _FakeTokens(),  # type: ignore[arg-type]
         workflows={"email_triage_daily": wf} if register else {},
+        eligibility=eligibility,  # type: ignore[arg-type]
         max_attempts=max_attempts,
         now_iso=lambda: _NOW,
     )
@@ -208,6 +210,39 @@ async def test_succeeded_persists_artifacts_and_marks_run() -> None:
     assert run_doc["status"] == "succeeded"
     assert run_doc["outputRef"] == "n1"
     assert run_doc["model"] == "gemini-3.5-flash-lite"
+
+
+async def test_non_allowlisted_user_skips_before_token_or_workflow() -> None:
+    fs = FakeBackgroundFirestore()
+    await _seed(fs)
+    wf = _FakeWorkflow()
+
+    class Gate:
+        async def is_allowed(self, uid: str) -> bool:
+            assert uid == "uid-1"
+            return False
+
+    outcome = await _execute(_runner(fs, workflow=wf, eligibility=Gate()))
+    assert (outcome.status, outcome.error_code) == ("skipped", "USER_NOT_ALLOWLISTED")
+    assert wf.calls == 0
+    assert fs.docs["backgroundRuns/run-1"]["status"] == "skipped"
+
+
+async def test_allowlist_read_failure_is_retryable() -> None:
+    fs = FakeBackgroundFirestore()
+    await _seed(fs)
+
+    class Gate:
+        async def is_allowed(self, uid: str) -> bool:
+            raise RuntimeError("firestore unavailable")
+
+    outcome = await _execute(_runner(fs, eligibility=Gate()))
+
+    assert (outcome.status, outcome.http_status, outcome.error_code) == (
+        "retryable_failed",
+        503,
+        "EXECUTOR_ERROR",
+    )
 
 
 async def test_skip_when_schedule_disabled() -> None:

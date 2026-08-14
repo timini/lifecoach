@@ -121,6 +121,22 @@ async def test_call_workspace_ok_path() -> None:
 
 
 @pytest.mark.asyncio
+async def test_call_workspace_projects_before_response_truncation() -> None:
+    fake = _FakeGmailService({"payload": "x" * 40_000})
+
+    result = await call_workspace(
+        access_token="t",
+        service="gmail",
+        resource="users.messages",
+        method="list",
+        build_client=lambda _service, _token: fake,
+        result_projector=lambda raw: {"size": len(raw["payload"])},
+    )
+
+    assert result == CallWorkspaceOk(body={"size": 40_000})
+
+
+@pytest.mark.asyncio
 async def test_call_workspace_invalid_service_returns_invalid_args() -> None:
     result = await call_workspace(
         access_token="t",
