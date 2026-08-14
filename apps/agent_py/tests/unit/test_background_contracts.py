@@ -222,7 +222,7 @@ def test_run_accepts_optional_lifecycle_timestamps() -> None:
         "finishedAt": "2026-05-15T08:00:05.000Z",
         "leaseExpiresAt": "2026-05-15T08:01:00.000Z",
         "outputRef": "note_1",
-        "model": "gemini-flash-lite-latest",
+        "model": "gemini-3.5-flash-lite",
         "tokenCostEstimate": 0.0012,
     }
     parsed = BackgroundRun.model_validate(full)

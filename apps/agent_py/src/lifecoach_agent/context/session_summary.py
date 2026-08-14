@@ -68,7 +68,7 @@ class SessionSummaryStore(Protocol):
 
 
 # Pluggable summarizer. Returns one paragraph or None on decline / error.
-# Production wiring uses gemini-flash-lite-latest via google-genai (see
+# Production wiring uses gemini-3.5-flash-lite via google-genai (see
 # `session_summarizer.py`).
 Summarizer = Callable[[str], Awaitable[str | None]]
 

@@ -70,7 +70,7 @@ flowchart LR
 
     subgraph Google["Google Cloud"]
         FBA[Firebase Auth]
-        VERT[Vertex AI · Gemini 3 Flash / Flash Lite]
+        VERT[Vertex AI · Gemini 3.7 Flash / 3.5 Flash-Lite]
         FS[(Firestore)]
         GCS[(GCS user bucket)]
         SM[Secret Manager]
@@ -137,7 +137,7 @@ sequenceDiagram
     participant BI as build_instruction
     participant Stores as Firestore + GCS
     participant Ctx as Weather / Places / Holidays /<br/>AirQuality / Memory / SessionSummary
-    participant LLM as Gemini 3 Flash (Vertex)
+    participant LLM as Gemini 3.7 Flash (Vertex)
 
     U->>CW: types "did 5k this morning"
     CW->>API: POST /api/chat<br/>{userId, sessionId, message,<br/>location?, timezone}<br/>Authorization: Bearer <idToken>
@@ -244,16 +244,16 @@ This rule was added in response to issue #62 — a regression where a `google_li
 
 | `UsageState` | Model | Nudge | `upgrade_to_pro` | walled |
 |---|---|---|---|---|
-| `free_fresh` (anon, 0–4) | `gemini-3-flash-preview` | none | off | no |
-| `free_signup_soft` (anon, 5–9) | `gemini-3-flash-preview` | `signup_soft` | off | no |
-| `free_signup_hard` (anon, 10–14) | `gemini-3-flash-preview` | `signup_hard` | off | no |
-| `free_throttled` (anon, 15–24) | **`gemini-flash-lite-latest`** | `signup_hard` + throttled-notice | off | no |
+| `free_fresh` (anon, 0–4) | `gemini-3.7-flash` | none | off | no |
+| `free_signup_soft` (anon, 5–9) | `gemini-3.7-flash` | `signup_soft` | off | no |
+| `free_signup_hard` (anon, 10–14) | `gemini-3.7-flash` | `signup_hard` | off | no |
+| `free_throttled` (anon, 15–24) | **`gemini-3.5-flash-lite`** | `signup_hard` + throttled-notice | off | no |
 | `free_wall` (anon, 25+) | **none** | none | off | **yes** (cta=`auth_user`) |
-| `free_signed_in` (signed-in, 0–19) | `gemini-3-flash-preview` | none | off | no |
-| `pro_pitch_soft` (signed-in, 20–49) | `gemini-3-flash-preview` | `pro_soft` | **on** | no |
-| `pro_pitch_hard` (signed-in, 50–99) | **`gemini-flash-lite-latest`** | `pro_hard` | **on** | no |
+| `free_signed_in` (signed-in, 0–19) | `gemini-3.7-flash` | none | off | no |
+| `pro_pitch_soft` (signed-in, 20–49) | `gemini-3.7-flash` | `pro_soft` | **on** | no |
+| `pro_pitch_hard` (signed-in, 50–99) | **`gemini-3.5-flash-lite`** | `pro_hard` | **on** | no |
 | `signed_in_wall` (signed-in, 100+) | **none** | none | off | **yes** (cta=`upgrade_to_pro`) |
-| `pro` (any tier=pro) | `gemini-3-flash-preview` | none | off | no |
+| `pro` (any tier=pro) | `gemini-3.7-flash` | none | off | no |
 
 **Cost ceiling — walled states.** `free_wall` and `signed_in_wall` are the load-bearing free-tier cost guard. When `usage_policy.walled` is true the `/chat` handler short-circuits before any model call: it emits a single `event: wall` SSE with `{reason, cta}` plus `event: done`, and logs `chat.turn` with `model=null, walled=true`. The FE renders a `<WallPrompt>` paywall card whose CTA wires to the existing sign-in / pro-interest flows. No prompt tuning can re-open these paths — the model is never invoked.
 
@@ -426,7 +426,7 @@ Every module under `context/` is an idempotent fetch with documented cache key +
 | `holidays.py` | date.nager.at | 24 h, key = country code + year | `Holiday[]` |
 | `calendar_density.py` | Google Calendar (workspace-connected only) | per-turn (no cache) | today / tomorrow event counts |
 | `memory.py` | `VertexAiMemoryBankService` | per-turn | top-5 facts for the user message |
-| `session_summary.py` | Internal (Gemini Flash Lite) | written to `session.state.summary*`, regenerated when stale | yesterday + 7-day summaries |
+| `session_summary.py` | Internal (Gemini 3.5 Flash-Lite) | written to `session.state.summary*`, regenerated when stale | yesterday + 7-day summaries |
 
 ### 7.6 Storage
 
@@ -467,7 +467,7 @@ workspace_agent/
 
 **The main-facing surface (nine tools):**
 
-- **`triage_inbox()`** and **`find_workspace(query)`** are `AgentTool`s. Each wraps a dedicated `LlmAgent` instance with a scoped instruction and the same seven internal read tools — the sub-agent classifies an inbox or answers a natural-language lookup, the wrapper returns the result to the parent. Triage reads every body in one bulk `get_messages` call (not a `get_message` per id) and runs on the cheaper `TRIAGE_INBOX_AGENT_MODEL` (Flash Lite) while `find_workspace` keeps `WORKSPACE_AGENT_MODEL`. `triage_inbox` emits `<TRIAGE_REPORT>{json}</TRIAGE_REPORT>`; `parse_triage_report` validates against `TriageReportSchema` and returns `{status:"ok", report}` or `{status:"parse_error", raw}`.
+- **`triage_inbox()`** and **`find_workspace(query)`** are `AgentTool`s. Each wraps a dedicated `LlmAgent` instance with a scoped instruction and the same seven internal read tools — the sub-agent classifies an inbox or answers a natural-language lookup, the wrapper returns the result to the parent. Triage reads every body in one bulk `get_messages` call (not a `get_message` per id) and runs on the cheaper `TRIAGE_INBOX_AGENT_MODEL` (Gemini 3.5 Flash-Lite) while `find_workspace` keeps `WORKSPACE_AGENT_MODEL`. `triage_inbox` emits `<TRIAGE_REPORT>{json}</TRIAGE_REPORT>`; `parse_triage_report` validates against `TriageReportSchema` and returns `{status:"ok", report}` or `{status:"parse_error", raw}`.
 - **`archive_messages`**, **`add_calendar_event`**, **`edit_calendar_event`**, **`delete_calendar_event`**, **`add_task`**, **`complete_task`**, **`draft_email`** are narrow `FunctionTool`s — direct, no LLM hop. The main agent owns confirmation via `ask_single_choice_question`; writes only fire after explicit user approval.
 
 `gws_client.call_workspace` is the bottom-layer dispatcher. It walks the Discovery API tree (`gmail.users.messages.list(...)` etc.) via `google-api-python-client`, classifying errors into `scope_required`, `forbidden`, `network`, `rate_limited`, `not_found`, `bad_request`, `timeout`, `upstream`, `invalid_args`. Every workspace tool routes through `run_gws.py`, which (a) resolves the access token via `WorkspaceTokensStore`, (b) calls the dispatcher, (c) deletes the user's token doc on `scope_required` so the next turn demotes back to `google_linked` and the LLM invites reconnect.

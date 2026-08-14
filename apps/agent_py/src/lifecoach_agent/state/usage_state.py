@@ -43,7 +43,7 @@ SIGNED_IN_WALL_FROM: Final[int] = 100
 
 
 Tier = Literal["free", "pro"]
-Model = Literal["gemini-3-flash-preview", "gemini-flash-lite-latest"]
+Model = Literal["gemini-3.7-flash", "gemini-3.5-flash-lite"]
 NudgeMode = Literal["none", "signup_soft", "signup_hard", "pro_soft", "pro_hard"]
 WallReason = Literal["free_limit", "free_signed_in_limit"]
 WallCta = Literal["auth_user", "upgrade_to_pro"]
@@ -81,25 +81,25 @@ class UsagePolicy:
 _POLICIES: dict[UsageState, UsagePolicy] = {
     "free_fresh": UsagePolicy(
         state="free_fresh",
-        model="gemini-3-flash-preview",
+        model="gemini-3.7-flash",
         nudge_mode="none",
         upgrade_tool_available=False,
     ),
     "free_signup_soft": UsagePolicy(
         state="free_signup_soft",
-        model="gemini-3-flash-preview",
+        model="gemini-3.7-flash",
         nudge_mode="signup_soft",
         upgrade_tool_available=False,
     ),
     "free_signup_hard": UsagePolicy(
         state="free_signup_hard",
-        model="gemini-3-flash-preview",
+        model="gemini-3.7-flash",
         nudge_mode="signup_hard",
         upgrade_tool_available=False,
     ),
     "free_throttled": UsagePolicy(
         state="free_throttled",
-        model="gemini-flash-lite-latest",
+        model="gemini-3.5-flash-lite",
         nudge_mode="signup_hard",
         upgrade_tool_available=False,
     ),
@@ -114,19 +114,19 @@ _POLICIES: dict[UsageState, UsagePolicy] = {
     ),
     "free_signed_in": UsagePolicy(
         state="free_signed_in",
-        model="gemini-3-flash-preview",
+        model="gemini-3.7-flash",
         nudge_mode="none",
         upgrade_tool_available=False,
     ),
     "pro_pitch_soft": UsagePolicy(
         state="pro_pitch_soft",
-        model="gemini-3-flash-preview",
+        model="gemini-3.7-flash",
         nudge_mode="pro_soft",
         upgrade_tool_available=True,
     ),
     "pro_pitch_hard": UsagePolicy(
         state="pro_pitch_hard",
-        model="gemini-flash-lite-latest",
+        model="gemini-3.5-flash-lite",
         nudge_mode="pro_hard",
         upgrade_tool_available=True,
     ),
@@ -141,7 +141,7 @@ _POLICIES: dict[UsageState, UsagePolicy] = {
     ),
     "pro": UsagePolicy(
         state="pro",
-        model="gemini-3-flash-preview",
+        model="gemini-3.7-flash",
         nudge_mode="none",
         upgrade_tool_available=False,
     ),

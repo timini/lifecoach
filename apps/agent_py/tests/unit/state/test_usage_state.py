@@ -150,7 +150,7 @@ def test_signing_in_drops_out_of_anon_wall() -> None:
 def test_policy_free_fresh() -> None:
     assert policy_for_usage("free_fresh") == UsagePolicy(
         state="free_fresh",
-        model="gemini-3-flash-preview",
+        model="gemini-3.7-flash",
         nudge_mode="none",
         upgrade_tool_available=False,
     )
@@ -159,7 +159,7 @@ def test_policy_free_fresh() -> None:
 def test_policy_free_signup_soft() -> None:
     assert policy_for_usage("free_signup_soft") == UsagePolicy(
         state="free_signup_soft",
-        model="gemini-3-flash-preview",
+        model="gemini-3.7-flash",
         nudge_mode="signup_soft",
         upgrade_tool_available=False,
     )
@@ -168,7 +168,7 @@ def test_policy_free_signup_soft() -> None:
 def test_policy_free_signup_hard() -> None:
     assert policy_for_usage("free_signup_hard") == UsagePolicy(
         state="free_signup_hard",
-        model="gemini-3-flash-preview",
+        model="gemini-3.7-flash",
         nudge_mode="signup_hard",
         upgrade_tool_available=False,
     )
@@ -176,7 +176,7 @@ def test_policy_free_signup_hard() -> None:
 
 def test_policy_free_throttled_uses_flash_lite_with_hard_nudge() -> None:
     policy = policy_for_usage("free_throttled")
-    assert policy.model == "gemini-flash-lite-latest"
+    assert policy.model == "gemini-3.5-flash-lite"
     assert policy.nudge_mode == "signup_hard"
     assert policy.walled is False
     assert policy.upgrade_tool_available is False
@@ -194,7 +194,7 @@ def test_policy_free_wall_is_walled_with_no_model() -> None:
 def test_policy_free_signed_in() -> None:
     assert policy_for_usage("free_signed_in") == UsagePolicy(
         state="free_signed_in",
-        model="gemini-3-flash-preview",
+        model="gemini-3.7-flash",
         nudge_mode="none",
         upgrade_tool_available=False,
     )
@@ -202,7 +202,7 @@ def test_policy_free_signed_in() -> None:
 
 def test_policy_pro_pitch_soft() -> None:
     policy = policy_for_usage("pro_pitch_soft")
-    assert policy.model == "gemini-3-flash-preview"
+    assert policy.model == "gemini-3.7-flash"
     assert policy.nudge_mode == "pro_soft"
     assert policy.upgrade_tool_available is True
     assert policy.walled is False
@@ -210,7 +210,7 @@ def test_policy_pro_pitch_soft() -> None:
 
 def test_policy_pro_pitch_hard_uses_flash_lite() -> None:
     policy = policy_for_usage("pro_pitch_hard")
-    assert policy.model == "gemini-flash-lite-latest"
+    assert policy.model == "gemini-3.5-flash-lite"
     assert policy.nudge_mode == "pro_hard"
     assert policy.upgrade_tool_available is True
     assert policy.walled is False
@@ -227,7 +227,7 @@ def test_policy_signed_in_wall_is_walled_with_upgrade_cta() -> None:
 def test_policy_pro() -> None:
     assert policy_for_usage("pro") == UsagePolicy(
         state="pro",
-        model="gemini-3-flash-preview",
+        model="gemini-3.7-flash",
         nudge_mode="none",
         upgrade_tool_available=False,
     )

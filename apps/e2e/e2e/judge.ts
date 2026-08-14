@@ -35,7 +35,7 @@ const PROJECT =
 
 // Match the agent's model. The judge doesn't need a smarter tier — the
 // failure modes (silent / empty / off-topic) are obvious.
-const JUDGE_MODEL = process.env.E2E_JUDGE_MODEL ?? 'gemini-3-flash-preview';
+const JUDGE_MODEL = process.env.E2E_JUDGE_MODEL ?? 'gemini-3.7-flash';
 const JUDGE_LOCATION = process.env.E2E_JUDGE_LOCATION ?? 'global';
 
 const JUDGE_PROMPT = `You are evaluating a multi-turn conversation between a user and a personal life-coach AI assistant.

@@ -165,7 +165,7 @@ async def test_mark_succeeded_persists_output_and_clears_lease_and_errors() -> N
     await store.mark_succeeded(
         "run-1",
         output_ref="note_1",
-        model="gemini-flash-lite-latest",
+        model="gemini-3.5-flash-lite",
         token_cost_estimate=0.0012,
         finished_at="2026-05-15T08:00:05.000Z",
     )
@@ -173,7 +173,7 @@ async def test_mark_succeeded_persists_output_and_clears_lease_and_errors() -> N
     assert doc["status"] == "succeeded"
     assert doc["finishedAt"] == "2026-05-15T08:00:05.000Z"
     assert doc["outputRef"] == "note_1"
-    assert doc["model"] == "gemini-flash-lite-latest"
+    assert doc["model"] == "gemini-3.5-flash-lite"
     assert doc["tokenCostEstimate"] == 0.0012
     # Optional fields are deleted (omit), never written as null.
     assert "leaseExpiresAt" not in doc
