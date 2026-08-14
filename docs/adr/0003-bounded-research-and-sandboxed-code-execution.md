@@ -3,7 +3,7 @@
 - **Status:** Proposed
 - **Date:** 2026-08-14
 - **Deciders:** Lifecoach maintainers
-- **Related:** #53, #185, #210, #211
+- **Related:** #53, #185, #210, #211, PR #212
 - **Related areas:** `apps/agent_py`, Workspace tools, web research, Cloud Run, OAuth, observability
 
 ## Context
