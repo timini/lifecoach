@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -162,6 +163,7 @@ async def call_workspace(
     params: str | None = None,
     timeout_s: float = DEFAULT_TIMEOUT_S,
     build_client: Any | None = None,
+    result_projector: Callable[[Any], Any] | None = None,
 ) -> CallWorkspaceResult:
     """Dispatch a single Workspace API call.
 
@@ -238,6 +240,12 @@ async def call_workspace(
         return CallWorkspaceErr(
             status="error", code=_classify_transport_error(err), message=message
         )
+
+    if result_projector is not None:
+        try:
+            result = result_projector(result)
+        except Exception as err:  # noqa: BLE001
+            return CallWorkspaceErr(status="error", code="bad_request", message=str(err))
 
     truncated_body, was_truncated = _truncate(result)
     return CallWorkspaceOk(status="ok", body=truncated_body, truncated=was_truncated)

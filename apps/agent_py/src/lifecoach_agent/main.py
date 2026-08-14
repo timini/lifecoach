@@ -368,7 +368,9 @@ def _build_background_runner(workspace_tokens_store: Any) -> Any:
     fs = create_background_firestore()
     workflows: dict[str, BackgroundWorkflow] = {}
     project = os.environ.get("LIFECOACH_VERTEX_PROJECT") or os.environ.get("GOOGLE_CLOUD_PROJECT")
-    location = os.environ.get("LIFECOACH_VERTEX_LOCATION")
+    location = os.environ.get("LIFECOACH_VERTEX_LOCATION") or os.environ.get(
+        "GOOGLE_CLOUD_LOCATION"
+    )
     if project and location:
         from google import genai
 

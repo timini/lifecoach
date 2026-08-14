@@ -228,6 +228,23 @@ async def test_non_allowlisted_user_skips_before_token_or_workflow() -> None:
     assert fs.docs["backgroundRuns/run-1"]["status"] == "skipped"
 
 
+async def test_allowlist_read_failure_is_retryable() -> None:
+    fs = FakeBackgroundFirestore()
+    await _seed(fs)
+
+    class Gate:
+        async def is_allowed(self, uid: str) -> bool:
+            raise RuntimeError("firestore unavailable")
+
+    outcome = await _execute(_runner(fs, eligibility=Gate()))
+
+    assert (outcome.status, outcome.http_status, outcome.error_code) == (
+        "retryable_failed",
+        503,
+        "EXECUTOR_ERROR",
+    )
+
+
 async def test_skip_when_schedule_disabled() -> None:
     fs = FakeBackgroundFirestore()
     await create_background_schedule_store(firestore=fs).upsert(_schedule(enabled=False))  # type: ignore[arg-type]
