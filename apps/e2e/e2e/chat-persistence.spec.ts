@@ -34,24 +34,26 @@ test('chat history persists across logout and sign-in', async ({ page }) => {
   // After sign-in, ChatWindow's history-load effect rehydrates the
   // transcript. Our test user might already have history from a prior
   // run — that's fine; we only assert on the new message we send below.
-  await sendChat(page, `please remember the token ${token} for me`);
+  const message = `please remember the token ${token} for me`;
+  const userMessage = page.locator('[data-from="user"]').filter({ hasText: message });
+  await sendChat(page, message);
   await waitForAssistantReply(page);
 
   // Confirm our user message is in the transcript before signing out, so a
   // failure later is unambiguous (history reload broke vs send broke).
-  await expect(page.getByText(token)).toBeVisible();
+  await expect(userMessage).toBeVisible();
 
   await signOutTestUser(page);
 
   // Sign-out triggers a fresh anonymous sign-in. The token from the
   // previous user must not appear in the new (empty) anon transcript.
-  await expect(page.getByText(token)).toHaveCount(0, { timeout: 15_000 });
+  await expect(userMessage).toHaveCount(0, { timeout: 15_000 });
 
   await signInAsTestUser(page, creds);
 
   // Same uid → same per-uid sessionId → /history returns the previous
   // transcript including the token we sent earlier.
-  await expect(page.getByText(token)).toBeVisible({ timeout: 15_000 });
+  await expect(userMessage).toBeVisible({ timeout: 15_000 });
 });
 
 /**
