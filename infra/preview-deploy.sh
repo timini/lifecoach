@@ -207,6 +207,10 @@ apply_preview() {
 
 apply_preview
 
+log "Enabling Cloud Run sandbox launcher"
+gcloud beta run services update "lifecoach-agent-pr-${PR_NUMBER}" \
+  --project "${PROJECT_ID}" --region "${REGION}" --sandbox-launcher --quiet >&2
+
 # --- Emit URLs as JSON on stdout (CI captures via $(./preview-deploy.sh)) -
 
 AGENT_URL="$(cd "${PREVIEW_DIR}" && terraform output -raw agent_url)"

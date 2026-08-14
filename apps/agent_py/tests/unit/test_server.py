@@ -608,6 +608,10 @@ async def test_chat_uses_token_uid_over_body_uid_for_scoped_reads() -> None:
             seen_uids.append(uid)
             return await profile_store.read(uid)
 
+        async def read_for_context(self, uid: str) -> Any:
+            seen_uids.append(uid)
+            return await profile_store.read_for_context(uid)
+
         async def write(self, uid: str, profile: Any) -> None:
             await profile_store.write(uid, profile)
 

@@ -96,6 +96,18 @@ def _event_to_storage_dict(event: Event) -> dict[str, Any]:
     return event.model_dump(mode="json", by_alias=True, exclude_none=True)
 
 
+def _persistent_state(state: dict[str, Any]) -> dict[str, Any]:
+    """Drop ADK invocation-scoped values before writing session state.
+
+    AgentTool uses ``temp:_adk_grounding_metadata`` to carry a typed
+    GroundingMetadata object to the parent's next event. The base session
+    service intentionally keeps temp values in memory for the invocation,
+    but Firestore cannot serialize that SDK object and temp state must not
+    survive the invocation anyway.
+    """
+    return {key: value for key, value in state.items() if not key.startswith("temp:")}
+
+
 class FirestoreSessionService(BaseSessionService):
     """Firestore-backed SessionService for the ADK Runner.
 
@@ -213,7 +225,7 @@ class FirestoreSessionService(BaseSessionService):
             "id": session.id,
             "appName": session.app_name,
             "userId": session.user_id,
-            "state": dict(session.state),
+            "state": _persistent_state(session.state),
             "events": [_event_to_storage_dict(e) for e in session.events],
             "lastUpdateTime": now_ms,
         }

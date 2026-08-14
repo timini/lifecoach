@@ -163,6 +163,25 @@ export function useChatStream({
               // Bridged workspace sub-agent call: nest under its
               // parent AgentTool badge instead of pushing flat.
               elements = attachChildToolCall(elements, op.element.parentId, op.element);
+            } else if (op.element.kind === 'sources') {
+              const existingUrls = new Set(
+                elements.flatMap((element) =>
+                  element.kind === 'sources' ? element.sources.map((source) => source.url) : [],
+                ),
+              );
+              const freshSources = op.element.sources.filter(
+                (source) => !existingUrls.has(source.url),
+              );
+              if (freshSources.length > 0) {
+                elements = [...elements, { kind: 'sources', sources: freshSources }];
+              }
+            } else if (op.element.kind === 'search-suggestions') {
+              const suggestionHtml = op.element.html;
+              const alreadyPresent = elements.some(
+                (element) =>
+                  element.kind === 'search-suggestions' && element.html === suggestionHtml,
+              );
+              if (!alreadyPresent) elements = [...elements, op.element];
             } else {
               elements = [...elements, op.element];
             }

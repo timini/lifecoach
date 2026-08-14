@@ -1,6 +1,6 @@
 # ADR 0003: Bounded research and sandboxed code execution
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-08-14
 - **Deciders:** Lifecoach maintainers
 - **Related:** #53, #185, #210, #211, PR #212

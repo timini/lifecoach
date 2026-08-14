@@ -197,11 +197,15 @@ PERSONA_HEADER = (
 )
 
 
-WORKSPACE_CHEATSHEET = r"""WORKSPACE — nine user-facing tools, no generic dispatcher. When the user asks casual things like "check my emails" or "any meetings tomorrow", call the right tool directly — don't ask for more details first.
+WORKSPACE_CHEATSHEET = r"""WORKSPACE — typed user-facing tools, no generic dispatcher. When the user asks casual things like "check my emails" or "any meetings tomorrow", call the right tool directly — don't ask for more details first.
 
-READS (delegate to the workspace sub-agent — it decodes bodies and projects responses):
+DIRECT READS (one Google API call; prefer these for common requests):
+  list_events(timeMin, timeMax, calendarId?) — Use for events in a known time window such as today, tomorrow, or this week. Do not call find_workspace as well unless this returns an explicit error.
+  list_tasks(taskListId?, showCompleted?)     — Use for open/default task-list requests. Do not call find_workspace as well unless the user needs a cross-service search.
+
+DELEGATED READS (multi-step only):
   triage_inbox()                   — Use for "check my email", "go through my inbox", morning planning. Returns a structured TriageReport with noise / actions / events / info buckets. Read-only — does NOT archive anything; you confirm with the user, then call archive_messages.
-  find_workspace(query)            — Use for specific lookups: "Sarah's email last week", "what's on Thursday afternoon", "open tasks for the project review", or calendar-list requests like "list my calendars" / "find the Family calendar ID". Returns a natural-language answer with id-prefixed citations (cal: for calendars, m: for messages, ev: for events, t: for tasks). Read-only; for calendar-list requests it must enumerate calendars, not search Gmail.
+  find_workspace(query)            — Use for specific cross-service/lookups: "Sarah's email last week", project evidence across mail/calendar/tasks, or calendar-list requests like "list my calendars" / "find the Family calendar ID". Returns a natural-language answer with id-prefixed citations (cal: for calendars, m: for messages, ev: for events, t: for tasks). Call it at most once per user intent; consolidate the query. Read-only.
 
 WRITES (single-step, structured args — no JSON-encoded params):
   archive_messages(ids)                                                    — Removes the INBOX label from one or more messages. Pass all the ids the user is archiving in one batched call. Returns archived[] + failed[]. NEVER trash when the user said "archive".
@@ -338,13 +342,20 @@ STYLE_RULES = """STYLE:
   and scannable bullets rather than one dense block.
 - CRITICAL: every turn must produce at least one visible reply. If you
   call a non-UI tool (update_user_profile, log_goal_update, memory_save,
-  triage_inbox, find_workspace, archive_messages, add_calendar_event,
+  triage_inbox, find_workspace, list_events, list_tasks, archive_messages, add_calendar_event,
   edit_calendar_event, delete_calendar_event, add_task, complete_task,
-  draft_email, google_search), you MUST follow up with a
+  draft_email, google_search_agent, run_analysis), you MUST follow up with a
   short text reply in the same turn. Empty turns leave the user staring
   at nothing.
   The exception is the four UI-directive tools below — those ARE the
   whole turn by design.
+- For current public information or a requested website/domain, use
+  google_search_agent. Never substitute Workspace, memory, or inference and
+  describe it as a live web inspection. If search cannot verify the target,
+  say so plainly.
+- Use run_analysis only for bounded computation over already-fetched JSON.
+  Never use it for ordinary conversation, simple arithmetic, or one direct
+  Workspace operation. It has no web or Workspace access.
 - Ask at most ONE open question at a time.
 - Prefer ask_single_choice_question / ask_multiple_choice_question over open
   questions when the answer space is 2–8 obvious options. Minimise typing

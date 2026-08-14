@@ -3,6 +3,8 @@ read/write + missing-file handling."""
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from lifecoach_agent.storage.user_profile import (
@@ -61,3 +63,44 @@ async def test_read_path_returns_value() -> None:
     await store.write("u1", {"name": "Tim"})
     assert await store.read_path("u1", "name") == "Tim"
     assert await store.read_path("u1", "age") is None
+
+
+@pytest.mark.asyncio
+async def test_context_read_times_out_to_last_known_good_without_affecting_writes() -> None:
+    class SlowFile:
+        def __init__(self) -> None:
+            self.slow = False
+            self.contents = b"name: Tim\n"
+
+        async def download(self) -> bytes:
+            if self.slow:
+                await asyncio.sleep(1)
+            return self.contents
+
+        async def save(self, contents: str | bytes, content_type: str = "") -> None:
+            self.contents = contents.encode() if isinstance(contents, str) else contents
+
+        async def exists(self) -> bool:
+            return True
+
+    class SlowBucket:
+        def __init__(self) -> None:
+            self.value = SlowFile()
+
+        def file(self, _path: str) -> SlowFile:
+            return self.value
+
+    bucket = SlowBucket()
+    store = create_user_profile_store(
+        bucket=bucket,
+        context_timeout_s=0.01,
+        context_cache_ttl_s=0,
+    )
+    assert (await store.read_for_context("u1"))["name"] == "Tim"
+
+    bucket.value.slow = True
+    assert (await store.read_for_context("u1"))["name"] == "Tim"
+
+    bucket.value.slow = False
+    await store.write("u1", {"name": "Updated"})
+    assert (await store.read_for_context("u1"))["name"] == "Updated"

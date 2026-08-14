@@ -56,6 +56,38 @@ describe('eventsToMessages', () => {
     expect(msgs[0].elements).toEqual([{ kind: 'text', text: 'hey there' }]);
   });
 
+  it('rehydrates grounding sources with the assistant answer', () => {
+    const msgs = eventsToMessages([
+      {
+        id: 'grounded-1',
+        author: 'lifecoach',
+        content: { role: 'model', parts: [{ text: 'Latest post.' }] },
+        groundingMetadata: {
+          searchEntryPoint: {
+            renderedContent: '<div class="search-suggestions">Search rewire.it</div>',
+          },
+          groundingChunks: [
+            { web: { uri: 'https://rewire.it/latest', title: 'Latest', domain: 'rewire.it' } },
+          ],
+        },
+      },
+    ]);
+
+    expect(msgs).toHaveLength(1);
+    if (msgs[0]?.role !== 'assistant') throw new Error();
+    expect(msgs[0].elements).toEqual([
+      { kind: 'text', text: 'Latest post.' },
+      {
+        kind: 'sources',
+        sources: [{ title: 'Latest', url: 'https://rewire.it/latest', domain: 'rewire.it' }],
+      },
+      {
+        kind: 'search-suggestions',
+        html: '<div class="search-suggestions">Search rewire.it</div>',
+      },
+    ]);
+  });
+
   it('emits a tool-call pill for informational tools so they persist in history', () => {
     const msgs = eventsToMessages([
       {

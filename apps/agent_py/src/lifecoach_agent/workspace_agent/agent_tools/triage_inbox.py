@@ -88,6 +88,12 @@ class TriageInboxBridgedAgentTool(BridgedAgentTool):
 
     async def run_async(self, *, args: dict[str, Any], tool_context: ToolContext) -> Any:
         raw_text = await super().run_async(args=args, tool_context=tool_context)
+        try:
+            error = json.loads(raw_text)
+        except (TypeError, json.JSONDecodeError):
+            error = None
+        if isinstance(error, dict) and error.get("status") == "error":
+            return raw_text
         result = parse_triage_report(raw_text)
         if result.status == "ok" and result.report is not None:
             return json.dumps({"status": "ok", "report": result.report.model_dump(by_alias=True)})

@@ -93,20 +93,37 @@ class BridgedAgentTool(AgentTool):
     responsible for user-facing copy.
     """
 
+    _timeout_s: float
+
     def __init__(
         self,
         *,
         agent: Any,
         event_queue: asyncio.Queue[bytes | None] | None = None,
         skip_summarization: bool = False,
+        timeout_s: float = 12.0,
     ) -> None:
         super().__init__(agent=agent, skip_summarization=skip_summarization)
         # ``AgentTool`` / ``BaseTool`` are pydantic models — use
         # object.__setattr__ to attach the per-request queue without it
         # being serialised into the tool declaration sent to Gemini.
         object.__setattr__(self, "_event_queue", event_queue)
+        object.__setattr__(self, "_timeout_s", timeout_s)
 
     async def run_async(self, *, args: dict[str, Any], tool_context: ToolContext) -> Any:
+        try:
+            async with asyncio.timeout(self._timeout_s):
+                return await self._run_agent(args=args, tool_context=tool_context)
+        except TimeoutError:
+            return json.dumps(
+                {
+                    "status": "error",
+                    "code": "timeout",
+                    "message": f"Workspace lookup exceeded {self._timeout_s:g}s",
+                }
+            )
+
+    async def _run_agent(self, *, args: dict[str, Any], tool_context: ToolContext) -> Any:
         if self.skip_summarization:
             tool_context.actions.skip_summarization = True
 

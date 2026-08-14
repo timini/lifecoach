@@ -8,7 +8,9 @@ creates intermediate objects on the fly.
 
 from __future__ import annotations
 
+import asyncio
 import copy
+import time
 from typing import Any, Protocol
 
 import yaml
@@ -63,8 +65,17 @@ def get_dotted_path(obj: dict[str, Any], path: str) -> Any:
 
 
 class UserProfileStore:
-    def __init__(self, *, bucket: BucketLike) -> None:
+    def __init__(
+        self,
+        *,
+        bucket: BucketLike,
+        context_timeout_s: float = 1.5,
+        context_cache_ttl_s: float = 15.0,
+    ) -> None:
         self._bucket = bucket
+        self._context_timeout_s = context_timeout_s
+        self._context_cache_ttl_s = context_cache_ttl_s
+        self._context_cache: dict[str, tuple[float, UserProfile]] = {}
 
     async def read(self, uid: str) -> UserProfile:
         f = self._bucket.file(user_yaml_path(uid))
@@ -83,11 +94,34 @@ class UserProfileStore:
             return empty_user_profile()
         if not isinstance(parsed, dict):
             return empty_user_profile()
-        return parsed
+        profile = parsed
+        self._cache(uid, profile)
+        return profile
+
+    async def read_for_context(self, uid: str) -> UserProfile:
+        """Bounded profile read for the optional chat-context hot path.
+
+        Writes continue to use :meth:`read` so a transient GCS failure can
+        never turn into an overwrite of an empty profile. Context reads may
+        use a fresh cache or last-known-good value because stale coaching
+        context is preferable to blocking the entire turn.
+        """
+
+        cached = self._context_cache.get(uid)
+        now = time.monotonic()
+        if cached is not None and now - cached[0] <= self._context_cache_ttl_s:
+            return copy.deepcopy(cached[1])
+        try:
+            return await asyncio.wait_for(self.read(uid), timeout=self._context_timeout_s)
+        except Exception:  # noqa: BLE001 - optional context degrades to stale/empty
+            if cached is not None:
+                return copy.deepcopy(cached[1])
+            return empty_user_profile()
 
     async def write(self, uid: str, profile: UserProfile) -> None:
         text = yaml.safe_dump(profile, sort_keys=False, width=120, default_flow_style=False)
         await self._bucket.file(user_yaml_path(uid)).save(text, content_type="application/yaml")
+        self._cache(uid, profile)
 
     async def update_path(self, uid: str, path: str, value: Any) -> UserProfile:
         if not path or not isinstance(path, str):
@@ -103,6 +137,9 @@ class UserProfileStore:
         profile = await self.read(uid)
         return get_dotted_path(profile, path)
 
+    def _cache(self, uid: str, profile: UserProfile) -> None:
+        self._context_cache[uid] = (time.monotonic(), copy.deepcopy(profile))
+
 
 def _looks_like_not_found(err: object) -> bool:
     code = getattr(err, "code", None)
@@ -112,5 +149,14 @@ def _looks_like_not_found(err: object) -> bool:
     return "not found" in msg.lower()
 
 
-def create_user_profile_store(*, bucket: BucketLike) -> UserProfileStore:
-    return UserProfileStore(bucket=bucket)
+def create_user_profile_store(
+    *,
+    bucket: BucketLike,
+    context_timeout_s: float = 1.5,
+    context_cache_ttl_s: float = 15.0,
+) -> UserProfileStore:
+    return UserProfileStore(
+        bucket=bucket,
+        context_timeout_s=context_timeout_s,
+        context_cache_ttl_s=context_cache_ttl_s,
+    )

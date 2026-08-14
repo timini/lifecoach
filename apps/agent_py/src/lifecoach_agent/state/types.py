@@ -40,14 +40,16 @@ ToolName = Literal[
     "ask_single_choice_question",
     "ask_multiple_choice_question",
     "auth_user",
-    "google_search",
+    "google_search_agent",
     "memory_search",
     "memory_save",
     "connect_workspace",
-    # Workspace surface (workspace_connected only). 2 AgentTools wrapping
-    # the workspace sub-agent + 7 narrow write FunctionTools.
+    # Workspace surface (workspace_connected only). 2 AgentTools, 2 direct
+    # read FunctionTools, and 7 narrow write FunctionTools.
     "triage_inbox",
     "find_workspace",
+    "list_events",
+    "list_tasks",
     "archive_messages",
     "add_calendar_event",
     "edit_calendar_event",
