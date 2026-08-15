@@ -4,6 +4,7 @@ import type { User } from 'firebase/auth';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { eventsToMessages } from './eventHistory';
 import type { BrowserLocation } from './geolocation';
+import { SerialDispatchQueue } from './serialDispatchQueue';
 import { type AssistantElement, type AssistantOp, parseSseBlock } from './sse';
 
 export interface UserMessage {
@@ -35,10 +36,20 @@ export interface UseChatStreamArgs {
 export interface UseChatStreamApi {
   messages: Message[];
   busy: boolean;
+  queuedCount: number;
   sendText: (text: string, opts?: { hidden?: boolean }) => Promise<void>;
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   appendAssistantText: (text: string) => void;
   markAnswered: (mid: string) => void;
+}
+
+interface QueuedTurn {
+  user: User;
+  sessionId: string;
+  text: string;
+  location: BrowserLocation | null;
+  timezone: string;
+  assistantId: string;
 }
 
 /**
@@ -112,6 +123,7 @@ export function useChatStream({
 }: UseChatStreamArgs): UseChatStreamApi {
   const [messages, setMessages] = useState<Message[]>([]);
   const [busy, setBusy] = useState(false);
+  const [queuedCount, setQueuedCount] = useState(0);
 
   // Tracks sessionIds we've already kicked off in this tab — guards against
   // double-firing on StrictMode re-runs of the history-load effect.
@@ -194,22 +206,8 @@ export function useChatStream({
     );
   }, []);
 
-  const sendText = useCallback(
-    async (text: string, opts?: { hidden?: boolean }) => {
-      if (!text.trim() || busy || !user || !sessionId || viewMode === 'past') return;
-      const hidden = opts?.hidden === true;
-      setBusy(true);
-      const now = Date.now();
-      if (!hidden) {
-        setMessages((prev) => [...prev, { id: messageId(), role: 'user', text, timestamp: now }]);
-      }
-
-      const assistantId = messageId();
-      setMessages((prev) => [
-        ...prev,
-        { id: assistantId, role: 'assistant', elements: [], timestamp: Date.now() },
-      ]);
-
+  const executeTurn = useCallback(
+    async ({ user, sessionId, text, location, timezone, assistantId }: QueuedTurn) => {
       try {
         const idToken = await user.getIdToken();
         const res = await fetch('/api/chat', {
@@ -223,7 +221,7 @@ export function useChatStream({
             sessionId,
             message: text,
             ...(location ? { location } : {}),
-            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            timezone,
           }),
         });
 
@@ -271,16 +269,53 @@ export function useChatStream({
         // Network / fetch failure. The assistant bubble stays empty;
         // user can retype.
       }
-
-      setBusy(false);
     },
-    [user, sessionId, viewMode, location, busy, applyOps],
+    [applyOps],
   );
 
-  // sendText is memoised on `busy`, so its identity flips on every send.
-  // Stash the latest function in a ref and call through that — the
-  // transcript-load effect below must NOT re-run on busy transitions or it
-  // would `setMessages([])` mid-stream and clobber the in-flight reply.
+  const executeTurnRef = useRef(executeTurn);
+  executeTurnRef.current = executeTurn;
+  const dispatchQueueRef = useRef<SerialDispatchQueue<QueuedTurn> | null>(null);
+  if (dispatchQueueRef.current === null) {
+    dispatchQueueRef.current = new SerialDispatchQueue(
+      (turn) => executeTurnRef.current(turn),
+      ({ active, queued }) => {
+        setBusy(active || queued > 0);
+        setQueuedCount(queued);
+      },
+    );
+  }
+
+  const sendText = useCallback(
+    (text: string, opts?: { hidden?: boolean }): Promise<void> => {
+      if (!text.trim() || !user || !sessionId || viewMode === 'past') return Promise.resolve();
+      const hidden = opts?.hidden === true;
+      const now = Date.now();
+      if (!hidden) {
+        setMessages((prev) => [...prev, { id: messageId(), role: 'user', text, timestamp: now }]);
+      }
+
+      const assistantId = messageId();
+      setMessages((prev) => [
+        ...prev,
+        { id: assistantId, role: 'assistant', elements: [], timestamp: Date.now() },
+      ]);
+      return (
+        dispatchQueueRef.current?.enqueue({
+          user,
+          sessionId,
+          text,
+          location,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          assistantId,
+        }) ?? Promise.resolve()
+      );
+    },
+    [user, sessionId, viewMode, location],
+  );
+
+  // The transcript-load effect must not depend directly on sendText: auth
+  // refreshes and queue state should never wipe an in-flight transcript.
   const sendTextRef = useRef(sendText);
   useEffect(() => {
     sendTextRef.current = sendText;
@@ -350,6 +385,7 @@ export function useChatStream({
   return {
     messages,
     busy,
+    queuedCount,
     sendText,
     setMessages,
     appendAssistantText,

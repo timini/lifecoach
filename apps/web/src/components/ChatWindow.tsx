@@ -69,7 +69,7 @@ export function ChatWindow({ initialPrompt }: ChatWindowProps = {}) {
   const endRef = useRef<HTMLDivElement | null>(null);
   const todaySessionId = user ? sessionIdForToday(user.uid) : '';
 
-  const { messages, busy, sendText, setMessages, appendAssistantText, markAnswered } =
+  const { messages, busy, queuedCount, sendText, setMessages, appendAssistantText, markAnswered } =
     useChatStream({ user, sessionId, viewMode, location });
 
   const trackChatAction = useCallback(
@@ -463,14 +463,20 @@ export function ChatWindow({ initialPrompt }: ChatWindowProps = {}) {
         </Button>
       </div>
     ) : (
-      <ChatComposer
-        value={composerValue}
-        onChange={setComposerValue}
-        onSubmit={(text) => handleSendText(text, 'composer')}
-        disabled={busy}
-        placeholder={t('placeholder')}
-        sendLabel={t('placeholder')}
-      />
+      <div className="space-y-1.5">
+        {queuedCount > 0 && (
+          <Text variant="caption" tone="muted">
+            {t('queued', { count: queuedCount })}
+          </Text>
+        )}
+        <ChatComposer
+          value={composerValue}
+          onChange={setComposerValue}
+          onSubmit={(text) => handleSendText(text, 'composer')}
+          placeholder={t('placeholder')}
+          sendLabel={t('placeholder')}
+        />
+      </div>
     );
 
   const drawer = (
@@ -499,6 +505,7 @@ export function ChatWindow({ initialPrompt }: ChatWindowProps = {}) {
         data-uid={user.uid}
         data-session-id={sessionId}
         data-busy={busy ? 'true' : 'false'}
+        data-queued-count={queuedCount}
         hidden
       />
       {messages.length === 0 && (
