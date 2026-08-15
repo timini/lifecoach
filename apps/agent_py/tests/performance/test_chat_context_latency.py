@@ -34,6 +34,19 @@ class _SlowWeather:
         )
 
 
+class _SlowProfile:
+    def __init__(self, delay_s: float) -> None:
+        self.delay_s = delay_s
+        self.completed = False
+
+    async def read_for_context(self, _uid: str) -> dict[str, str]:
+        import asyncio
+
+        await asyncio.sleep(self.delay_s)
+        self.completed = True
+        return {"name": "Alex"}
+
+
 @dataclass
 class _DispatchRecordingRunner(FakeRunner):
     dispatched_at: float | None = None
@@ -92,3 +105,35 @@ async def test_stalled_context_dispatch_latency_p95() -> None:
     )
     assert median_s < 0.5
     assert p95_s < 0.55
+
+
+@pytest.mark.performance
+@pytest.mark.asyncio
+async def test_valuable_profile_context_gets_longer_budget() -> None:
+    latencies: list[float] = []
+    for sample in range(3):
+        profile = _SlowProfile(0.6)
+        runner = _DispatchRecordingRunner(events_per_call=[[_model_text(f"sample {sample}")]])
+        app = _make_app(runner=runner, deps_overrides={"profile_store": profile})
+        started = time.perf_counter()
+        with redirect_stdout(StringIO()):
+            async with (
+                _client(app) as client,
+                client.stream(
+                    "POST",
+                    "/chat",
+                    json={
+                        "userId": "perf-user",
+                        "sessionId": f"profile-session-{sample}",
+                        "message": "hello",
+                    },
+                ) as response,
+            ):
+                await _drain(response)
+        assert profile.completed
+        assert runner.dispatched_at is not None
+        latencies.append(runner.dispatched_at - started)
+
+    p95_s = _percentile(latencies, 0.95)
+    print(f"valuable profile benchmark: n={len(latencies)} p95={p95_s * 1000:.1f}ms")
+    assert 0.55 < p95_s < 0.8

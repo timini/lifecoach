@@ -27,6 +27,7 @@ from lifecoach_agent.server import (
     RunnerForParams,
     SessionReader,
     _local_day_key,
+    _optional_context_timeout_s,
     create_app,
 )
 from lifecoach_agent.storage.firestore_session import create_firestore_session_service
@@ -196,6 +197,23 @@ def _make_app(
 
 def _client(app: Any) -> httpx.AsyncClient:
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
+
+
+def test_optional_context_deadlines_prioritise_user_context() -> None:
+    deps = CreateAppDeps(runner_for=lambda _params: FakeRunner(events_per_call=[]))
+
+    assert _optional_context_timeout_s(deps, "weather") == 0.4
+    assert _optional_context_timeout_s(deps, "profile") == 1.0
+
+
+def test_optional_context_deadline_override_applies_to_every_source() -> None:
+    deps = CreateAppDeps(
+        runner_for=lambda _params: FakeRunner(events_per_call=[]),
+        optional_context_timeout_s=0.01,
+    )
+
+    assert _optional_context_timeout_s(deps, "weather") == 0.01
+    assert _optional_context_timeout_s(deps, "profile") == 0.01
 
 
 # --- /health -------------------------------------------------------------
