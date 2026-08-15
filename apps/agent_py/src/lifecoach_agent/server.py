@@ -68,6 +68,7 @@ from lifecoach_agent.background.auth import (
 )
 from lifecoach_agent.background.dispatcher import Dispatcher
 from lifecoach_agent.background.runner import BackgroundRunner
+from lifecoach_agent.coaching_day import coaching_day_key
 from lifecoach_agent.context.air_quality import AirQualityClient
 from lifecoach_agent.context.calendar_density import CalendarDensityClient
 from lifecoach_agent.context.holidays import HolidaysClient, tz_to_country
@@ -154,11 +155,8 @@ async def _timed(coro: Awaitable[Any]) -> tuple[Any, int]:
 
 
 def _local_day_key(timezone: str, at: datetime) -> str:
-    """YYYY-MM-DD in `timezone`. Matches the `Intl.DateTimeFormat('en-CA',
-    {timeZone})` output the TS uses for the per-day session id."""
-    if at.tzinfo is None:
-        at = at.replace(tzinfo=ZoneInfo("UTC"))
-    return at.astimezone(ZoneInfo(timezone)).strftime("%Y-%m-%d")
+    """Coaching-day YYYY-MM-DD in ``timezone`` (early hours carry over)."""
+    return coaching_day_key(at, timezone)
 
 
 def _session_has_user_interaction(session: Any) -> bool:
@@ -774,8 +772,8 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
         t_meta0 = _now_ms()
         # Walls + nudges are scoped to the user's local DAY (issue #64
         # follow-up). We pass the local-date key into the store so the
-        # increment rolls the daily counter at the user's midnight, not
-        # ours. `chatTurnCount` keeps climbing for observability —
+        # increment rolls the daily counter at the user's 05:00 coaching-day
+        # boundary, not at UTC midnight. `chatTurnCount` keeps climbing —
         # `dailyTurnCount` is what the funnel actually counts.
         today_local = (
             _local_day_key(timezone, deps.now()) if isinstance(timezone, str) and timezone else None

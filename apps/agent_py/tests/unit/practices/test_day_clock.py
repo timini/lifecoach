@@ -28,3 +28,10 @@ def test_local_date_and_hour_no_timezone_falls_back_to_utc() -> None:
     date, hour = local_date_and_hour(now, None)
     assert date == "2026-05-06"
     assert hour == 7
+
+
+def test_local_date_carries_over_before_five() -> None:
+    now = datetime(2026, 5, 6, 23, 30, tzinfo=ZoneInfo("UTC"))  # 00:30 BST
+    date, hour = local_date_and_hour(now, "Europe/London")
+    assert date == "2026-05-06"
+    assert hour == 0

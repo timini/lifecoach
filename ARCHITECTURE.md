@@ -261,6 +261,8 @@ This rule was added in response to issue #62 — a regression where a `google_li
 
 **DailyFlow** drives the day-phase block in the prompt (`morning`, `day`, `evening`, `night`) and gates time-windowed practices (`day_planning` only fires `morning_greeting | morning`, `evening_gratitude` fires `evening | night`).
 
+**Coaching day.** Day-scoped state rolls over at **05:00 in the user's local timezone**, matching DailyFlow's `concluding` boundary. From 00:00 through 04:59, session IDs, daily usage, summaries, timed calendar-event bucketing, and practice/profile date keys still use the preceding calendar date. All-day calendar events retain their explicit calendar date.
+
 ---
 
 ## 5. Auth & identity
@@ -424,7 +426,7 @@ Every module under `context/` is an idempotent fetch with documented cache key +
 | `air_quality.py` | Open-Meteo AQI (`air-quality-api.open-meteo.com`) | 30 min, key = lat/lng rounded | `AirQuality` (AQI + PM2.5 + O3 + NO2) |
 | `places.py` | Google Places API (New) — bearer = ADC token | 60 min, key = rounded coord + radius | `Place[]` (name, vicinity, distance_km) |
 | `holidays.py` | date.nager.at | 24 h, key = country code + year | `Holiday[]` |
-| `calendar_density.py` | Google Calendar (workspace-connected only) | per-turn (no cache) | today / tomorrow event counts |
+| `calendar_density.py` | Google Calendar (workspace-connected only) | 5 min per uid/timezone/coaching-day | coaching-today / coaching-tomorrow event counts |
 | `memory.py` | `VertexAiMemoryBankService` | per-turn | top-5 facts for the user message |
 | `session_summary.py` | Internal (Gemini 3.5 Flash-Lite) | written to `session.state.summary*`, regenerated when stale | yesterday + 7-day summaries |
 
@@ -590,7 +592,7 @@ backgroundNotifications/{notificationId}             // ADR 0001 — BackgroundN
 backgroundProposedActions/{actionId}                 // ADR 0001 — BackgroundProposedAction (foreground-confirm)
 ```
 
-Session ID convention: `{uid}-{YYYY-MM-DD}` (per-uid per-day). New day = new session.
+Session ID convention: `{uid}-{YYYY-MM-DD}` (per-uid coaching day). The date rolls at 05:00 local time, not midnight.
 
 ### 10.3 GCS user bucket layout
 

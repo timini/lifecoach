@@ -323,6 +323,14 @@ def test_post_tool_reflection_includes_memory_save_when_enabled() -> None:
     assert "log_goal_update, update_user_profile, memory_save)" in out
 
 
+def test_current_time_exposes_after_midnight_coaching_date() -> None:
+    now = datetime(2026, 8, 14, 23, 30, tzinfo=ZoneInfo("UTC"))  # 00:30 BST
+    out = build_instruction(_base_ctx(now=now, timezone="Europe/London"))
+    assert "now_local: Saturday, Aug 15, 2026, 12:30 AM BST" in out
+    assert "coaching_date: 2026-08-14" in out
+    assert 'Use coaching_date for day-scoped words such as "today" and "yesterday"' in out
+
+
 # --- practice integration ------------------------------------------------
 
 

@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
+from lifecoach_agent.coaching_day import coaching_date_and_hour, coaching_day_key
 from lifecoach_agent.state import (
     ANON_WALL_FROM,
     SIGNED_IN_WALL_FROM,
@@ -536,12 +537,14 @@ def format_time(ctx: InstructionContext) -> str:
     tz = ctx.timezone or "UTC"
     iso = ctx.now.astimezone().isoformat()
     local = _format_local_time(ctx.now, tz)
+    coaching_date = coaching_day_key(ctx.now, tz)
     return f"""CURRENT_TIME (single source of truth — never infer, never guess, never echo a time from earlier in the conversation):
 now_local: {local}
 now_utc: {iso}
 timezone: {tz}
+coaching_date: {coaching_date}
 
-When the user asks what time it is, state now_local verbatim (e.g. "It's 12:40 PM"). When you mention an event's start time relative to now (e.g. "starting now", "in 5 minutes"), compute the delta against now_local — never claim an event is "starting now" unless its start is within a few minutes of now_local."""
+Use coaching_date for day-scoped words such as "today" and "yesterday"; before 05:00 local it remains the preceding calendar date. When the user asks what time it is, state now_local verbatim (e.g. "It's 12:40 PM"). When you mention an event's start time relative to now (e.g. "starting now", "in 5 minutes"), compute the delta against now_local — never claim an event is "starting now" unless its start is within a few minutes of now_local."""
 
 
 def _format_local_time(now: datetime, tz: str) -> str:
@@ -762,13 +765,7 @@ def format_day_phase(ctx: InstructionContext) -> str:
     """Pull the local hour and YYYY-MM-DD from one tz computation so the
     boundaries match what `format_time` shows the agent and what the web
     app uses to mint the per-day sessionId."""
-    from zoneinfo import ZoneInfo
-
-    tz = ctx.timezone or "UTC"
-    now = ctx.now if ctx.now.tzinfo else ctx.now.replace(tzinfo=ZoneInfo("UTC"))
-    local = now.astimezone(ZoneInfo(tz))
-    today_local = local.strftime("%Y-%m-%d")
-    local_hour = local.hour
+    today_local, local_hour = coaching_date_and_hour(ctx.now, ctx.timezone)
     lunch_eaten = _read_lunch_eaten(ctx.user_profile, today_local)
     machine = DailyFlowMachine.from_input(
         DailyFlowInput(
