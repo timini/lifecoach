@@ -8,6 +8,9 @@ via `httpx.ASGITransport` so we don't need a running uvicorn.
 
 from __future__ import annotations
 
+import asyncio
+import json
+import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -501,6 +504,50 @@ async def test_chat_streams_model_text_and_terminates_with_done() -> None:
         text = await _drain(res)
     assert "hello there" in text
     assert "event: done" in text
+
+
+@pytest.mark.asyncio
+async def test_chat_bounds_stalled_optional_context_and_records_outcome(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class _StalledWeather:
+        async def get(self, _coord: Any) -> Any:
+            await asyncio.sleep(1)
+            return {"condition": "too late"}
+
+    runner = FakeRunner(events_per_call=[[_model_text("still responsive")]])
+    app = _make_app(
+        runner=runner,
+        deps_overrides={
+            "weather": _StalledWeather(),
+            "optional_context_timeout_s": 0.01,
+        },
+    )
+    started = time.monotonic()
+    async with (
+        _client(app) as c,
+        c.stream(
+            "POST",
+            "/chat",
+            json={
+                "userId": "u1",
+                "sessionId": "s1",
+                "message": "hi",
+                "location": {"lat": 51.5, "lng": -0.1},
+            },
+        ) as res,
+    ):
+        text = await _drain(res)
+
+    assert time.monotonic() - started < 0.5
+    assert "still responsive" in text
+    turn_logs = [
+        json.loads(line)
+        for line in capsys.readouterr().out.splitlines()
+        if line.startswith('{"msg": "chat.turn"')
+    ]
+    assert turn_logs[-1]["contextOutcomes"]["weather"] == "timeout"
+    assert turn_logs[-1]["timings"]["weatherMs"] < 100
 
 
 @pytest.mark.asyncio
