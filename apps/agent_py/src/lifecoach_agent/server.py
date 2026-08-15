@@ -69,6 +69,7 @@ from lifecoach_agent.background.auth import (
 from lifecoach_agent.background.dispatcher import Dispatcher
 from lifecoach_agent.background.runner import BackgroundRunner
 from lifecoach_agent.coaching_day import coaching_day_key
+from lifecoach_agent.context.adaptive_deadline import AdaptiveContextDeadlinePolicy
 from lifecoach_agent.context.air_quality import AirQualityClient
 from lifecoach_agent.context.calendar_density import CalendarDensityClient
 from lifecoach_agent.context.deadline import bounded_context
@@ -236,7 +237,10 @@ class CreateAppDeps:
     profile_store: UserProfileStore | None = None
     profile_history_store: ProfileHistoryStore | None = None
     goal_updates_store: GoalUpdatesStore | None = None
-    optional_context_timeout_s: float = 1.5
+    optional_context_timeout_s: float | None = None
+    context_deadline_policy: AdaptiveContextDeadlinePolicy = field(
+        default_factory=AdaptiveContextDeadlinePolicy
+    )
     workspace_tokens_store: WorkspaceTokensStore | None = None
     workspace_oauth_client: WorkspaceOAuthClient | None = None
     user_meta_store: UserMetaStore | None = None
@@ -261,6 +265,26 @@ class CreateAppDeps:
     # Executes one run on `/background/runs/{runId}/execute` (ADR 0001 §3/§5).
     # None = no-op (returns ok) for tests / local; built in main.py.
     background_runner: BackgroundRunner | None = None
+
+
+_OPTIONAL_CONTEXT_SOURCES = (
+    "weather",
+    "places",
+    "air_quality",
+    "holidays",
+    "calendar_density",
+    "profile",
+    "goals",
+    "memory",
+    "existing_session",
+    "yesterday_summary",
+    "week_summary",
+)
+
+
+def _optional_context_timeout_s(deps: CreateAppDeps, source: str) -> float:
+    override = deps.optional_context_timeout_s
+    return override if override is not None else deps.context_deadline_policy.timeout_s(source)
 
 
 # --- Helpers for endpoint auth -------------------------------------------
@@ -839,26 +863,26 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                 if (coord is not None and deps.weather is not None)
                 else _none(),
                 fallback=None,
-                timeout_s=deps.optional_context_timeout_s,
+                timeout_s=_optional_context_timeout_s(deps, "weather"),
             ),
             bounded_context(
                 _places_call(),
                 fallback=[],
-                timeout_s=deps.optional_context_timeout_s,
+                timeout_s=_optional_context_timeout_s(deps, "places"),
             ),
             bounded_context(
                 deps.air_quality.get(coord)
                 if (coord is not None and deps.air_quality is not None)
                 else _none(),
                 fallback=None,
-                timeout_s=deps.optional_context_timeout_s,
+                timeout_s=_optional_context_timeout_s(deps, "air_quality"),
             ),
             bounded_context(
                 deps.holidays.next7Days(country_code)
                 if (country_code and deps.holidays is not None)
                 else _empty_list(),
                 fallback=[],
-                timeout_s=deps.optional_context_timeout_s,
+                timeout_s=_optional_context_timeout_s(deps, "holidays"),
             ),
             bounded_context(
                 cast(CalendarDensityClient, deps.calendar_density).get(
@@ -869,28 +893,28 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                 if want_calendar_density
                 else _none(),
                 fallback=None,
-                timeout_s=deps.optional_context_timeout_s,
+                timeout_s=_optional_context_timeout_s(deps, "calendar_density"),
             ),
             bounded_context(
                 deps.profile_store.read_for_context(effective_user_id)
                 if deps.profile_store is not None
                 else _none(),
                 fallback=None,
-                timeout_s=deps.optional_context_timeout_s,
+                timeout_s=_optional_context_timeout_s(deps, "profile"),
             ),
             bounded_context(
                 deps.goal_updates_store.recent(effective_user_id, 20)
                 if deps.goal_updates_store is not None
                 else _empty_list(),
                 fallback=[],
-                timeout_s=deps.optional_context_timeout_s,
+                timeout_s=_optional_context_timeout_s(deps, "goals"),
             ),
             bounded_context(
                 deps.memory.search(effective_user_id, message, 5)
                 if deps.memory is not None
                 else _empty_list(),
                 fallback=[],
-                timeout_s=deps.optional_context_timeout_s,
+                timeout_s=_optional_context_timeout_s(deps, "memory"),
             ),
             bounded_context(
                 deps.session_reader.get_session(
@@ -901,7 +925,7 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                 if deps.session_reader is not None
                 else _none(),
                 fallback=None,
-                timeout_s=deps.optional_context_timeout_s,
+                timeout_s=_optional_context_timeout_s(deps, "existing_session"),
             ),
             bounded_context(
                 deps.session_summary.get_yesterday(
@@ -911,7 +935,7 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                 if (deps.session_summary is not None and isinstance(timezone, str) and timezone)
                 else _none(),
                 fallback=None,
-                timeout_s=deps.optional_context_timeout_s,
+                timeout_s=_optional_context_timeout_s(deps, "yesterday_summary"),
             ),
             bounded_context(
                 deps.session_summary.get_week(
@@ -921,10 +945,14 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                 if (deps.session_summary is not None and isinstance(timezone, str) and timezone)
                 else _none(),
                 fallback=None,
-                timeout_s=deps.optional_context_timeout_s,
+                timeout_s=_optional_context_timeout_s(deps, "week_summary"),
             ),
         )
         timings["parallelMs"] = _now_ms() - t_parallel0
+        if deps.optional_context_timeout_s is None:
+            for source, result in zip(_OPTIONAL_CONTEXT_SOURCES, context_results, strict=True):
+                if result.outcome == "ok":
+                    deps.context_deadline_policy.observe_success(source, result.elapsed_ms)
         (
             weather_result,
             places_result,

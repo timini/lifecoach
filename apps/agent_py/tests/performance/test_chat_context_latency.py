@@ -92,3 +92,43 @@ async def test_stalled_context_dispatch_latency_p95() -> None:
     )
     assert median_s < 0.5
     assert p95_s < 0.55
+
+
+@pytest.mark.performance
+@pytest.mark.asyncio
+async def test_repeated_fast_context_tightens_future_stall_p95() -> None:
+    weather = _SlowWeather(0.05)
+    runner = _DispatchRecordingRunner(
+        events_per_call=[[_model_text(f"sample {sample}")] for sample in range(12)]
+    )
+    app = _make_app(runner=runner, deps_overrides={"weather": weather})
+
+    async def dispatch(sample: int) -> float:
+        runner.dispatched_at = None
+        started = time.perf_counter()
+        with redirect_stdout(StringIO()):
+            async with (
+                _client(app) as client,
+                client.stream(
+                    "POST",
+                    "/chat",
+                    json={
+                        "userId": "perf-user",
+                        "sessionId": f"adaptive-session-{sample}",
+                        "message": "hello",
+                        "location": {"lat": 51.5, "lng": -0.1},
+                    },
+                ) as response,
+            ):
+                await _drain(response)
+        assert runner.dispatched_at is not None
+        return runner.dispatched_at - started
+
+    for sample in range(5):
+        await dispatch(sample)
+
+    weather.delay_s = 1.0
+    stalled = [await dispatch(sample) for sample in range(5, 12)]
+    p95_s = _percentile(stalled, 0.95)
+    print(f"adaptive stalled-context benchmark: n={len(stalled)} p95={p95_s * 1000:.1f}ms")
+    assert p95_s < 0.3
