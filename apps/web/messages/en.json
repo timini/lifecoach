@@ -8,6 +8,7 @@
       "What's one tiny thing I can do right now?"
     ],
     "breathing": "Take a slow breath while I think…",
+    "queued": "{count, plural, one {# message queued} other {# messages queued}}",
     "send": "Send",
     "placeholder": "Write something. The way to live is to look after the small things."
   },

@@ -177,6 +177,8 @@ sequenceDiagram
 
 **Latency budget (warm Cloud Run):** auth ~50 ms, parallel context fetch ~150 ms, prompt build <5 ms, first token from Vertex 1–3 s, full reply 3–8 s. Cold instance adds 5–15 s at TTFB. Every optional context branch has an independent 1.5 s foreground deadline and a type-safe empty fallback, so a stalled provider cannot block or fail the complete turn.
 
+**Foreground dispatch ordering.** The web client accepts additional messages while a response is streaming and places them in a visible FIFO queue. Only one request writes to a given ADK session at a time; the next dispatch begins when the prior SSE stream closes. This preserves deterministic session history and prevents concurrent root-agent runs from interleaving state or tool context.
+
 **Wire contract for `/chat` SSE:** see [§10.1](#101-chat-sse-wire-format).
 
 ---

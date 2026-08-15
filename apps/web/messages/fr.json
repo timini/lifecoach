@@ -8,6 +8,7 @@
       "Quelle petite chose puis-je faire maintenant ?"
     ],
     "breathing": "Respirez lentement pendant que je réfléchis…",
+    "queued": "{count, plural, one {# message en attente} other {# messages en attente}}",
     "send": "Envoyer",
     "placeholder": "Écrivez. La meilleure manière de vivre est de prendre soin des petites choses."
   },
