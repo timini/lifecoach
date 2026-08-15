@@ -71,6 +71,7 @@ from lifecoach_agent.background.runner import BackgroundRunner
 from lifecoach_agent.coaching_day import coaching_day_key
 from lifecoach_agent.context.air_quality import AirQualityClient
 from lifecoach_agent.context.calendar_density import CalendarDensityClient
+from lifecoach_agent.context.deadline import bounded_context
 from lifecoach_agent.context.holidays import HolidaysClient, tz_to_country
 from lifecoach_agent.context.memory import MemoryClient
 from lifecoach_agent.context.places import PlacesClient
@@ -144,14 +145,6 @@ async def _await_drive_task(task: asyncio.Task[bool]) -> bool:
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
-
-
-async def _timed(coro: Awaitable[Any]) -> tuple[Any, int]:
-    """Wrap an awaitable with a stopwatch — returns (value, elapsed_ms).
-    Mirrors `timed<T>` in server.ts."""
-    t0 = _now_ms()
-    v = await coro
-    return v, _now_ms() - t0
 
 
 def _local_day_key(timezone: str, at: datetime) -> str:
@@ -243,6 +236,7 @@ class CreateAppDeps:
     profile_store: UserProfileStore | None = None
     profile_history_store: ProfileHistoryStore | None = None
     goal_updates_store: GoalUpdatesStore | None = None
+    optional_context_timeout_s: float = 1.5
     workspace_tokens_store: WorkspaceTokensStore | None = None
     workspace_oauth_client: WorkspaceOAuthClient | None = None
     user_meta_store: UserMetaStore | None = None
@@ -764,10 +758,7 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
             if deps.places_token_provider is not None:
                 with contextlib.suppress(Exception):
                     token = await deps.places_token_provider()
-            try:
-                return await deps.places.get(coord, token)
-            except Exception:  # noqa: BLE001
-                return []
+            return await deps.places.get(coord, token)
 
         t_meta0 = _now_ms()
         # Walls + nudges are scoped to the user's local DAY (issue #64
@@ -842,98 +833,138 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
         # `assistantElement` machinery it already uses.
 
         t_parallel0 = _now_ms()
-        results = await asyncio.gather(
-            _timed(
+        context_results = await asyncio.gather(
+            bounded_context(
                 deps.weather.get(coord)
                 if (coord is not None and deps.weather is not None)
-                else _none()
+                else _none(),
+                fallback=None,
+                timeout_s=deps.optional_context_timeout_s,
             ),
-            _timed(_places_call()),
-            _timed(
+            bounded_context(
+                _places_call(),
+                fallback=[],
+                timeout_s=deps.optional_context_timeout_s,
+            ),
+            bounded_context(
                 deps.air_quality.get(coord)
                 if (coord is not None and deps.air_quality is not None)
-                else _none()
+                else _none(),
+                fallback=None,
+                timeout_s=deps.optional_context_timeout_s,
             ),
-            _timed(
+            bounded_context(
                 deps.holidays.next7Days(country_code)
                 if (country_code and deps.holidays is not None)
-                else _empty_list()
+                else _empty_list(),
+                fallback=[],
+                timeout_s=deps.optional_context_timeout_s,
             ),
-            _timed(
+            bounded_context(
                 cast(CalendarDensityClient, deps.calendar_density).get(
                     uid=effective_user_id,
                     timezone=cast(str, timezone),
                     now=deps.now(),
                 )
                 if want_calendar_density
-                else _none()
+                else _none(),
+                fallback=None,
+                timeout_s=deps.optional_context_timeout_s,
             ),
-            _timed(
+            bounded_context(
                 deps.profile_store.read_for_context(effective_user_id)
                 if deps.profile_store is not None
-                else _none()
+                else _none(),
+                fallback=None,
+                timeout_s=deps.optional_context_timeout_s,
             ),
-            _timed(
+            bounded_context(
                 deps.goal_updates_store.recent(effective_user_id, 20)
                 if deps.goal_updates_store is not None
-                else _empty_list()
+                else _empty_list(),
+                fallback=[],
+                timeout_s=deps.optional_context_timeout_s,
             ),
-            _timed(
+            bounded_context(
                 deps.memory.search(effective_user_id, message, 5)
                 if deps.memory is not None
-                else _empty_list()
+                else _empty_list(),
+                fallback=[],
+                timeout_s=deps.optional_context_timeout_s,
             ),
-            _timed(
+            bounded_context(
                 deps.session_reader.get_session(
                     app_name=deps.session_reader.app_name,
                     user_id=effective_user_id,
                     session_id=session_id,
                 )
                 if deps.session_reader is not None
-                else _none()
+                else _none(),
+                fallback=None,
+                timeout_s=deps.optional_context_timeout_s,
             ),
-            _timed(
+            bounded_context(
                 deps.session_summary.get_yesterday(
                     uid=effective_user_id,
                     today_date_local=_local_day_key(timezone, deps.now()),
                 )
                 if (deps.session_summary is not None and isinstance(timezone, str) and timezone)
-                else _none()
+                else _none(),
+                fallback=None,
+                timeout_s=deps.optional_context_timeout_s,
             ),
-            _timed(
+            bounded_context(
                 deps.session_summary.get_week(
                     uid=effective_user_id,
                     today_date_local=_local_day_key(timezone, deps.now()),
                 )
                 if (deps.session_summary is not None and isinstance(timezone, str) and timezone)
-                else _none()
+                else _none(),
+                fallback=None,
+                timeout_s=deps.optional_context_timeout_s,
             ),
-            return_exceptions=False,
         )
         timings["parallelMs"] = _now_ms() - t_parallel0
         (
-            (weather, weather_ms),
-            (nearby_places, places_ms),
-            (air_quality, air_quality_ms),
-            (holidays, holidays_ms),
-            (calendar_density, calendar_density_ms),
-            (user_profile, profile_ms),
-            (recent_goal_updates, goals_ms),
-            (memories, memory_ms),
-            (existing_session, _existing_session_ms),
-            (yesterday_summary, yesterday_summary_ms),
-            (week_summary, week_summary_ms),
-        ) = results
-        timings["weatherMs"] = weather_ms
-        timings["placesMs"] = places_ms
-        timings["airQualityMs"] = air_quality_ms
-        timings["holidaysMs"] = holidays_ms
-        timings["calendarDensityMs"] = calendar_density_ms
-        timings["profileMs"] = profile_ms
-        timings["goalsMs"] = goals_ms
-        timings["memoryMs"] = memory_ms
-        timings["yesterdaySummaryMs"] = yesterday_summary_ms
-        timings["weekSummaryMs"] = week_summary_ms
+            weather_result,
+            places_result,
+            air_quality_result,
+            holidays_result,
+            calendar_density_result,
+            profile_result,
+            goals_result,
+            memory_result,
+            existing_session_result,
+            yesterday_summary_result,
+            week_summary_result,
+        ) = context_results
+        source_results = {
+            "weather": weather_result,
+            "places": places_result,
+            "airQuality": air_quality_result,
+            "holidays": holidays_result,
+            "calendarDensity": calendar_density_result,
+            "profile": profile_result,
+            "goals": goals_result,
+            "memory": memory_result,
+            "existingSession": existing_session_result,
+            "yesterdaySummary": yesterday_summary_result,
+            "weekSummary": week_summary_result,
+        }
+        context_outcomes = {name: result.outcome for name, result in source_results.items()}
+        for name, result in source_results.items():
+            timings[f"{name}Ms"] = result.elapsed_ms
+        weather = weather_result.value
+        nearby_places = places_result.value
+        air_quality = air_quality_result.value
+        holidays = holidays_result.value
+        calendar_density = calendar_density_result.value
+        user_profile = profile_result.value
+        recent_goal_updates = goals_result.value
+        memories = memory_result.value
+        existing_session = existing_session_result.value
+        yesterday_summary = yesterday_summary_result.value
+        week_summary = week_summary_result.value
         timings["prepMs"] = tick()
 
         usage_machine = UsageStateMachine.from_inputs(
@@ -969,6 +1000,7 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                         "wallCta": usage_policy.wall_cta,
                         "totalMs": tick(),
                         "timings": timings,
+                        "contextOutcomes": context_outcomes,
                     },
                     default=str,
                 )
@@ -1270,6 +1302,7 @@ def create_app(deps: CreateAppDeps) -> FastAPI:
                             "walled": False,
                             "totalMs": tick(),
                             "timings": timings,
+                            "contextOutcomes": context_outcomes,
                         },
                         default=str,
                     )

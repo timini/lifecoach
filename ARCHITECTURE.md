@@ -175,7 +175,7 @@ sequenceDiagram
     Note over CW,Stores: If the SSE drops, ChatWindow's<br/>useChatStream re-fetches /history<br/>and replaces local state with<br/>the canonical Firestore transcript.
 ```
 
-**Latency budget (warm Cloud Run):** auth ~50 ms, parallel context fetch ~150 ms, prompt build <5 ms, first token from Vertex 1–3 s, full reply 3–8 s. Cold instance adds 5–15 s at TTFB.
+**Latency budget (warm Cloud Run):** auth ~50 ms, parallel context fetch ~150 ms, prompt build <5 ms, first token from Vertex 1–3 s, full reply 3–8 s. Cold instance adds 5–15 s at TTFB. Every optional context branch has an independent 1.5 s foreground deadline and a type-safe empty fallback, so a stalled provider cannot block or fail the complete turn.
 
 **Wire contract for `/chat` SSE:** see [§10.1](#101-chat-sse-wire-format).
 
@@ -511,7 +511,7 @@ If silent turns become a real production pattern again, the right fix is to addr
 
 ### 7.11 Observability
 
-Every `/chat` turn emits a single structured log line at end-of-turn (`chat.turn`) with: `uid`, `sessionId`, `userState`, `usageState`, `model`, `chatTurnCount`, parallel-fetch `*Ms` timings, `streamMs`, `ttfbMs`, `ttftMs`, `toolCount`, `tools`, `retried`, `emptyTurnRetrySucceeded`, `emptyTurnRecovered`. Tool dispatch emits per-call lines (`tool.<name>`). Errors go to Sentry via `sentry_setup.py`.
+Every `/chat` turn emits a single structured log line at end-of-turn (`chat.turn`) with: `uid`, `sessionId`, `userState`, `usageState`, `model`, `chatTurnCount`, parallel-fetch `*Ms` timings and `contextOutcomes` (`ok` / `timeout` / `error` per source), `streamMs`, `ttfbMs`, `ttftMs`, `toolCount`, and `tools`. Tool dispatch emits per-call lines (`tool.<name>`). Errors go to Sentry via `sentry_setup.py`.
 
 ---
 
