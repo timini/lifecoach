@@ -1,5 +1,5 @@
 /**
- * Day-rhythm sessionId helpers — every calendar day is its own session,
+ * Day-rhythm sessionId helpers — every coaching day is its own session,
  * keyed deterministically on `${uid}-${YYYY-MM-DD}`.
  *
  * No localStorage anymore: the previous per-uid random-UUID mapping was
@@ -8,14 +8,24 @@
  * The agent's Firestore lookup (`apps/{app}/users/{uid}/sessions/{id}`)
  * lazily creates the doc on first turn, identical to before.
  *
- * Date is the user's *local* date (browser tz). If a user travels across
+ * Date is the user's *local coaching date* (browser tz): midnight–04:59
+ * carries over to the previous date, matching the agent's wind-down phase.
+ * If a user travels across
  * the dateline at midnight they get a fresh session — acceptable for
  * MVP, documented in the plan.
  */
 
-/** Returns today's date in the browser's local tz as `YYYY-MM-DD`. */
+export const COACHING_DAY_START_HOUR = 5;
+
+/** Returns today's coaching date in the browser's local tz as `YYYY-MM-DD`. */
 export function todayDateLocal(): string {
-  return dateLocal(new Date());
+  return coachingDateLocal(new Date());
+}
+
+/** Format the coaching date containing `d` in the browser's local timezone. */
+export function coachingDateLocal(d: Date): string {
+  if (d.getHours() >= COACHING_DAY_START_HOUR) return dateLocal(d);
+  return dateLocal(new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1));
 }
 
 /**

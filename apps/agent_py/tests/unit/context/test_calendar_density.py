@@ -104,3 +104,64 @@ async def test_cache_avoids_repeat_fetches() -> None:
     await client.get(uid="u1", timezone="Europe/London", now=now)
     await client.get(uid="u1", timezone="Europe/London", now=now)
     assert calls == 1
+
+
+@pytest.mark.asyncio
+async def test_after_midnight_uses_coaching_day_for_timed_events() -> None:
+    now = datetime(2026, 8, 14, 23, 30, tzinfo=ZoneInfo("UTC"))  # 00:30 BST on Aug 15
+    items = [
+        _evt(
+            summary="Evening run",
+            start="2026-08-14T22:00:00+01:00",
+            end="2026-08-14T23:00:00+01:00",
+        ),
+        _evt(
+            summary="Late reflection",
+            start="2026-08-15T02:00:00+01:00",
+            end="2026-08-15T02:30:00+01:00",
+        ),
+        _evt(
+            summary="Morning workshop",
+            start="2026-08-15T09:00:00+01:00",
+            end="2026-08-15T10:00:00+01:00",
+        ),
+        _evt(summary="Day off", start="2026-08-15", end="2026-08-16", all_day=True),
+    ]
+
+    async def fetch(_token: str, _cal: str, _tmin: str, _tmax: str) -> list[dict[str, Any]]:
+        return items
+
+    client = CalendarDensityClient(store=_FakeStore(), events_fetcher=fetch)
+    summary = await client.get(uid="u1", timezone="Europe/London", now=now)
+
+    assert summary is not None
+    assert [event.summary for event in summary.today.events] == [
+        "Evening run",
+        "Late reflection",
+    ]
+    assert summary.today.count == 2
+    assert summary.today.nextStart == "02:00"
+    assert summary.tomorrow.count == 2
+
+
+@pytest.mark.asyncio
+async def test_cache_rolls_over_at_coaching_day_boundary() -> None:
+    calls = 0
+
+    async def fetch(*_a: Any, **_kw: Any) -> list[dict[str, Any]]:
+        nonlocal calls
+        calls += 1
+        return []
+
+    client = CalendarDensityClient(store=_FakeStore(), events_fetcher=fetch, now=lambda: 100.0)
+    await client.get(
+        uid="u1",
+        timezone="Europe/London",
+        now=datetime(2026, 8, 15, 3, 59, tzinfo=ZoneInfo("UTC")),
+    )
+    await client.get(
+        uid="u1",
+        timezone="Europe/London",
+        now=datetime(2026, 8, 15, 4, 0, tzinfo=ZoneInfo("UTC")),
+    )
+    assert calls == 2

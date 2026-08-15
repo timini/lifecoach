@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { dateLocal, sessionIdFor, sessionIdForToday, todayDateLocal } from './sessionId';
+import {
+  coachingDateLocal,
+  dateLocal,
+  sessionIdFor,
+  sessionIdForToday,
+  todayDateLocal,
+} from './sessionId';
 
 describe('dateLocal', () => {
   it('returns YYYY-MM-DD for a known date', () => {
@@ -21,6 +27,16 @@ describe('todayDateLocal', () => {
 
   it('matches the YYYY-MM-DD shape', () => {
     expect(todayDateLocal()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+});
+
+describe('coachingDateLocal', () => {
+  it('keeps the previous date before 05:00 local time', () => {
+    expect(coachingDateLocal(new Date(2026, 7, 15, 4, 59))).toBe('2026-08-14');
+  });
+
+  it('rolls to the new date at 05:00 local time', () => {
+    expect(coachingDateLocal(new Date(2026, 7, 15, 5, 0))).toBe('2026-08-15');
   });
 });
 

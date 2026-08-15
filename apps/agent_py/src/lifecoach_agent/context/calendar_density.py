@@ -20,6 +20,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 from zoneinfo import ZoneInfo
 
+from lifecoach_agent.coaching_day import coaching_day_key
 from lifecoach_agent.prompt.build_instruction import (
     CalendarDay,
     CalendarDensitySummary,
@@ -55,8 +56,8 @@ class _CacheEntry:
     value: CalendarDensitySummary | None
 
 
-def _date_in_tz(d: datetime, tz: str) -> str:
-    return d.astimezone(ZoneInfo(tz)).strftime("%Y-%m-%d")
+def _next_date(date_key: str) -> str:
+    return (datetime.fromisoformat(date_key) + timedelta(days=1)).date().isoformat()
 
 
 def _time_in_tz(d: datetime, tz: str) -> str:
@@ -86,7 +87,7 @@ class CalendarDensityClient:
     async def get(self, *, uid: str, timezone: str, now: datetime) -> CalendarDensitySummary | None:
         if now.tzinfo is None:
             now = now.replace(tzinfo=UTC)
-        today_date = _date_in_tz(now, timezone)
+        today_date = coaching_day_key(now, timezone)
         key = f"{uid}:{timezone}"
         now_t = self._now()
         hit = self._cache.get(key)
@@ -109,7 +110,7 @@ class CalendarDensityClient:
         if items is None:
             return None
 
-        tomorrow_date = _date_in_tz(now + timedelta(days=1), timezone)
+        tomorrow_date = _next_date(today_date)
         summary = _bucket(items, today_date, tomorrow_date, timezone, now)
         self._cache[key] = _CacheEntry(at=now_t, today_date=today_date, value=summary)
         return summary
@@ -136,7 +137,9 @@ def _bucket(
         if not start_str:
             continue
         is_all_day = "dateTime" not in start
-        event_day = start_str if is_all_day else _date_in_tz(_parse_iso(start_str), tz)
+        # All-day events retain their explicit calendar date. Timed events in
+        # the carryover window belong to the preceding coaching day.
+        event_day = start_str if is_all_day else coaching_day_key(_parse_iso(start_str), tz)
         end = item.get("end") or {}
         if event_day == today_date:
             today_count += 1

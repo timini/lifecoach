@@ -23,6 +23,7 @@ from lifecoach_agent.server import (
     CreateAppDeps,
     RunnerForParams,
     SessionReader,
+    _local_day_key,
     create_app,
 )
 from lifecoach_agent.storage.firestore_session import create_firestore_session_service
@@ -195,6 +196,13 @@ def _client(app: Any) -> httpx.AsyncClient:
 
 
 # --- /health -------------------------------------------------------------
+
+
+def test_local_day_key_uses_five_am_coaching_boundary() -> None:
+    before = datetime(2026, 8, 14, 23, 30, tzinfo=ZoneInfo("UTC"))
+    boundary = datetime(2026, 8, 15, 4, 0, tzinfo=ZoneInfo("UTC"))
+    assert _local_day_key("Europe/London", before) == "2026-08-14"
+    assert _local_day_key("Europe/London", boundary) == "2026-08-15"
 
 
 @pytest.mark.asyncio
