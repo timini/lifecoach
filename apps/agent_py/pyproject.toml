@@ -68,11 +68,12 @@ quote-style = "double"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 asyncio_mode = "auto"
 addopts = "-q --strict-markers"
 markers = [
   "slow: long-running tests excluded from default runs",
+  "performance: repeat-sample latency evidence against the real ASGI chat path",
   "real_llm: hits real Gemini — requires LIFECOACH_EVAL_REAL_LLM=1",
 ]
 
