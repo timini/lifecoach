@@ -10,16 +10,28 @@ from typing import Any
 import pytest
 from tests.unit.test_server import FakeRunner, _client, _drain, _make_app, _model_text
 
+from lifecoach_agent.prompt.build_instruction import Weather, WeatherCurrent, WeatherToday
+
 
 class _SlowWeather:
     def __init__(self, delay_s: float) -> None:
         self.delay_s = delay_s
 
-    async def get(self, _coord: Any) -> dict[str, str]:
+    async def get(self, _coord: Any) -> Weather:
         import asyncio
 
         await asyncio.sleep(self.delay_s)
-        return {"condition": "too late"}
+        return Weather(
+            current=WeatherCurrent(temperatureC=15, windKph=5, code=0, time="09:00"),
+            forecast=[],
+            today=WeatherToday(
+                sunrise="06:00",
+                sunset="20:00",
+                daylightHours=14,
+                uvIndexMax=2,
+                rainChancePeak=None,
+            ),
+        )
 
 
 @dataclass
