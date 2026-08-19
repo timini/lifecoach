@@ -236,7 +236,7 @@ class CreateAppDeps:
     profile_store: UserProfileStore | None = None
     profile_history_store: ProfileHistoryStore | None = None
     goal_updates_store: GoalUpdatesStore | None = None
-    optional_context_timeout_s: float = 1.5
+    optional_context_timeout_s: float = 0.4
     workspace_tokens_store: WorkspaceTokensStore | None = None
     workspace_oauth_client: WorkspaceOAuthClient | None = None
     user_meta_store: UserMetaStore | None = None
